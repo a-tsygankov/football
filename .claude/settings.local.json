@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pandoc --track-changes=all \"FC26 TeamPicker Handoff.docx\" -o /tmp/handoff.md)",
+      "Read(//tmp/**)",
+      "Bash(python \"C:\\\\Users\\\\tsyga\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\8843041d-2f55-44cb-93c1-cba3ff908101\\\\ec989e85-0345-41f4-9e06-65eb82b15855\\\\skills\\\\docx\\\\scripts\\\\office\\\\unpack.py\" \"C:\\\\Workspaces\\\\football\\\\FC26 TeamPicker Handoff.docx\" /tmp/handoff_unpacked/)",
+      "Bash(pip install:*)",
+      "Bash(python -c \"import tempfile; print\\(tempfile.gettempdir\\(\\)\\)\")",
+      "Bash(cygpath -w /tmp)",
+      "Bash(pnpm --version)",
+      "Bash(npm --version)",
+      "Bash(npx --version)",
+      "Bash(corepack --version)",
+      "Bash(corepack enable:*)",
+      "Bash(corepack prepare:*)",
+      "Bash(npm install:*)",
+      "Bash(git -C /c/Workspaces/football status --short)"
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+node_modules/
+dist/
+build/
+.wrangler/
+.output/
+.cache/
+coverage/
+
+# env / secrets
+.env
+.env.local
+.env.*.local
+.dev.vars
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Test output
+*.lcov
+
+# TypeScript build info
+*.tsbuildinfo
