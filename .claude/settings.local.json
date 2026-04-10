@@ -14,7 +14,14 @@
       "Bash(corepack enable:*)",
       "Bash(corepack prepare:*)",
       "Bash(npm install:*)",
-      "Bash(git -C /c/Workspaces/football status --short)"
+      "Bash(git -C /c/Workspaces/football status --short)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm --filter @fc26/shared test:run)",
+      "Bash(pnpm --filter @fc26/worker test:run)",
+      "Bash(pnpm --filter @fc26/web test:run)",
+      "Bash(pnpm -r typecheck)",
+      "Bash(pnpm -r test:run)",
+      "Bash(pnpm --filter @fc26/web build)"
     ]
   }
 }

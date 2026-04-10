@@ -13,6 +13,13 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 export type LogSource = 'web' | 'worker'
 
+/**
+ * Loose context shape for log entries. Accepts any object whose values are
+ * JSON-serialisable. Using `object` rather than `Record<string, unknown>` so
+ * callers can pass strongly-typed DTOs without a cast.
+ */
+export type LogContext = Record<string, unknown> | object
+
 export type LogCategory =
   | 'game'
   | 'db'
@@ -32,16 +39,16 @@ export interface LogEntry {
   source: LogSource
   category: LogCategory
   message: string
-  context?: Record<string, unknown>
+  context?: LogContext
   /** Ties web → worker log entries together for a single API call. */
   correlationId?: string
 }
 
 export interface ILogger {
-  debug(category: LogCategory, message: string, context?: Record<string, unknown>): void
-  info(category: LogCategory, message: string, context?: Record<string, unknown>): void
-  warn(category: LogCategory, message: string, context?: Record<string, unknown>): void
-  error(category: LogCategory, message: string, context?: Record<string, unknown>): void
+  debug(category: LogCategory, message: string, context?: LogContext): void
+  info(category: LogCategory, message: string, context?: LogContext): void
+  warn(category: LogCategory, message: string, context?: LogContext): void
+  error(category: LogCategory, message: string, context?: LogContext): void
   /** Returns a child logger that stamps every entry with the given correlation ID. */
   withCorrelation(correlationId: string): ILogger
 }

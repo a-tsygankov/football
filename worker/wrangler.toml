@@ -1,0 +1,35 @@
+name = "fc26-worker"
+main = "src/index.ts"
+compatibility_date = "2024-11-12"
+compatibility_flags = ["nodejs_compat"]
+
+# Set via wrangler secret put / env:
+# - SCHEMA_VERSION (number, matches latest applied migration)
+# - MIN_CLIENT_VERSION (semver string)
+# - GIT_SHA (build metadata)
+[vars]
+WORKER_VERSION = "0.1.0"
+SCHEMA_VERSION = "1"
+MIN_CLIENT_VERSION = "0.1.0"
+
+# Phase 1 bindings. The Worker boots without these (falls back to in-memory
+# stores in src/dependencies.ts so the scaffold stays runnable), but the
+# /api/squads/* routes need both DB and SQUADS to serve real data.
+#
+# To provision:
+#   wrangler d1 create fc26                       # paste database_id below
+#   wrangler r2 bucket create fc26-squads
+#   pnpm exec wrangler d1 migrations apply fc26 --local
+#
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "fc26"
+# database_id = "TODO"
+#
+# [[r2_buckets]]
+# binding = "SQUADS"
+# bucket_name = "fc26-squads"
+#
+# Daily squad sync cron — wired up in Phase 1 once the squad-sync tool lands.
+# [triggers]
+# crons = ["0 6 * * *"]

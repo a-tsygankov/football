@@ -1,6 +1,6 @@
 import type { Gamer, GameSize } from '../types/domain.js'
 import type { GamerId } from '../types/ids.js'
-import { SelectionError, type IGamerSelectionStrategy, type SelectionContext } from './types.js'
+import { SelectionError, type IGamerSelectionStrategy } from './types.js'
 
 /**
  * Wraps a strategy in a validator that enforces the contract every strategy
