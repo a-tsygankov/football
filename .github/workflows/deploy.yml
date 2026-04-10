@@ -1,0 +1,160 @@
+name: Deploy FC26 TeamPicker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'worker/**'
+      - 'packages/shared/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+# ── Deploy targets ────────────────────────────────────────────────
+#   apps/web   → GitHub Pages (static SPA)
+#   worker/    → Cloudflare Workers (+ D1 + R2, bindings in wrangler.toml)
+#
+# The monorepo uses pnpm workspaces, so we install once per job and run
+# workspace-wide `typecheck` / `test:run` through the `ci` job before
+# either deploy fires.
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '9.15.0'
+
+jobs:
+  # ── Lint, typecheck, and test the whole workspace once ──
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (all packages)
+        run: pnpm -r typecheck
+
+      - name: Test (all packages)
+        run: pnpm -r test:run
+
+  # ── Build and deploy apps/web to GitHub Pages ──
+  deploy-web:
+    runs-on: ubuntu-latest
+    needs: ci
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web (vite)
+        run: pnpm --filter @fc26/web run build
+        env:
+          # Picked up by apps/web/vite.config.ts and baked into the bundle
+          # so the client /api/version response can be cross-checked.
+          GIT_SHA: ${{ github.sha }}
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # ── Deploy worker/ to Cloudflare Workers ──
+  deploy-worker:
+    runs-on: ubuntu-latest
+    needs: ci
+    # Skip when the Cloudflare token is missing (e.g. forks, first-time
+    # checkout). Once the secret is configured in repo settings this
+    # short-circuit becomes a no-op.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck worker
+        run: pnpm --filter @fc26/worker run typecheck
+
+      # D1 migrations are additive-only (see handoff §21). This step is
+      # guarded on the RUN_D1_MIGRATIONS repo variable so first-time deploys
+      # (before the D1 binding is provisioned in wrangler.toml) don't fail.
+      # Once the binding lands, set `RUN_D1_MIGRATIONS=true` in repo vars.
+      - name: Apply D1 migrations (remote)
+        if: ${{ vars.RUN_D1_MIGRATIONS == 'true' }}
+        working-directory: worker
+        run: pnpm exec wrangler d1 migrations apply fc26 --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy worker (wrangler)
+        working-directory: worker
+        # GIT_SHA is baked into the /api/version response so clients can
+        # cross-check build identity. WORKER_VERSION stays as the semver in
+        # wrangler.toml so the three-axis version check (§20) has a stable
+        # floor to compare MIN_CLIENT_VERSION against.
+        run: pnpm exec wrangler deploy --var GIT_SHA:${{ github.sha }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
