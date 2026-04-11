@@ -30,6 +30,7 @@ export interface CreateRoomRequest {
 }
 
 export interface JoinRoomRequest {
+  identifier?: string
   pin?: string | null
 }
 
@@ -37,6 +38,7 @@ export interface CreateGamerRequest {
   name: string
   rating?: number
   active?: boolean
+  pin?: string | null
   avatarUrl?: string | null
 }
 
@@ -44,6 +46,8 @@ export interface UpdateGamerRequest {
   name?: string
   rating?: number
   active?: boolean
+  currentPin?: string | null
+  pin?: string | null
   avatarUrl?: string | null
 }
 

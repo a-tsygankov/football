@@ -13,8 +13,10 @@ import {
   GameId,
   getStrategy,
   inferGameFormat,
+  isValidNameStem,
   type JoinRoomRequest,
   mulberry32,
+  normalizeNameStem,
   type Room,
   type RoomBootstrapResponse,
   RoomId,
@@ -38,6 +40,7 @@ import {
   verifyRoomSession,
 } from '../auth/session.js'
 import { toRoomSummary } from '../rooms/repository.js'
+import { toPublicGamer } from '../gamers/repository.js'
 
 const GAME_NIGHT_IDLE_TIMEOUT_MS = 12 * 60 * 60 * 1000
 type RouteContext = Context<AppContext>
@@ -50,6 +53,7 @@ const createRoomSchema = z.object({
 })
 
 const joinRoomSchema = z.object({
+  identifier: z.string().trim().min(1).optional(),
   pin: z.string().nullable().optional(),
 })
 
@@ -57,6 +61,7 @@ const createGamerSchema = z.object({
   name: z.string().trim().min(1).max(80),
   rating: z.number().int().min(1).max(5).optional(),
   active: z.boolean().optional(),
+  pin: z.string().nullable().optional(),
   avatarUrl: z.string().url().nullable().optional(),
 })
 
@@ -64,6 +69,8 @@ const updateGamerSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   rating: z.number().int().min(1).max(5).optional(),
   active: z.boolean().optional(),
+  currentPin: z.string().nullable().optional(),
+  pin: z.string().nullable().optional(),
   avatarUrl: z.string().url().nullable().optional(),
 })
 
@@ -97,6 +104,16 @@ roomRoutes.post('/rooms', async (c) => {
   }
 
   const body = parsed.data satisfies CreateRoomRequest
+  if (!isValidNameStem(body.name)) {
+    return c.json({ error: 'invalid_room_name_stem' }, 400)
+  }
+  const nameKey = normalizeNameStem(body.name)
+  if (
+    (await c.get('deps').rooms.getByNameKey(nameKey)) ||
+    (await c.get('deps').gamers.getByNameKey(nameKey))
+  ) {
+    return c.json({ error: 'room_name_taken', nameKey }, 409)
+  }
   const strategyId = body.defaultSelectionStrategy ?? DEFAULT_STRATEGY_ID
   try {
     getStrategy(strategyId)
@@ -120,6 +137,7 @@ roomRoutes.post('/rooms', async (c) => {
   const room: Room = {
     id: RoomId(nanoid(10)),
     name: body.name.trim(),
+    nameKey,
     avatarUrl: body.avatarUrl ?? null,
     pinHash,
     pinSalt,
@@ -134,14 +152,15 @@ roomRoutes.post('/rooms', async (c) => {
 })
 
 roomRoutes.post('/rooms/:roomId/sessions', async (c) => {
-  const roomId = RoomId(c.req.param('roomId'))
   const parsed = joinRoomSchema.safeParse(await parseJson(c))
   if (!parsed.success) {
     return c.json({ error: 'invalid_body', issues: parsed.error.flatten() }, 400)
   }
 
-  const room = await c.get('deps').rooms.get(roomId)
-  if (!room) return c.json({ error: 'not_found', roomId }, 404)
+  const requestedLookup = parsed.data.identifier?.trim() || c.req.param('roomId')
+  const room = await resolveRoomByLookup(c, requestedLookup)
+  if (!room) return c.json({ error: 'not_found', lookup: requestedLookup }, 404)
+  const roomId = room.id
 
   const body = parsed.data satisfies JoinRoomRequest
   const now = Date.now()
@@ -197,20 +216,43 @@ roomRoutes.post('/rooms/:roomId/gamers', async (c) => {
   }
 
   const body = parsed.data satisfies CreateGamerRequest
+  if (!isValidNameStem(body.name)) {
+    return c.json({ error: 'invalid_gamer_name_stem' }, 400)
+  }
+  const nameKey = normalizeNameStem(body.name)
+  const existingGamerByName = await c.get('deps').gamers.getByNameKey(nameKey)
+  const existingRoomByName = await c.get('deps').rooms.getByNameKey(nameKey)
+  if (existingGamerByName || existingRoomByName) {
+    return c.json({ error: 'gamer_name_taken', nameKey }, 409)
+  }
+  if (body.pin && !isValidPin(body.pin)) {
+    return c.json({ error: 'invalid_pin_format' }, 400)
+  }
   const now = Date.now()
+  let pinHash: string | null = null
+  let pinSalt: string | null = null
+  if (body.pin) {
+    const hashed = await hashPin(body.pin)
+    pinHash = hashed.hash
+    pinSalt = hashed.salt
+  }
   const gamer = {
     id: GamerId(nanoid(10)),
     roomId,
     name: body.name.trim(),
+    nameKey,
     rating: body.rating ?? 3,
     active: body.active ?? true,
+    hasPin: Boolean(pinHash),
+    pinHash,
+    pinSalt,
     avatarUrl: body.avatarUrl ?? null,
     createdAt: now,
     updatedAt: now,
   }
 
   await c.get('deps').gamers.insert(gamer)
-  return c.json({ gamer }, 201)
+  return c.json({ gamer: toPublicGamer(gamer) }, 201)
 })
 
 roomRoutes.patch('/rooms/:roomId/gamers/:gamerId', async (c) => {
@@ -230,6 +272,37 @@ roomRoutes.patch('/rooms/:roomId/gamers/:gamerId', async (c) => {
   }
 
   const body = parsed.data satisfies UpdateGamerRequest
+  if (body.currentPin && !isValidPin(body.currentPin)) {
+    return c.json({ error: 'invalid_pin_format' }, 400)
+  }
+  if (body.pin !== undefined && body.pin !== null && body.pin !== '' && !isValidPin(body.pin)) {
+    return c.json({ error: 'invalid_pin_format' }, 400)
+  }
+
+  if (existing.pinHash && existing.pinSalt) {
+    if (!body.currentPin) {
+      return c.json({ error: 'gamer_pin_required', gamerId }, 401)
+    }
+    const ok = await verifyPin(body.currentPin, existing.pinSalt, existing.pinHash)
+    if (!ok) {
+      return c.json({ error: 'invalid_gamer_pin', gamerId }, 401)
+    }
+  }
+
+  const nextName = body.name?.trim() ?? existing.name
+  if (!isValidNameStem(nextName)) {
+    return c.json({ error: 'invalid_gamer_name_stem' }, 400)
+  }
+  const nextNameKey = normalizeNameStem(nextName)
+  const existingGamerByName = await c.get('deps').gamers.getByNameKey(nextNameKey)
+  if (existingGamerByName && existingGamerByName.id !== existing.id) {
+    return c.json({ error: 'gamer_name_taken', nameKey: nextNameKey }, 409)
+  }
+  const existingRoomByName = await c.get('deps').rooms.getByNameKey(nextNameKey)
+  if (existingRoomByName) {
+    return c.json({ error: 'gamer_name_taken', nameKey: nextNameKey }, 409)
+  }
+
   if (body.active === false) {
     const activeGameNight = await getFreshActiveGameNight(c, roomId, Date.now())
     if (activeGameNight) {
@@ -240,17 +313,34 @@ roomRoutes.patch('/rooms/:roomId/gamers/:gamerId', async (c) => {
     }
   }
 
+  let nextPinHash = existing.pinHash
+  let nextPinSalt = existing.pinSalt
+  if (body.pin !== undefined) {
+    if (!body.pin) {
+      nextPinHash = null
+      nextPinSalt = null
+    } else {
+      const hashed = await hashPin(body.pin)
+      nextPinHash = hashed.hash
+      nextPinSalt = hashed.salt
+    }
+  }
+
   const updated = {
     ...existing,
-    name: body.name?.trim() ?? existing.name,
+    name: nextName,
+    nameKey: nextNameKey,
     rating: body.rating ?? existing.rating,
     active: body.active ?? existing.active,
+    hasPin: Boolean(nextPinHash),
+    pinHash: nextPinHash,
+    pinSalt: nextPinSalt,
     avatarUrl: body.avatarUrl !== undefined ? body.avatarUrl : existing.avatarUrl,
     updatedAt: Date.now(),
   }
 
   await c.get('deps').gamers.update(updated)
-  return c.json({ gamer: updated })
+  return c.json({ gamer: toPublicGamer(updated) })
 })
 
 roomRoutes.post('/rooms/:roomId/game-nights', async (c) => {
@@ -498,7 +588,7 @@ async function buildBootstrap(
 
   return {
     room: toRoomSummary(room),
-    gamers: await c.get('deps').gamers.listByRoom(roomId),
+    gamers: (await c.get('deps').gamers.listByRoom(roomId)).map(toPublicGamer),
     activeGameNight,
     activeGameNightGamers,
     currentGame,
@@ -564,6 +654,18 @@ async function issueRoomSession(
     maxAge: Math.floor(ROOM_SESSION_TTL_MS / 1000),
   })
   return { roomId, exp }
+}
+
+async function resolveRoomByLookup(
+  c: RouteContext,
+  lookup: string,
+): Promise<Room | null> {
+  const roomById = await c.get('deps').rooms.get(RoomId(lookup))
+  if (roomById) return roomById
+
+  const nameKey = normalizeNameStem(lookup)
+  if (!nameKey) return null
+  return c.get('deps').rooms.getByNameKey(nameKey)
 }
 
 function resolveClientIp(req: Request): string {

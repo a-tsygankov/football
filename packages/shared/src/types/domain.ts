@@ -38,6 +38,7 @@ export function inferGameFormat(
 export interface Room {
   id: RoomId
   name: string
+  nameKey: string
   avatarUrl: string | null
   /** Null when no PIN is set. */
   pinHash: string | null
@@ -64,6 +65,7 @@ export interface Gamer {
   /** 1..5, used by some selection strategies and rated-random side assignment. */
   rating: number
   active: boolean
+  hasPin: boolean
   avatarUrl: string | null
   createdAt: number
   updatedAt: number

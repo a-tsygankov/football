@@ -18,10 +18,24 @@ export default defineConfig({
   },
   server: {
     // host: true binds to 0.0.0.0 so phones on the same Wi-Fi can hit us at
-    // http://<LAN-IP>:5173. Vite also prints the Network URL on startup.
+    // http://<LAN-IP>:<port>. Vite also prints the Network URL on startup.
     host: true,
-    port: 5173,
+    // Honor PORT env var when the launcher assigns a free port (autoPort),
+    // otherwise fall back to the default 5173.
+    port: process.env.PORT ? Number(process.env.PORT) : 5173,
     strictPort: true,
+    // Same-origin proxy to the Worker so the session cookie (SameSite=Lax)
+    // actually round-trips. Without this, the browser refuses to send the
+    // cookie from Vite's origin to the Worker's port, and every authed
+    // request comes back 401. VITE_WORKER_TARGET defaults to the local
+    // wrangler dev server.
+    proxy: {
+      '/api': {
+        target: process.env.VITE_WORKER_TARGET ?? 'http://127.0.0.1:8787',
+        changeOrigin: true,
+        ws: false,
+      },
+    },
   },
   build: {
     target: 'es2022',

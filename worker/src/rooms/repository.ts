@@ -3,6 +3,7 @@ import { type Room, RoomId, type RoomSummary } from '@fc26/shared'
 export interface IRoomRepository {
   insert(room: Room): Promise<void>
   get(id: RoomId): Promise<Room | null>
+  getByNameKey(nameKey: string): Promise<Room | null>
   update(room: Room): Promise<void>
 }
 
@@ -32,6 +33,10 @@ export class InMemoryRoomRepository implements IRoomRepository {
     return this.rows.get(id) ?? null
   }
 
+  async getByNameKey(nameKey: string): Promise<Room | null> {
+    return [...this.rows.values()].find((room) => room.nameKey === nameKey) ?? null
+  }
+
   async update(room: Room): Promise<void> {
     if (!this.rows.has(room.id)) {
       throw new Error(`room ${room.id} not found`)
@@ -43,6 +48,7 @@ export class InMemoryRoomRepository implements IRoomRepository {
 interface RoomRow {
   id: string
   name: string
+  name_key: string
   avatar_url: string | null
   pin_hash: string | null
   pin_salt: string | null
@@ -55,6 +61,7 @@ function rowToRoom(row: RoomRow): Room {
   return {
     id: RoomId(row.id),
     name: row.name,
+    nameKey: row.name_key,
     avatarUrl: row.avatar_url,
     pinHash: row.pin_hash,
     pinSalt: row.pin_salt,
@@ -71,12 +78,13 @@ export class D1RoomRepository implements IRoomRepository {
     await this.db
       .prepare(
         `INSERT INTO rooms
-           (id, name, avatar_url, pin_hash, pin_salt, default_selection_strategy, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, name, name_key, avatar_url, pin_hash, pin_salt, default_selection_strategy, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         room.id,
         room.name,
+        room.nameKey,
         room.avatarUrl,
         room.pinHash,
         room.pinSalt,
@@ -95,15 +103,24 @@ export class D1RoomRepository implements IRoomRepository {
     return row ? rowToRoom(row) : null
   }
 
+  async getByNameKey(nameKey: string): Promise<Room | null> {
+    const row = await this.db
+      .prepare(`SELECT * FROM rooms WHERE name_key = ?`)
+      .bind(nameKey)
+      .first<RoomRow>()
+    return row ? rowToRoom(row) : null
+  }
+
   async update(room: Room): Promise<void> {
     await this.db
       .prepare(
         `UPDATE rooms
-         SET name = ?, avatar_url = ?, pin_hash = ?, pin_salt = ?, default_selection_strategy = ?, updated_at = ?
+         SET name = ?, name_key = ?, avatar_url = ?, pin_hash = ?, pin_salt = ?, default_selection_strategy = ?, updated_at = ?
          WHERE id = ?`,
       )
       .bind(
         room.name,
+        room.nameKey,
         room.avatarUrl,
         room.pinHash,
         room.pinSalt,

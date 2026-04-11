@@ -16,6 +16,7 @@ const API_BASE = (import.meta.env.VITE_API_BASE ?? '') as string
 
 export interface ApiError extends Error {
   status: number
+  code?: string
 }
 
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
@@ -50,8 +51,18 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await apiFetch(path, init)
   if (!res.ok) {
-    const err = new Error(`API ${res.status} ${path}`) as ApiError
+    let message = `API ${res.status} ${path}`
+    let code: string | undefined
+    try {
+      const payload = (await res.json()) as { error?: string; message?: string }
+      code = payload.error
+      message = payload.message ?? payload.error ?? message
+    } catch {
+      // Ignore parse failures and keep the generic message.
+    }
+    const err = new Error(message) as ApiError
     err.status = res.status
+    err.code = code
     throw err
   }
   return (await res.json()) as T

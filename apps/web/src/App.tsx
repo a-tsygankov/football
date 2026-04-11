@@ -1,20 +1,25 @@
 import { startTransition, useEffect, useMemo, useState } from 'react'
 import {
+  type CreateGamerRequest,
   type CreateCurrentGameRequest,
   type CurrentGame,
   formatLocal,
   formatRelative,
   GAME_FORMATS,
+  isValidNameStem,
   type Gamer,
   inferGameFormat,
   listStrategies,
+  normalizeNameStem,
   type RoomBootstrapResponse,
+  type UpdateGamerRequest,
 } from '@fc26/shared'
 import { apiJson } from './lib/api.js'
 import { logger } from './lib/logger.js'
 import { APP_VERSION, type WorkerVersionInfo } from './lib/version.js'
 import { BottomNav } from './components/BottomNav.jsx'
 import { DebugConsole } from './debug/DebugConsole.jsx'
+import { defaultAvatar, imageFileToAvatarDataUrl } from './lib/avatars.js'
 
 const LAST_ROOM_ID_KEY = 'fc26:last-room-id'
 
@@ -45,6 +50,8 @@ export function App() {
   const [joinPin, setJoinPin] = useState('')
   const [gamerName, setGamerName] = useState('')
   const [gamerRating, setGamerRating] = useState('3')
+  const [gamerPin, setGamerPin] = useState('')
+  const [gamerAvatarUrl, setGamerAvatarUrl] = useState<string | null>(null)
 
   useEffect(() => {
     logger.info('system', 'app booted', { appVersion: APP_VERSION })
@@ -119,7 +126,10 @@ export function App() {
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ pin: joinPin.trim() || null }),
+          body: JSON.stringify({
+            identifier: joinRoomId.trim(),
+            pin: joinPin.trim() || null,
+          }),
         },
       )
       applyBootstrap(next)
@@ -144,7 +154,9 @@ export function App() {
           body: JSON.stringify({
             name: gamerName.trim(),
             rating: Number.parseInt(gamerRating, 10),
-          }),
+            pin: gamerPin.trim() || null,
+            avatarUrl: gamerAvatarUrl,
+          } satisfies CreateGamerRequest),
         },
       )
       startTransition(() => {
@@ -156,6 +168,8 @@ export function App() {
       })
       setGamerName('')
       setGamerRating('3')
+      setGamerPin('')
+      setGamerAvatarUrl(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -174,6 +188,41 @@ export function App() {
           method: 'PATCH',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ active: !gamer.active }),
+        },
+      )
+      startTransition(() => {
+        setBootstrap((current) =>
+          current
+            ? {
+                ...current,
+                gamers: current.gamers.map((item) =>
+                  item.id === response.gamer.id ? response.gamer : item,
+                ),
+              }
+            : current,
+        )
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function updateGamerDetails(
+    gamerId: string,
+    request: UpdateGamerRequest,
+  ): Promise<void> {
+    if (!bootstrap) return
+    setBusy('updating-gamer')
+    setError(null)
+    try {
+      const response = await apiJson<{ gamer: Gamer }>(
+        `/api/rooms/${bootstrap.room.id}/gamers/${gamerId}`,
+        {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(request),
         },
       )
       startTransition(() => {
@@ -370,14 +419,19 @@ export function App() {
             busy={busy}
             gamerName={gamerName}
             gamerRating={gamerRating}
+            gamerPin={gamerPin}
+            gamerAvatarUrl={gamerAvatarUrl}
             onChangeGamerName={setGamerName}
+            onChangeGamerPin={setGamerPin}
             onChangeGamerRating={setGamerRating}
+            onChangeGamerAvatar={setGamerAvatarUrl}
             onCreateGamer={createGamer}
             onCreateGame={createGame}
             onRefresh={() => refreshRoom(bootstrap.room.id)}
             onSaveActiveGameNightGamers={saveActiveGameNightGamers}
             onStartGameNight={startGameNight}
             onToggleGamer={toggleGamer}
+            onUpdateGamerDetails={updateGamerDetails}
           />
         ) : (
           <LandingScreen
@@ -431,6 +485,8 @@ function LandingScreen({
   onCreateRoom: () => Promise<void>
   onJoinRoom: () => Promise<void>
 }) {
+  const createRoomNameValid = isValidNameStem(createName)
+  const createRoomPinValid = createPin.trim().length === 0 || /^\d{4}$/.test(createPin.trim())
   return (
     <section
       style={{
@@ -459,9 +515,18 @@ function LandingScreen({
             style={inputStyle}
           />
         </Field>
+        <p style={{ margin: '0 0 12px', fontSize: 13, opacity: 0.7 }}>
+          Room names compare by stem: case, spaces, and punctuation are ignored.
+        </p>
+        {!createRoomNameValid && createName.trim().length > 0 ? (
+          <InlineNotice tone="warn" message="Enter at least one letter or digit in the room name." />
+        ) : null}
+        {!createRoomPinValid ? (
+          <InlineNotice tone="warn" message="Room PIN must be exactly 4 digits." />
+        ) : null}
         <button
           type="button"
-          disabled={busy !== null}
+          disabled={busy !== null || !createRoomNameValid || !createRoomPinValid || !createName.trim()}
           onClick={() => void onCreateRoom()}
           style={primaryButtonStyle}
         >
@@ -469,12 +534,12 @@ function LandingScreen({
         </button>
       </Panel>
 
-      <Panel title="Join room" subtitle="Re-enter by room id and optional PIN.">
-        <Field label="Room id">
+      <Panel title="Join room" subtitle="Re-enter by room id, room name, and optional PIN.">
+        <Field label="Room id or room name">
           <input
             value={joinRoomId}
             onChange={(event) => onJoinRoomId(event.target.value)}
-            placeholder="Paste room id"
+            placeholder="Paste room id or type room name"
             style={inputStyle}
           />
         </Field>
@@ -506,21 +571,30 @@ function RoomScreen({
   busy,
   gamerName,
   gamerRating,
+  gamerPin,
+  gamerAvatarUrl,
   onChangeGamerName,
+  onChangeGamerPin,
   onChangeGamerRating,
+  onChangeGamerAvatar,
   onCreateGamer,
   onCreateGame,
   onRefresh,
   onSaveActiveGameNightGamers,
   onStartGameNight,
   onToggleGamer,
+  onUpdateGamerDetails,
 }: {
   bootstrap: RoomBootstrapResponse
   busy: BusyState
   gamerName: string
   gamerRating: string
+  gamerPin: string
+  gamerAvatarUrl: string | null
   onChangeGamerName: (value: string) => void
+  onChangeGamerPin: (value: string) => void
   onChangeGamerRating: (value: string) => void
+  onChangeGamerAvatar: (value: string | null) => void
   onCreateGamer: () => Promise<void>
   onCreateGame: (gameNightId: string, request: CreateCurrentGameRequest) => Promise<void>
   onRefresh: () => Promise<void>
@@ -530,6 +604,7 @@ function RoomScreen({
   ) => Promise<void>
   onStartGameNight: () => Promise<void>
   onToggleGamer: (gamer: Gamer) => Promise<void>
+  onUpdateGamerDetails: (gamerId: string, request: UpdateGamerRequest) => Promise<void>
 }) {
   const strategyOptions = useMemo(() => listStrategies(), [])
   const activeGameNightGamerIds = useMemo(
@@ -551,6 +626,11 @@ function RoomScreen({
   const [manualAssignments, setManualAssignments] = useState<
     Record<string, 'home' | 'away' | 'bench'>
   >({})
+  const [editingGamerId, setEditingGamerId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
+  const [editingRating, setEditingRating] = useState('3')
+  const [editingCurrentPin, setEditingCurrentPin] = useState('')
+  const [editingNextPin, setEditingNextPin] = useState('')
 
   useEffect(() => {
     setDraftActiveGamerIds(bootstrap.activeGameNightGamers.map((item) => item.gamerId))
@@ -581,6 +661,15 @@ function RoomScreen({
   )
   const canCreateManualGame =
     !bootstrap.currentGame && !hasUnsavedActiveGamers && manualFormat !== null
+  const gamerNameStem = normalizeNameStem(gamerName)
+  const gamerNameTakenLocally = bootstrap.gamers.some(
+    (gamer) => normalizeNameStem(gamer.name) === gamerNameStem,
+  )
+  const canCreateGamer =
+    gamerName.trim().length > 0 &&
+    isValidNameStem(gamerName) &&
+    !gamerNameTakenLocally &&
+    (gamerPin.trim().length === 0 || /^\d{4}$/.test(gamerPin.trim()))
 
   function toggleActiveGamerDraft(gamerId: string): void {
     if (currentGameGamerIds.has(gamerId)) return
@@ -596,6 +685,43 @@ function RoomScreen({
       ...current,
       [gamerId]: next,
     }))
+  }
+
+  function startEditingGamer(gamer: Gamer): void {
+    setEditingGamerId(gamer.id)
+    setEditingName(gamer.name)
+    setEditingRating(String(gamer.rating))
+    setEditingCurrentPin('')
+    setEditingNextPin('')
+  }
+
+  async function saveGamerDetails(): Promise<void> {
+    if (!editingGamerId) return
+    const normalized = normalizeNameStem(editingName)
+    if (!isValidNameStem(editingName)) return
+    if (
+      bootstrap.gamers.some(
+        (gamer) => gamer.id !== editingGamerId && normalizeNameStem(gamer.name) === normalized,
+      )
+    ) {
+      return
+    }
+    if (editingCurrentPin.trim().length > 0 && !/^\d{4}$/.test(editingCurrentPin.trim())) {
+      return
+    }
+    if (editingNextPin.trim().length > 0 && !/^\d{4}$/.test(editingNextPin.trim())) {
+      return
+    }
+
+    await onUpdateGamerDetails(editingGamerId, {
+      name: editingName.trim(),
+      rating: Number.parseInt(editingRating, 10),
+      currentPin: editingCurrentPin.trim() || null,
+      pin: editingNextPin.trim() || null,
+    })
+    setEditingGamerId(null)
+    setEditingCurrentPin('')
+    setEditingNextPin('')
   }
 
   return (
@@ -715,6 +841,14 @@ function RoomScreen({
         </Panel>
 
         <Panel title="Add gamer" subtitle="New gamers appear in the room roster immediately.">
+          <Field label="Avatar">
+            <AvatarPicker
+              kind="gamer"
+              value={gamerAvatarUrl}
+              onChange={onChangeGamerAvatar}
+              disabled={busy !== null}
+            />
+          </Field>
           <Field label="Name">
             <input
               value={gamerName}
@@ -736,9 +870,31 @@ function RoomScreen({
               ))}
             </select>
           </Field>
+          <Field label="Optional edit PIN">
+            <input
+              value={gamerPin}
+              onChange={(event) => onChangeGamerPin(event.target.value)}
+              placeholder="4 digits"
+              inputMode="numeric"
+              maxLength={4}
+              style={inputStyle}
+            />
+          </Field>
+          <p style={{ margin: '0 0 12px', fontSize: 13, opacity: 0.7 }}>
+            Names compare by stem: case, spaces, and punctuation are ignored.
+          </p>
+          {!isValidNameStem(gamerName) && gamerName.trim().length > 0 ? (
+            <InlineNotice tone="warn" message="Enter at least one letter or digit in the gamer name." />
+          ) : null}
+          {gamerNameTakenLocally ? (
+            <InlineNotice tone="warn" message="That gamer name stem already exists in this room." />
+          ) : null}
+          {gamerPin.trim().length > 0 && !/^\d{4}$/.test(gamerPin.trim()) ? (
+            <InlineNotice tone="warn" message="Gamer PIN must be exactly 4 digits." />
+          ) : null}
           <button
             type="button"
-            disabled={busy !== null}
+            disabled={busy !== null || !canCreateGamer}
             onClick={() => void onCreateGamer()}
             style={secondaryButtonStyle}
           >
@@ -1082,21 +1238,126 @@ function RoomScreen({
                       <strong style={{ display: 'block', fontSize: 20 }}>{gamer.name}</strong>
                       <span style={{ fontSize: 14, opacity: 0.72 }}>
                         Rating {gamer.rating} • {gamer.active ? 'Available' : 'Benched'}
+                        {gamer.hasPin ? ' • PIN protected' : ' • No PIN'}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      disabled={busy !== null}
-                      onClick={() => void onToggleGamer(gamer)}
-                      style={gamer.active ? secondaryButtonStyle : primaryButtonStyle}
-                    >
-                      {busy === 'updating-gamer'
-                        ? 'Saving...'
-                        : gamer.active
-                          ? 'Set inactive'
-                          : 'Reactivate'}
-                    </button>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      <button
+                        type="button"
+                        disabled={busy !== null}
+                        onClick={() => void onToggleGamer(gamer)}
+                        style={gamer.active ? secondaryButtonStyle : primaryButtonStyle}
+                      >
+                        {busy === 'updating-gamer'
+                          ? 'Saving...'
+                          : gamer.active
+                            ? 'Set inactive'
+                            : 'Reactivate'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy !== null}
+                        onClick={() =>
+                          editingGamerId === gamer.id
+                            ? setEditingGamerId(null)
+                            : startEditingGamer(gamer)
+                        }
+                        style={compactButtonStyle}
+                      >
+                        {editingGamerId === gamer.id ? 'Close edit' : 'Edit details'}
+                      </button>
+                    </div>
                   </div>
+                  {editingGamerId === gamer.id ? (
+                    <div
+                      style={{
+                        marginTop: 14,
+                        paddingTop: 14,
+                        borderTop: '1px solid #dcfce7',
+                        display: 'grid',
+                        gap: 10,
+                      }}
+                    >
+                      <Field label="Name">
+                        <input
+                          value={editingName}
+                          onChange={(event) => setEditingName(event.target.value)}
+                          style={inputStyle}
+                        />
+                      </Field>
+                      <Field label="Rating">
+                        <select
+                          value={editingRating}
+                          onChange={(event) => setEditingRating(event.target.value)}
+                          style={inputStyle}
+                        >
+                          {[1, 2, 3, 4, 5].map((value) => (
+                            <option key={value} value={value}>
+                              {value}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      {gamer.hasPin ? (
+                        <Field label="Current PIN">
+                          <input
+                            value={editingCurrentPin}
+                            onChange={(event) => setEditingCurrentPin(event.target.value)}
+                            inputMode="numeric"
+                            maxLength={4}
+                            placeholder="Current 4-digit PIN"
+                            style={inputStyle}
+                          />
+                        </Field>
+                      ) : null}
+                      <Field label={gamer.hasPin ? 'New PIN (leave blank to clear)' : 'Set PIN'}>
+                        <input
+                          value={editingNextPin}
+                          onChange={(event) => setEditingNextPin(event.target.value)}
+                          inputMode="numeric"
+                          maxLength={4}
+                          placeholder={gamer.hasPin ? 'Blank clears PIN' : 'Optional 4-digit PIN'}
+                          style={inputStyle}
+                        />
+                      </Field>
+                      {!isValidNameStem(editingName) && editingName.trim().length > 0 ? (
+                        <InlineNotice tone="warn" message="Enter at least one letter or digit in the gamer name." />
+                      ) : null}
+                      {bootstrap.gamers.some(
+                        (item) =>
+                          item.id !== gamer.id &&
+                          normalizeNameStem(item.name) === normalizeNameStem(editingName),
+                      ) ? (
+                        <InlineNotice tone="warn" message="That gamer name stem is already taken." />
+                      ) : null}
+                      {editingCurrentPin.trim().length > 0 &&
+                      !/^\d{4}$/.test(editingCurrentPin.trim()) ? (
+                        <InlineNotice tone="warn" message="Current PIN must be exactly 4 digits." />
+                      ) : null}
+                      {editingNextPin.trim().length > 0 &&
+                      !/^\d{4}$/.test(editingNextPin.trim()) ? (
+                        <InlineNotice tone="warn" message="New PIN must be exactly 4 digits." />
+                      ) : null}
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          disabled={busy !== null}
+                          onClick={() => void saveGamerDetails()}
+                          style={primaryButtonStyle}
+                        >
+                          {busy === 'updating-gamer' ? 'Saving...' : 'Save gamer'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy !== null}
+                          onClick={() => setEditingGamerId(null)}
+                          style={secondaryButtonStyle}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </article>
               ))
             )}
@@ -1224,6 +1485,95 @@ function Field({
   )
 }
 
+function AvatarPicker({
+  kind,
+  value,
+  onChange,
+  disabled,
+  size = 72,
+}: {
+  kind: 'gamer' | 'room' | 'club' | 'fc_player'
+  value: string | null
+  onChange: (next: string | null) => void
+  disabled?: boolean
+  size?: number
+}) {
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const preview = value ?? defaultAvatar(kind)
+
+  async function handleFile(file: File | null): Promise<void> {
+    if (!file) return
+    setError(null)
+    setBusy(true)
+    try {
+      const dataUrl = await imageFileToAvatarDataUrl(file)
+      onChange(dataUrl)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <img
+        src={preview}
+        alt="Avatar preview"
+        width={size}
+        height={size}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          objectFit: 'cover',
+          border: '1px solid #bbf7d0',
+          background: '#ffffff',
+        }}
+      />
+      <div style={{ display: 'grid', gap: 6, flex: 1, minWidth: 0 }}>
+        <label
+          style={{
+            ...compactButtonStyle,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: disabled || busy ? 0.5 : 1,
+            cursor: disabled || busy ? 'default' : 'pointer',
+          }}
+        >
+          {busy ? 'Processing…' : value ? 'Replace image' : 'Choose image'}
+          <input
+            type="file"
+            accept="image/*"
+            disabled={disabled || busy}
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null
+              void handleFile(file)
+              event.target.value = ''
+            }}
+            style={{ display: 'none' }}
+          />
+        </label>
+        {value ? (
+          <button
+            type="button"
+            disabled={disabled || busy}
+            onClick={() => onChange(null)}
+            style={{ ...compactButtonStyle, background: '#fef2f2', color: '#991b1b' }}
+          >
+            Remove
+          </button>
+        ) : null}
+        {error ? (
+          <span style={{ fontSize: 12, color: '#991b1b' }}>{error}</span>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 function StatusCard({
   label,
   value,
@@ -1264,6 +1614,28 @@ function MiniStat({ label, value }: { label: string; value: string }) {
         {label}
       </p>
       <p style={{ margin: '8px 0 0', fontSize: 18 }}>{value}</p>
+    </div>
+  )
+}
+
+function InlineNotice({
+  tone,
+  message,
+}: {
+  tone: 'warn' | 'info'
+  message: string
+}) {
+  return (
+    <div
+      style={{
+        padding: '10px 12px',
+        borderRadius: 14,
+        background: tone === 'warn' ? '#fffbeb' : '#eff6ff',
+        border: `1px solid ${tone === 'warn' ? '#fcd34d' : '#93c5fd'}`,
+        fontSize: 13,
+      }}
+    >
+      {message}
     </div>
   )
 }

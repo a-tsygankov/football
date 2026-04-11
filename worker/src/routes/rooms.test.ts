@@ -128,6 +128,178 @@ describe('room routes', () => {
     expect(correctPinRes.headers.get('set-cookie')).toContain('fc26_room_session=')
   })
 
+  it('joins a room by case-insensitive room name lookup', async () => {
+    const app = buildTestApp()
+
+    await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Sunday Ladder' }),
+      }),
+      env,
+      execCtx(),
+    )
+
+    const joinRes = await app.fetch(
+      new Request('http://localhost/api/rooms/sunday-ladder/sessions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ identifier: 'SUNDAY ladder' }),
+      }),
+      env,
+      execCtx(),
+    )
+
+    expect(joinRes.status).toBe(200)
+    const joined = (await joinRes.json()) as RoomBootstrapResponse
+    expect(joined.room.name).toBe('Sunday Ladder')
+  })
+
+  it('rejects duplicate room names and protects gamer edits with gamer PINs', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Friday Night' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const duplicateRoomRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: ' friday-night ' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(duplicateRoomRes.status).toBe(409)
+
+    const gamerRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Cookie: cookie,
+        },
+        body: JSON.stringify({ name: 'Alice', pin: '1234' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(gamerRes.status).toBe(201)
+    const gamer = (await gamerRes.json()) as { gamer: { id: string; hasPin: boolean } }
+    expect(gamer.gamer.hasPin).toBe(true)
+
+    const duplicateGamerRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Cookie: cookie,
+        },
+        body: JSON.stringify({ name: 'aLi ce' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(duplicateGamerRes.status).toBe(409)
+
+    const noPinUpdateRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/gamers/${gamer.gamer.id}`, {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          Cookie: cookie,
+        },
+        body: JSON.stringify({ rating: 4 }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(noPinUpdateRes.status).toBe(401)
+
+    const pinUpdateRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/gamers/${gamer.gamer.id}`, {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          Cookie: cookie,
+        },
+        body: JSON.stringify({ rating: 4, currentPin: '1234', pin: '' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(pinUpdateRes.status).toBe(200)
+    const updated = (await pinUpdateRes.json()) as { gamer: { rating: number; hasPin: boolean } }
+    expect(updated.gamer.rating).toBe(4)
+    expect(updated.gamer.hasPin).toBe(false)
+  })
+
+  it('shares a single stem namespace between rooms and gamers', async () => {
+    const app = buildTestApp()
+
+    const createRoomRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Shared Stem' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(createRoomRes.status).toBe(201)
+    const created = (await createRoomRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRoomRes)
+
+    const gamerConflictRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${created.room.id}/gamers`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Cookie: cookie,
+        },
+        body: JSON.stringify({ name: 'shared-stem' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(gamerConflictRes.status).toBe(409)
+
+    const gamerRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${created.room.id}/gamers`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Cookie: cookie,
+        },
+        body: JSON.stringify({ name: 'Player Stem' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(gamerRes.status).toBe(201)
+
+    const roomConflictRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'player stem' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(roomConflictRes.status).toBe(409)
+  })
+
   it('creates gamers and starts a game night', async () => {
     const app = buildTestApp()
 
