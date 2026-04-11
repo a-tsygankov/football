@@ -1,8 +1,16 @@
-import type { GameNightId, GamerId, GamerTeamKey, RoomId } from './ids.js'
+import type {
+  GameId,
+  GameNightId,
+  GamerId,
+  GamerTeamKey,
+  RoomId,
+} from './ids.js'
 
 export type GameSideSize = 1 | 2
 export type GameFormat = '1v1' | '1v2' | '2v1' | '2v2'
 export type GameSize = 2 | 3 | 4
+export type GameAllocationMode = 'manual' | 'random'
+export type GameStatus = 'active' | 'recorded' | 'interrupted' | 'voided'
 
 export interface GameFormatDefinition {
   id: GameFormat
@@ -18,6 +26,14 @@ export const GAME_FORMATS: Readonly<Record<GameFormat, GameFormatDefinition>> = 
   '2v1': { id: '2v1', label: '2 vs 1', homeSize: 2, awaySize: 1, size: 3 },
   '2v2': { id: '2v2', label: '2 vs 2', homeSize: 2, awaySize: 2, size: 4 },
 } as const
+
+export function inferGameFormat(
+  homeSize: number,
+  awaySize: number,
+): GameFormat | null {
+  const format = `${homeSize}v${awaySize}` as GameFormat
+  return format in GAME_FORMATS ? format : null
+}
 
 export interface Room {
   id: RoomId
@@ -71,6 +87,21 @@ export interface GameNightActiveGamer {
   roomId: RoomId
   gamerId: GamerId
   joinedAt: number
+  updatedAt: number
+}
+
+export interface CurrentGame {
+  id: GameId
+  roomId: RoomId
+  gameNightId: GameNightId
+  status: GameStatus
+  allocationMode: GameAllocationMode
+  format: GameFormat
+  homeGamerIds: readonly GamerId[]
+  awayGamerIds: readonly GamerId[]
+  selectionStrategyId: string
+  randomSeed: number | null
+  createdAt: number
   updatedAt: number
 }
 

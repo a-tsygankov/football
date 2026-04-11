@@ -6,6 +6,7 @@ import {
 } from '../auth/pin-attempt-repository.js'
 import type { Env } from '../env.js'
 import { InMemoryGamerRepository } from '../gamers/repository.js'
+import { InMemoryGameRepository } from '../games/repository.js'
 import { InMemoryGameNightRepository } from '../game-nights/repository.js'
 import { InMemoryRoomRepository } from '../rooms/repository.js'
 import { InMemorySquadStorage } from '../squad/in-memory-storage.js'
@@ -29,6 +30,7 @@ function execCtx(): ExecutionContext {
 function buildTestApp() {
   const rooms = new InMemoryRoomRepository()
   const gamers = new InMemoryGamerRepository()
+  const games = new InMemoryGameRepository()
   const gameNights = new InMemoryGameNightRepository()
   const pinAttempts = new InMemoryPinAttemptRepository()
   const squadStorage = new InMemorySquadStorage()
@@ -37,6 +39,7 @@ function buildTestApp() {
     dependencies: () => ({
       rooms,
       gamers,
+      games,
       gameNights,
       pinAttempts,
       squadStorage,
@@ -71,6 +74,7 @@ describe('room routes', () => {
     expect(body.room.name).toBe('Friday Night')
     expect(body.room.hasPin).toBe(false)
     expect(body.gamers).toEqual([])
+    expect(body.currentGame).toBeNull()
 
     const bootstrapRes = await app.fetch(
       new Request(`http://localhost/api/rooms/${body.room.id}/bootstrap`, {
@@ -83,6 +87,7 @@ describe('room routes', () => {
     expect(bootstrapRes.status).toBe(200)
     const bootstrap = (await bootstrapRes.json()) as RoomBootstrapResponse
     expect(bootstrap.room.id).toBe(body.room.id)
+    expect(bootstrap.currentGame).toBeNull()
   })
 
   it('rejects a wrong PIN and accepts the correct one', async () => {
@@ -193,5 +198,192 @@ describe('room routes', () => {
     expect(bootstrap.gamers).toHaveLength(2)
     expect(bootstrap.activeGameNight).toBeTruthy()
     expect(bootstrap.activeGameNightGamers).toHaveLength(2)
+    expect(bootstrap.currentGame).toBeNull()
+  })
+
+  it('updates active gamers and creates a manual current game', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Manual Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const gamerIds: string[] = []
+    for (const name of ['Alice', 'Bob', 'Cara', 'Dylan']) {
+      const res = await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Cookie: cookie,
+          },
+          body: JSON.stringify({ name }),
+        }),
+        env,
+        execCtx(),
+      )
+      expect(res.status).toBe(201)
+      const body = (await res.json()) as { gamer: { id: string } }
+      gamerIds.push(body.gamer.id)
+    }
+
+    const gameNightRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/game-nights`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Cookie: cookie,
+        },
+        body: JSON.stringify({ activeGamerIds: gamerIds }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(gameNightRes.status).toBe(201)
+    const gameNightBody = (await gameNightRes.json()) as { gameNight: { id: string } }
+
+    const updateActiveRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/active-gamers`,
+        {
+          method: 'PATCH',
+          headers: {
+            'content-type': 'application/json',
+            Cookie: cookie,
+          },
+          body: JSON.stringify({ activeGamerIds: gamerIds.slice(0, 3) }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(updateActiveRes.status).toBe(200)
+
+    const currentGameRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Cookie: cookie,
+          },
+          body: JSON.stringify({
+            allocationMode: 'manual',
+            homeGamerIds: [gamerIds[0], gamerIds[1]],
+            awayGamerIds: [gamerIds[2]],
+          }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(currentGameRes.status).toBe(201)
+    const currentGameBody = (await currentGameRes.json()) as {
+      currentGame: { format: string }
+    }
+    expect(currentGameBody.currentGame.format).toBe('2v1')
+
+    const bootstrapRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/bootstrap`, {
+        headers: { Cookie: cookie },
+      }),
+      env,
+      execCtx(),
+    )
+    const bootstrap = (await bootstrapRes.json()) as RoomBootstrapResponse
+    expect(bootstrap.activeGameNightGamers).toHaveLength(3)
+    expect(bootstrap.currentGame?.format).toBe('2v1')
+  })
+
+  it('creates a random current game using the requested format', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Random Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const gamerIds: string[] = []
+    for (const name of ['Alice', 'Bob', 'Cara', 'Dylan']) {
+      const res = await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Cookie: cookie,
+          },
+          body: JSON.stringify({ name }),
+        }),
+        env,
+        execCtx(),
+      )
+      expect(res.status).toBe(201)
+      const body = (await res.json()) as { gamer: { id: string } }
+      gamerIds.push(body.gamer.id)
+    }
+
+    const gameNightRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/game-nights`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Cookie: cookie,
+        },
+        body: JSON.stringify({ activeGamerIds: gamerIds }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(gameNightRes.status).toBe(201)
+    const gameNightBody = (await gameNightRes.json()) as { gameNight: { id: string } }
+
+    const currentGameRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Cookie: cookie,
+          },
+          body: JSON.stringify({
+            allocationMode: 'random',
+            format: '2v2',
+            selectionStrategyId: 'uniform-random',
+          }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(currentGameRes.status).toBe(201)
+    const currentGameBody = (await currentGameRes.json()) as {
+      currentGame: {
+        allocationMode: string
+        format: string
+        homeGamerIds: string[]
+        awayGamerIds: string[]
+      }
+    }
+    expect(currentGameBody.currentGame.allocationMode).toBe('random')
+    expect(currentGameBody.currentGame.format).toBe('2v2')
+    expect(currentGameBody.currentGame.homeGamerIds).toHaveLength(2)
+    expect(currentGameBody.currentGame.awayGamerIds).toHaveLength(2)
   })
 })

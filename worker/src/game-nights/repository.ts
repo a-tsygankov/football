@@ -15,6 +15,13 @@ export interface IGameNightRepository {
     activeGamers: ReadonlyArray<GameNightActiveGamer>,
   ): Promise<void>
   complete(gameNightId: GameNightId, endedAt: number): Promise<void>
+  replaceActiveGamers(
+    gameNightId: GameNightId,
+    roomId: RoomIdType,
+    gamerIds: ReadonlyArray<GamerId>,
+    now: number,
+  ): Promise<ReadonlyArray<GameNightActiveGamer>>
+  touchLastGameAt(gameNightId: GameNightId, at: number): Promise<void>
 }
 
 export class InMemoryGameNightRepository implements IGameNightRepository {
@@ -58,6 +65,39 @@ export class InMemoryGameNightRepository implements IGameNightRepository {
       endedAt,
       updatedAt: endedAt,
     })
+  }
+
+  async replaceActiveGamers(
+    gameNightId: GameNightId,
+    roomId: RoomIdType,
+    gamerIds: ReadonlyArray<GamerId>,
+    now: number,
+  ): Promise<ReadonlyArray<GameNightActiveGamer>> {
+    const existing = new Map(
+      (this.activeGamers.get(gameNightId) ?? []).map((item) => [item.gamerId, item]),
+    )
+    const next = gamerIds.map((gamerId) => {
+      const previous = existing.get(gamerId)
+      return {
+        gameNightId,
+        roomId,
+        gamerId,
+        joinedAt: previous?.joinedAt ?? now,
+        updatedAt: now,
+      }
+    })
+    this.activeGamers.set(gameNightId, next)
+    const current = this.gameNights.get(gameNightId)
+    if (current) {
+      this.gameNights.set(gameNightId, { ...current, updatedAt: now })
+    }
+    return next
+  }
+
+  async touchLastGameAt(gameNightId: GameNightId, at: number): Promise<void> {
+    const current = this.gameNights.get(gameNightId)
+    if (!current) return
+    this.gameNights.set(gameNightId, { ...current, lastGameAt: at, updatedAt: at })
   }
 }
 
@@ -184,6 +224,83 @@ export class D1GameNightRepository implements IGameNightRepository {
          WHERE id = ?`,
       )
       .bind(endedAt, endedAt, gameNightId)
+      .run()
+  }
+
+  async replaceActiveGamers(
+    gameNightId: GameNightId,
+    roomId: RoomIdType,
+    gamerIds: ReadonlyArray<GamerId>,
+    now: number,
+  ): Promise<ReadonlyArray<GameNightActiveGamer>> {
+    const existing = await this.listActiveGamers(gameNightId)
+    const existingIds = new Set(existing.map((item) => item.gamerId))
+    const nextIds = new Set(gamerIds)
+
+    const statements = []
+
+    for (const item of existing) {
+      if (!nextIds.has(item.gamerId)) {
+        statements.push(
+          this.db
+            .prepare(
+              `DELETE FROM game_night_active_gamers
+               WHERE game_night_id = ? AND gamer_id = ?`,
+            )
+            .bind(gameNightId, item.gamerId),
+        )
+        continue
+      }
+
+      statements.push(
+        this.db
+          .prepare(
+            `UPDATE game_night_active_gamers
+             SET updated_at = ?
+             WHERE game_night_id = ? AND gamer_id = ?`,
+          )
+          .bind(now, gameNightId, item.gamerId),
+      )
+    }
+
+    for (const gamerId of gamerIds) {
+      if (existingIds.has(gamerId)) continue
+      statements.push(
+        this.db
+          .prepare(
+            `INSERT INTO game_night_active_gamers
+               (game_night_id, gamer_id, joined_at, updated_at)
+             VALUES (?, ?, ?, ?)`,
+          )
+          .bind(gameNightId, gamerId, now, now),
+      )
+    }
+
+    statements.push(
+      this.db
+        .prepare(
+          `UPDATE game_nights
+           SET updated_at = ?
+           WHERE id = ? AND room_id = ?`,
+        )
+        .bind(now, gameNightId, roomId),
+    )
+
+    if (statements.length > 0) {
+      await this.db.batch(statements)
+    }
+
+    return this.listActiveGamers(gameNightId)
+  }
+
+  async touchLastGameAt(gameNightId: GameNightId, at: number): Promise<void> {
+    await this.db
+      .prepare(
+        `UPDATE game_nights
+         SET last_game_at = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(at, at, gameNightId)
       .run()
   }
 }

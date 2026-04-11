@@ -1,4 +1,6 @@
 import type {
+  CurrentGame,
+  GameFormat,
   GameNight,
   GameNightActiveGamer,
   Gamer,
@@ -16,6 +18,7 @@ export interface RoomBootstrapResponse {
   gamers: ReadonlyArray<Gamer>
   activeGameNight: GameNight | null
   activeGameNightGamers: ReadonlyArray<GameNightActiveGamer>
+  currentGame: CurrentGame | null
   session: RoomSessionInfo
 }
 
@@ -55,4 +58,28 @@ export interface CreateGameNightRequest {
 export interface GameNightResponse {
   gameNight: GameNight
   activeGamers: ReadonlyArray<GameNightActiveGamer>
+}
+
+export interface UpdateGameNightActiveGamersRequest {
+  activeGamerIds: ReadonlyArray<string>
+}
+
+export interface CreateCurrentGameManualRequest {
+  allocationMode: 'manual'
+  homeGamerIds: ReadonlyArray<string>
+  awayGamerIds: ReadonlyArray<string>
+}
+
+export interface CreateCurrentGameRandomRequest {
+  allocationMode: 'random'
+  format: GameFormat
+  selectionStrategyId?: string
+}
+
+export type CreateCurrentGameRequest =
+  | CreateCurrentGameManualRequest
+  | CreateCurrentGameRandomRequest
+
+export interface CurrentGameResponse {
+  currentGame: CurrentGame
 }

@@ -65,6 +65,7 @@ describe('App shell', () => {
             gamers: [],
             activeGameNight: null,
             activeGameNightGamers: [],
+            currentGame: null,
             session: {
               roomId: 'room-1',
               expiresAt: 2000,
@@ -148,6 +149,7 @@ describe('App shell', () => {
                 updatedAt: 1000,
               },
             ],
+            currentGame: null,
             session: {
               roomId: 'room-9',
               expiresAt: Date.now() + 10_000,
@@ -163,7 +165,109 @@ describe('App shell', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /Sunday Ladder/i })).toBeInTheDocument(),
     )
-    expect(screen.getByText(/1 gamers playing now/i)).toBeInTheDocument()
-    expect(screen.getByText(/Alice/i)).toBeInTheDocument()
+    expect(screen.getByText(/1 gamers in the live pool/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/Alice/i).length).toBeGreaterThan(0)
+  })
+
+  it('reveals random game controls only after switching modes', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/version')) {
+        return new Response(
+          JSON.stringify({
+            workerVersion: '0.1.0',
+            schemaVersion: 1,
+            minClientVersion: '0.1.0',
+            gitSha: null,
+            builtAt: new Date().toISOString(),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/rooms') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            room: {
+              id: 'room-2',
+              name: 'Game Room',
+              avatarUrl: null,
+              hasPin: false,
+              defaultSelectionStrategy: 'uniform-random',
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            gamers: [
+              {
+                id: 'g1',
+                roomId: 'room-2',
+                name: 'Alice',
+                rating: 5,
+                active: true,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                id: 'g2',
+                roomId: 'room-2',
+                name: 'Bob',
+                rating: 4,
+                active: true,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+            ],
+            activeGameNight: {
+              id: 'gn2',
+              roomId: 'room-2',
+              status: 'active',
+              startedAt: Date.now() - 60_000,
+              endedAt: null,
+              lastGameAt: null,
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            activeGameNightGamers: [
+              {
+                gameNightId: 'gn2',
+                roomId: 'room-2',
+                gamerId: 'g1',
+                joinedAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                gameNightId: 'gn2',
+                roomId: 'room-2',
+                gamerId: 'g2',
+                joinedAt: 1000,
+                updatedAt: 1000,
+              },
+            ],
+            currentGame: null,
+            session: {
+              roomId: 'room-2',
+              expiresAt: Date.now() + 10_000,
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    }))
+
+    render(<App />)
+    fireEvent.change(screen.getAllByPlaceholderText(/Friday FC/i)[0]!, {
+      target: { value: 'Game Room' },
+    })
+    fireEvent.click(screen.getAllByRole('button', { name: /Create room/i })[0]!)
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Game creation/i })).toBeInTheDocument(),
+    )
+    expect(screen.queryByLabelText(/Format/i)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Random/i }))
+    expect(screen.getByLabelText(/Format/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Random strategy/i)).toBeInTheDocument()
   })
 })

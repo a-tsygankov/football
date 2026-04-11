@@ -1,8 +1,13 @@
 import { startTransition, useEffect, useMemo, useState } from 'react'
 import {
+  type CreateCurrentGameRequest,
+  type CurrentGame,
   formatLocal,
   formatRelative,
+  GAME_FORMATS,
   type Gamer,
+  inferGameFormat,
+  listStrategies,
   type RoomBootstrapResponse,
 } from '@fc26/shared'
 import { apiJson } from './lib/api.js'
@@ -19,7 +24,9 @@ type BusyState =
   | 'refreshing-room'
   | 'creating-gamer'
   | 'updating-gamer'
+  | 'saving-active-gamers'
   | 'starting-game-night'
+  | 'creating-game'
   | null
 
 export function App() {
@@ -57,11 +64,6 @@ export function App() {
     if (!joinRoomId) return
     void refreshRoom(joinRoomId, { silentUnauthorized: true })
   }, [])
-
-  const activeGameNightGamerIds = useMemo(
-    () => new Set((bootstrap?.activeGameNightGamers ?? []).map((item) => item.gamerId)),
-    [bootstrap],
-  )
 
   async function refreshRoom(
     roomId: string,
@@ -210,6 +212,78 @@ export function App() {
     }
   }
 
+  async function saveActiveGameNightGamers(
+    gameNightId: string,
+    activeGamerIds: string[],
+  ): Promise<void> {
+    if (!bootstrap) return
+    setBusy('saving-active-gamers')
+    setError(null)
+    try {
+      const response = await apiJson<{
+        activeGamers: RoomBootstrapResponse['activeGameNightGamers']
+      }>(`/api/rooms/${bootstrap.room.id}/game-nights/${gameNightId}/active-gamers`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ activeGamerIds }),
+      })
+      startTransition(() => {
+        setBootstrap((current) =>
+          current
+            ? {
+                ...current,
+                activeGameNightGamers: response.activeGamers,
+              }
+            : current,
+        )
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function createGame(
+    gameNightId: string,
+    request: CreateCurrentGameRequest,
+  ): Promise<void> {
+    if (!bootstrap) return
+    setBusy('creating-game')
+    setError(null)
+    try {
+      const response = await apiJson<{ currentGame: CurrentGame }>(
+        `/api/rooms/${bootstrap.room.id}/game-nights/${gameNightId}/games`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(request),
+        },
+      )
+      startTransition(() => {
+        setBootstrap((current) =>
+          current
+            ? {
+                ...current,
+                currentGame: response.currentGame,
+                activeGameNight: current.activeGameNight
+                  ? {
+                      ...current.activeGameNight,
+                      lastGameAt: response.currentGame.createdAt,
+                      updatedAt: response.currentGame.createdAt,
+                    }
+                  : current.activeGameNight,
+              }
+            : current,
+        )
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   function applyBootstrap(next: RoomBootstrapResponse): void {
     startTransition(() => {
       setBootstrap(next)
@@ -296,11 +370,12 @@ export function App() {
             busy={busy}
             gamerName={gamerName}
             gamerRating={gamerRating}
-            activeGameNightGamerIds={activeGameNightGamerIds}
             onChangeGamerName={setGamerName}
             onChangeGamerRating={setGamerRating}
             onCreateGamer={createGamer}
+            onCreateGame={createGame}
             onRefresh={() => refreshRoom(bootstrap.room.id)}
+            onSaveActiveGameNightGamers={saveActiveGameNightGamers}
             onStartGameNight={startGameNight}
             onToggleGamer={toggleGamer}
           />
@@ -431,11 +506,12 @@ function RoomScreen({
   busy,
   gamerName,
   gamerRating,
-  activeGameNightGamerIds,
   onChangeGamerName,
   onChangeGamerRating,
   onCreateGamer,
+  onCreateGame,
   onRefresh,
+  onSaveActiveGameNightGamers,
   onStartGameNight,
   onToggleGamer,
 }: {
@@ -443,14 +519,85 @@ function RoomScreen({
   busy: BusyState
   gamerName: string
   gamerRating: string
-  activeGameNightGamerIds: ReadonlySet<string>
   onChangeGamerName: (value: string) => void
   onChangeGamerRating: (value: string) => void
   onCreateGamer: () => Promise<void>
+  onCreateGame: (gameNightId: string, request: CreateCurrentGameRequest) => Promise<void>
   onRefresh: () => Promise<void>
+  onSaveActiveGameNightGamers: (
+    gameNightId: string,
+    activeGamerIds: string[],
+  ) => Promise<void>
   onStartGameNight: () => Promise<void>
   onToggleGamer: (gamer: Gamer) => Promise<void>
 }) {
+  const strategyOptions = useMemo(() => listStrategies(), [])
+  const activeGameNightGamerIds = useMemo(
+    () => new Set<string>(bootstrap.activeGameNightGamers.map((item) => item.gamerId)),
+    [bootstrap.activeGameNightGamers],
+  )
+  const currentGameGamerIds = useMemo(
+    () =>
+      new Set<string>([
+        ...(bootstrap.currentGame?.homeGamerIds ?? []),
+        ...(bootstrap.currentGame?.awayGamerIds ?? []),
+      ]),
+    [bootstrap.currentGame],
+  )
+  const [draftActiveGamerIds, setDraftActiveGamerIds] = useState<string[]>([])
+  const [allocationMode, setAllocationMode] = useState<'manual' | 'random'>('manual')
+  const [randomFormat, setRandomFormat] = useState<keyof typeof GAME_FORMATS>('2v2')
+  const [randomStrategyId, setRandomStrategyId] = useState(bootstrap.room.defaultSelectionStrategy)
+  const [manualAssignments, setManualAssignments] = useState<
+    Record<string, 'home' | 'away' | 'bench'>
+  >({})
+
+  useEffect(() => {
+    setDraftActiveGamerIds(bootstrap.activeGameNightGamers.map((item) => item.gamerId))
+  }, [bootstrap.activeGameNightGamers])
+
+  useEffect(() => {
+    setRandomStrategyId(bootstrap.room.defaultSelectionStrategy)
+  }, [bootstrap.room.defaultSelectionStrategy])
+
+  useEffect(() => {
+    setManualAssignments(buildManualAssignments(bootstrap.currentGame))
+  }, [bootstrap.activeGameNight?.id, bootstrap.currentGame])
+
+  const activeRoomGamers = bootstrap.gamers.filter((gamer) => gamer.active)
+  const activeGameNightGamers = bootstrap.activeGameNightGamers
+    .map((item) => bootstrap.gamers.find((gamer) => gamer.id === item.gamerId))
+    .filter((gamer): gamer is Gamer => gamer !== undefined)
+  const manualHomeIds = Object.entries(manualAssignments)
+    .filter(([gamerId, side]) => side === 'home' && activeGameNightGamerIds.has(gamerId))
+    .map(([gamerId]) => gamerId)
+  const manualAwayIds = Object.entries(manualAssignments)
+    .filter(([gamerId, side]) => side === 'away' && activeGameNightGamerIds.has(gamerId))
+    .map(([gamerId]) => gamerId)
+  const manualFormat = inferGameFormat(manualHomeIds.length, manualAwayIds.length)
+  const hasUnsavedActiveGamers = !sameIds(
+    draftActiveGamerIds,
+    bootstrap.activeGameNightGamers.map((item) => item.gamerId),
+  )
+  const canCreateManualGame =
+    !bootstrap.currentGame && !hasUnsavedActiveGamers && manualFormat !== null
+
+  function toggleActiveGamerDraft(gamerId: string): void {
+    if (currentGameGamerIds.has(gamerId)) return
+    setDraftActiveGamerIds((current) =>
+      current.includes(gamerId)
+        ? current.filter((item) => item !== gamerId)
+        : [...current, gamerId],
+    )
+  }
+
+  function setManualAssignment(gamerId: string, next: 'home' | 'away' | 'bench'): void {
+    setManualAssignments((current) => ({
+      ...current,
+      [gamerId]: next,
+    }))
+  }
+
   return (
     <>
       <section
@@ -503,7 +650,9 @@ function RoomScreen({
             label="Active game night"
             value={
               bootstrap.activeGameNight
-                ? `${bootstrap.activeGameNightGamers.length} live`
+                ? bootstrap.currentGame
+                  ? `${GAME_FORMATS[bootstrap.currentGame.format].label} live`
+                  : `${bootstrap.activeGameNightGamers.length} ready`
                 : 'Not started'
             }
           />
@@ -544,7 +693,11 @@ function RoomScreen({
                 border: '1px solid #a7f3d0',
               }}
             >
-              <strong>{bootstrap.activeGameNightGamers.length} gamers playing now</strong>
+              <strong>
+                {bootstrap.currentGame
+                  ? `${GAME_FORMATS[bootstrap.currentGame.format].label} currently on`
+                  : `${bootstrap.activeGameNightGamers.length} gamers in the live pool`}
+              </strong>
               <p style={{ margin: '8px 0 0', fontSize: 14, opacity: 0.75 }}>
                 Re-entry can now forward straight into the active room context.
               </p>
@@ -593,6 +746,291 @@ function RoomScreen({
           </button>
         </Panel>
       </section>
+
+      {bootstrap.activeGameNight ? (
+        <section
+          style={{
+            marginTop: 18,
+            display: 'grid',
+            gap: 14,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          }}
+        >
+          <Panel
+            title="Game night roster"
+            subtitle="Pick who is in the live pool. Locked gamers are already in the current game."
+          >
+            <div style={{ display: 'grid', gap: 10 }}>
+              {activeRoomGamers.map((gamer) => {
+                const selected = draftActiveGamerIds.includes(gamer.id)
+                const locked = currentGameGamerIds.has(gamer.id)
+                return (
+                  <button
+                    key={gamer.id}
+                    type="button"
+                    disabled={busy !== null || locked}
+                    onClick={() => toggleActiveGamerDraft(gamer.id)}
+                    style={{
+                      textAlign: 'left',
+                      borderRadius: 18,
+                      padding: 14,
+                      border: `1px solid ${selected ? '#22c55e' : '#bbf7d0'}`,
+                      background: selected ? '#ecfdf5' : '#ffffff',
+                      color: '#052e16',
+                      cursor: locked ? 'not-allowed' : 'pointer',
+                      opacity: locked ? 0.7 : 1,
+                    }}
+                  >
+                    <strong style={{ display: 'block', fontSize: 16 }}>{gamer.name}</strong>
+                    <span style={{ fontSize: 13, opacity: 0.72 }}>
+                      Rating {gamer.rating}
+                      {locked ? ' • locked in current game' : selected ? ' • in live pool' : ' • out'}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
+              <div style={{ fontSize: 14, opacity: 0.72 }}>
+                {draftActiveGamerIds.length} gamers selected for the live pool.
+              </div>
+              <button
+                type="button"
+                disabled={busy !== null || !hasUnsavedActiveGamers || draftActiveGamerIds.length < 2}
+                onClick={() =>
+                  bootstrap.activeGameNight
+                    ? void onSaveActiveGameNightGamers(
+                        bootstrap.activeGameNight.id,
+                        draftActiveGamerIds,
+                      )
+                    : undefined
+                }
+                style={secondaryButtonStyle}
+              >
+                {busy === 'saving-active-gamers' ? 'Saving roster...' : 'Save live pool'}
+              </button>
+            </div>
+          </Panel>
+
+          <Panel
+            title="Game creation"
+            subtitle="Manual teams infer the format automatically. Random reveals the extra setup."
+          >
+            {bootstrap.currentGame ? (
+              <CurrentGameCard
+                currentGame={bootstrap.currentGame}
+                gamers={bootstrap.gamers}
+              />
+            ) : (
+              <>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: 10,
+                    marginBottom: 14,
+                  }}
+                >
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => setAllocationMode('manual')}
+                    style={allocationMode === 'manual' ? primaryButtonStyle : secondaryButtonStyle}
+                  >
+                    Manual
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => setAllocationMode('random')}
+                    style={allocationMode === 'random' ? primaryButtonStyle : secondaryButtonStyle}
+                  >
+                    Random
+                  </button>
+                </div>
+
+                {hasUnsavedActiveGamers ? (
+                  <div
+                    style={{
+                      marginBottom: 14,
+                      padding: 12,
+                      borderRadius: 16,
+                      background: '#fffbeb',
+                      border: '1px solid #fcd34d',
+                      fontSize: 14,
+                    }}
+                  >
+                    Save the live pool before creating the next game.
+                  </div>
+                ) : null}
+
+                {allocationMode === 'manual' ? (
+                  <>
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      {activeGameNightGamers.map((gamer) => {
+                        const assignment = manualAssignments[gamer.id] ?? 'bench'
+                        const homeFull =
+                          manualHomeIds.length >= 2 && assignment !== 'home'
+                        const awayFull =
+                          manualAwayIds.length >= 2 && assignment !== 'away'
+                        return (
+                          <article
+                            key={gamer.id}
+                            style={{
+                              borderRadius: 18,
+                              padding: 14,
+                              background: '#ffffff',
+                              border: '1px solid #d1fae5',
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                gap: 10,
+                                alignItems: 'center',
+                              }}
+                            >
+                              <div>
+                                <strong style={{ display: 'block', fontSize: 16 }}>{gamer.name}</strong>
+                                <span style={{ fontSize: 13, opacity: 0.72 }}>
+                                  {assignment === 'bench'
+                                    ? 'Waiting'
+                                    : assignment === 'home'
+                                      ? 'Home side'
+                                      : 'Away side'}
+                                </span>
+                              </div>
+                              <div
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: 'repeat(3, auto)',
+                                  gap: 8,
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  disabled={busy !== null || homeFull}
+                                  onClick={() => setManualAssignment(gamer.id, 'home')}
+                                  style={
+                                    assignment === 'home'
+                                      ? primaryButtonStyle
+                                      : compactButtonStyle
+                                  }
+                                >
+                                  Home
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy !== null || awayFull}
+                                  onClick={() => setManualAssignment(gamer.id, 'away')}
+                                  style={
+                                    assignment === 'away'
+                                      ? primaryButtonStyle
+                                      : compactButtonStyle
+                                  }
+                                >
+                                  Away
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy !== null}
+                                  onClick={() => setManualAssignment(gamer.id, 'bench')}
+                                  style={
+                                    assignment === 'bench'
+                                      ? secondaryButtonStyle
+                                      : compactButtonStyle
+                                  }
+                                >
+                                  Bench
+                                </button>
+                              </div>
+                            </div>
+                          </article>
+                        )
+                      })}
+                    </div>
+                    <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
+                      <div style={{ fontSize: 14, opacity: 0.76 }}>
+                        {manualFormat
+                          ? `Inferred format: ${GAME_FORMATS[manualFormat].label}`
+                          : 'Pick 1 or 2 gamers on each side to create the game.'}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy !== null || !canCreateManualGame}
+                        onClick={() =>
+                          bootstrap.activeGameNight
+                            ? void onCreateGame(bootstrap.activeGameNight.id, {
+                                allocationMode: 'manual',
+                                homeGamerIds: manualHomeIds,
+                                awayGamerIds: manualAwayIds,
+                              })
+                            : undefined
+                        }
+                        style={primaryButtonStyle}
+                      >
+                        {busy === 'creating-game' ? 'Creating game...' : 'Create manual game'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Field label="Format">
+                      <select
+                        value={randomFormat}
+                        onChange={(event) =>
+                          setRandomFormat(event.target.value as keyof typeof GAME_FORMATS)
+                        }
+                        style={inputStyle}
+                      >
+                        {Object.values(GAME_FORMATS).map((format) => (
+                          <option key={format.id} value={format.id}>
+                            {format.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Random strategy">
+                      <select
+                        value={randomStrategyId}
+                        onChange={(event) => setRandomStrategyId(event.target.value)}
+                        style={inputStyle}
+                      >
+                        {strategyOptions.map((strategy) => (
+                          <option key={strategy.id} value={strategy.id}>
+                            {strategy.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <p style={{ margin: '0 0 14px', fontSize: 14, opacity: 0.74 }}>
+                      {strategyOptions.find((strategy) => strategy.id === randomStrategyId)
+                        ?.description ?? 'Uses the room default strategy.'}
+                    </p>
+                    <button
+                      type="button"
+                      disabled={busy !== null || hasUnsavedActiveGamers}
+                      onClick={() =>
+                        bootstrap.activeGameNight
+                          ? void onCreateGame(bootstrap.activeGameNight.id, {
+                              allocationMode: 'random',
+                              format: randomFormat,
+                              selectionStrategyId: randomStrategyId,
+                            })
+                          : undefined
+                      }
+                      style={primaryButtonStyle}
+                    >
+                      {busy === 'creating-game' ? 'Creating game...' : 'Create random game'}
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+          </Panel>
+        </section>
+      ) : null}
 
       <section style={{ marginTop: 18 }}>
         <Panel
@@ -666,6 +1104,82 @@ function RoomScreen({
         </Panel>
       </section>
     </>
+  )
+}
+
+function CurrentGameCard({
+  currentGame,
+  gamers,
+}: {
+  currentGame: CurrentGame
+  gamers: ReadonlyArray<Gamer>
+}) {
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <div
+        style={{
+          padding: 14,
+          borderRadius: 18,
+          background: '#ecfdf5',
+          border: '1px solid #86efac',
+        }}
+      >
+        <strong style={{ display: 'block', fontSize: 18 }}>
+          {GAME_FORMATS[currentGame.format].label} active now
+        </strong>
+        <span style={{ fontSize: 14, opacity: 0.72 }}>
+          {currentGame.allocationMode === 'manual'
+            ? 'Hand-picked teams'
+            : `Random via ${currentGame.selectionStrategyId}`}
+        </span>
+      </div>
+      <div style={{ display: 'grid', gap: 10, gridTemplateColumns: '1fr 1fr' }}>
+        <TeamColumn
+          title="Home"
+          gamerIds={currentGame.homeGamerIds}
+          gamers={gamers}
+        />
+        <TeamColumn
+          title="Away"
+          gamerIds={currentGame.awayGamerIds}
+          gamers={gamers}
+        />
+      </div>
+      <p style={{ margin: 0, fontSize: 14, opacity: 0.72 }}>
+        Result and interruption controls are the next workflow slice. For now this
+        locks in the live matchup and the active roster around it.
+      </p>
+    </div>
+  )
+}
+
+function TeamColumn({
+  title,
+  gamerIds,
+  gamers,
+}: {
+  title: string
+  gamerIds: readonly string[]
+  gamers: ReadonlyArray<Gamer>
+}) {
+  return (
+    <div
+      style={{
+        borderRadius: 18,
+        padding: 14,
+        background: '#ffffff',
+        border: '1px solid #d1fae5',
+      }}
+    >
+      <strong style={{ display: 'block', marginBottom: 10 }}>{title}</strong>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {gamerIds.map((gamerId) => (
+          <div key={gamerId} style={{ fontSize: 14 }}>
+            {gamers.find((gamer) => gamer.id === gamerId)?.name ?? gamerId}
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -754,6 +1268,23 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   )
 }
 
+function buildManualAssignments(
+  currentGame: CurrentGame | null,
+): Record<string, 'home' | 'away' | 'bench'> {
+  if (!currentGame) return {}
+  const next: Record<string, 'home' | 'away' | 'bench'> = {}
+  for (const gamerId of currentGame.homeGamerIds) next[gamerId] = 'home'
+  for (const gamerId of currentGame.awayGamerIds) next[gamerId] = 'away'
+  return next
+}
+
+function sameIds(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {
+  if (left.length !== right.length) return false
+  const a = [...left].sort()
+  const b = [...right].sort()
+  return a.every((value, index) => value === b[index])
+}
+
 const inputStyle: React.CSSProperties = {
   width: '100%',
   borderRadius: 16,
@@ -782,5 +1313,15 @@ const secondaryButtonStyle: React.CSSProperties = {
   background: '#f0fdf4',
   color: '#166534',
   fontSize: 15,
+  cursor: 'pointer',
+}
+
+const compactButtonStyle: React.CSSProperties = {
+  border: '1px solid #bbf7d0',
+  borderRadius: 14,
+  padding: '10px 12px',
+  background: '#ffffff',
+  color: '#166534',
+  fontSize: 13,
   cursor: 'pointer',
 }

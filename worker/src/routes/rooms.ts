@@ -1,19 +1,28 @@
 import { nanoid } from 'nanoid'
 import {
+  type CreateCurrentGameRequest,
   type CreateGamerRequest,
   type CreateRoomRequest,
+  type CurrentGame,
   DEFAULT_STRATEGY_ID,
   type GameNight,
   GameNightId,
   type GameNightActiveGamer,
+  GAME_FORMATS,
   GamerId,
+  GameId,
   getStrategy,
+  inferGameFormat,
   type JoinRoomRequest,
+  mulberry32,
   type Room,
   type RoomBootstrapResponse,
   RoomId,
   type RoomId as RoomIdType,
+  seedFromCrypto,
+  shuffleInPlace,
   type UpdateGamerRequest,
+  type UpdateGameNightActiveGamersRequest,
 } from '@fc26/shared'
 import { Context, Hono } from 'hono'
 import { getCookie, setCookie } from 'hono/cookie'
@@ -61,6 +70,23 @@ const updateGamerSchema = z.object({
 const createGameNightSchema = z.object({
   activeGamerIds: z.array(z.string().min(1)).optional(),
 })
+
+const updateGameNightActiveGamersSchema = z.object({
+  activeGamerIds: z.array(z.string().min(1)).min(2),
+})
+
+const createCurrentGameSchema = z.discriminatedUnion('allocationMode', [
+  z.object({
+    allocationMode: z.literal('manual'),
+    homeGamerIds: z.array(z.string().min(1)).min(1).max(2),
+    awayGamerIds: z.array(z.string().min(1)).min(1).max(2),
+  }),
+  z.object({
+    allocationMode: z.literal('random'),
+    format: z.enum(['1v1', '1v2', '2v1', '2v2']),
+    selectionStrategyId: z.string().trim().min(1).max(64).optional(),
+  }),
+])
 
 export const roomRoutes = new Hono<AppContext>()
 
@@ -282,6 +308,177 @@ roomRoutes.post('/rooms/:roomId/game-nights', async (c) => {
   return c.json({ gameNight, activeGamers }, 201)
 })
 
+roomRoutes.patch('/rooms/:roomId/game-nights/:gameNightId/active-gamers', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const gameNight = await requireActiveGameNight(c, roomId, GameNightId(c.req.param('gameNightId')))
+  if (!gameNight) {
+    return c.json({ error: 'active_game_night_not_found' }, 404)
+  }
+
+  const parsed = updateGameNightActiveGamersSchema.safeParse(await parseJson(c))
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.flatten() }, 400)
+  }
+
+  const body = parsed.data satisfies UpdateGameNightActiveGamersRequest
+  const allGamers = await c.get('deps').gamers.listByRoom(roomId)
+  const roomGamersById = new Map(allGamers.map((gamer) => [gamer.id, gamer]))
+  const requestedIds = dedupeGamerIds(body.activeGamerIds)
+  if (requestedIds.length < 2) {
+    return c.json({ error: 'not_enough_active_gamers' }, 400)
+  }
+
+  for (const gamerId of requestedIds) {
+    const gamer = roomGamersById.get(gamerId)
+    if (!gamer) return c.json({ error: 'unknown_gamer', gamerId }, 400)
+    if (!gamer.active) return c.json({ error: 'inactive_gamer', gamerId }, 400)
+  }
+
+  const currentGame = await c.get('deps').games.getActive(gameNight.id)
+  if (currentGame) {
+    for (const gamerId of [...currentGame.homeGamerIds, ...currentGame.awayGamerIds]) {
+      if (!requestedIds.includes(gamerId)) {
+        return c.json({ error: 'gamer_active_in_current_game', gamerId }, 409)
+      }
+    }
+  }
+
+  const activeGamers = await c
+    .get('deps')
+    .gameNights.replaceActiveGamers(gameNight.id, roomId, requestedIds, Date.now())
+  return c.json({ gameNight, activeGamers })
+})
+
+roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const gameNight = await requireActiveGameNight(c, roomId, GameNightId(c.req.param('gameNightId')))
+  if (!gameNight) {
+    return c.json({ error: 'active_game_night_not_found' }, 404)
+  }
+
+  const room = await c.get('deps').rooms.get(roomId)
+  if (!room) return c.json({ error: 'not_found', roomId }, 404)
+
+  const existingGame = await c.get('deps').games.getActive(gameNight.id)
+  if (existingGame) {
+    return c.json({ error: 'active_game_exists', gameId: existingGame.id }, 409)
+  }
+
+  const parsed = createCurrentGameSchema.safeParse(await parseJson(c))
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.flatten() }, 400)
+  }
+
+  const body = parsed.data satisfies CreateCurrentGameRequest
+  const allGamers = await c.get('deps').gamers.listByRoom(roomId)
+  const gamersById = new Map(allGamers.map((gamer) => [gamer.id, gamer]))
+  const activeGameNightGamers = await c.get('deps').gameNights.listActiveGamers(gameNight.id)
+  const activeGameNightGamerIds = new Set(activeGameNightGamers.map((item) => item.gamerId))
+
+  const now = Date.now()
+  let currentGame: CurrentGame
+  if (body.allocationMode === 'manual') {
+    const homeGamerIds = dedupeGamerIds(body.homeGamerIds)
+    const awayGamerIds = dedupeGamerIds(body.awayGamerIds)
+    let format
+    try {
+      format = validateManualGameSides(
+        homeGamerIds,
+        awayGamerIds,
+        activeGameNightGamerIds,
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.startsWith('duplicate_manual_gamers:')) {
+        return c.json({ error: 'duplicate_manual_gamers' }, 400)
+      }
+      if (message.startsWith('gamer_not_active_in_game_night:')) {
+        return c.json({ error: 'gamer_not_active_in_game_night' }, 400)
+      }
+      return c.json({ error: 'invalid_manual_format' }, 400)
+    }
+    currentGame = {
+      id: GameId(nanoid(10)),
+      roomId,
+      gameNightId: gameNight.id,
+      status: 'active',
+      allocationMode: 'manual',
+      format,
+      homeGamerIds,
+      awayGamerIds,
+      selectionStrategyId: 'manual',
+      randomSeed: null,
+      createdAt: now,
+      updatedAt: now,
+    }
+  } else {
+    const strategyId = body.selectionStrategyId ?? room.defaultSelectionStrategy
+    const formatDefinition = GAME_FORMATS[body.format]
+    let strategy
+    try {
+      strategy = getStrategy(strategyId)
+    } catch {
+      return c.json({ error: 'invalid_strategy', strategyId }, 400)
+    }
+
+    const activeRoster = [...activeGameNightGamerIds].flatMap((gamerId) => {
+      const gamer = gamersById.get(gamerId)
+      return gamer ? [gamer] : []
+    })
+    if (activeRoster.length !== activeGameNightGamerIds.size) {
+      return c.json({ error: 'active_gamer_lookup_failed' }, 500)
+    }
+
+    const seed = seedFromCrypto()
+    const rng = mulberry32(seed)
+    let picked
+    try {
+      picked = strategy.select(activeRoster, formatDefinition.size, new Set(), {
+        stats: new Map(),
+        recentEvents: [],
+        rng,
+        now,
+      })
+    } catch (error) {
+      return c.json(
+        {
+          error: 'selection_failed',
+          message: error instanceof Error ? error.message : String(error),
+        },
+        400,
+      )
+    }
+
+    const shuffled = shuffleInPlace([...picked], rng)
+    currentGame = {
+      id: GameId(nanoid(10)),
+      roomId,
+      gameNightId: gameNight.id,
+      status: 'active',
+      allocationMode: 'random',
+      format: body.format,
+      homeGamerIds: shuffled.slice(0, formatDefinition.homeSize).map((gamer) => gamer.id),
+      awayGamerIds: shuffled
+        .slice(formatDefinition.homeSize, formatDefinition.homeSize + formatDefinition.awaySize)
+        .map((gamer) => gamer.id),
+      selectionStrategyId: strategyId,
+      randomSeed: seed,
+      createdAt: now,
+      updatedAt: now,
+    }
+  }
+
+  await c.get('deps').games.create(currentGame)
+  await c.get('deps').gameNights.touchLastGameAt(gameNight.id, now)
+  return c.json({ currentGame }, 201)
+})
+
 async function buildBootstrap(
   c: RouteContext,
   roomId: RoomIdType,
@@ -295,12 +492,16 @@ async function buildBootstrap(
   const activeGameNightGamers = activeGameNight
     ? await c.get('deps').gameNights.listActiveGamers(activeGameNight.id)
     : []
+  const currentGame = activeGameNight
+    ? await c.get('deps').games.getActive(activeGameNight.id)
+    : null
 
   return {
     room: toRoomSummary(room),
     gamers: await c.get('deps').gamers.listByRoom(roomId),
     activeGameNight,
     activeGameNightGamers,
+    currentGame,
     session: { roomId, expiresAt },
   }
 }
@@ -334,6 +535,17 @@ async function requireRoomSession(
   if (payload.roomId !== roomId) return null
   if (payload.exp <= Date.now()) return null
   return payload
+}
+
+async function requireActiveGameNight(
+  c: RouteContext,
+  roomId: RoomIdType,
+  gameNightId: GameNightId,
+): Promise<GameNight | null> {
+  const activeGameNight = await getFreshActiveGameNight(c, roomId, Date.now())
+  if (!activeGameNight) return null
+  if (activeGameNight.id !== gameNightId) return null
+  return activeGameNight
 }
 
 async function issueRoomSession(
@@ -384,4 +596,32 @@ async function parseJson(c: RouteContext): Promise<unknown> {
   } catch {
     return null
   }
+}
+
+function dedupeGamerIds(ids: ReadonlyArray<string>): GamerId[] {
+  return [...new Set(ids.map((id) => GamerId(id)))]
+}
+
+function validateManualGameSides(
+  homeGamerIds: ReadonlyArray<GamerId>,
+  awayGamerIds: ReadonlyArray<GamerId>,
+  activeGameNightGamerIds: ReadonlySet<GamerId>,
+): keyof typeof GAME_FORMATS {
+  const duplicateIds = homeGamerIds.filter((gamerId) => awayGamerIds.includes(gamerId))
+  if (duplicateIds.length > 0) {
+    throw new Error(`duplicate_manual_gamers:${duplicateIds[0]}`)
+  }
+
+  for (const gamerId of [...homeGamerIds, ...awayGamerIds]) {
+    if (!activeGameNightGamerIds.has(gamerId)) {
+      throw new Error(`gamer_not_active_in_game_night:${gamerId}`)
+    }
+  }
+
+  const format = inferGameFormat(homeGamerIds.length, awayGamerIds.length)
+  if (!format) {
+    throw new Error('invalid_manual_format')
+  }
+
+  return format
 }

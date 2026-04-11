@@ -5,6 +5,11 @@ import {
   type IGamerRepository,
 } from './gamers/repository.js'
 import {
+  D1GameRepository,
+  InMemoryGameRepository,
+  type IGameRepository,
+} from './games/repository.js'
+import {
   D1GameNightRepository,
   InMemoryGameNightRepository,
   type IGameNightRepository,
@@ -38,6 +43,7 @@ import type { ISquadStorage } from './squad/storage.js'
 export interface AppDependencies {
   readonly rooms: IRoomRepository
   readonly gamers: IGamerRepository
+  readonly games: IGameRepository
   readonly gameNights: IGameNightRepository
   readonly pinAttempts: IPinAttemptRepository
   readonly squadStorage: ISquadStorage
@@ -56,6 +62,7 @@ export function buildDependencies(env: Env): AppDependencies {
   return {
     rooms: env.DB ? new D1RoomRepository(env.DB) : new InMemoryRoomRepository(),
     gamers: env.DB ? new D1GamerRepository(env.DB) : new InMemoryGamerRepository(),
+    games: env.DB ? new D1GameRepository(env.DB) : new InMemoryGameRepository(),
     gameNights: env.DB
       ? new D1GameNightRepository(env.DB)
       : new InMemoryGameNightRepository(),

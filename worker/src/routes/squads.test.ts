@@ -6,6 +6,7 @@ import {
 } from '../auth/pin-attempt-repository.js'
 import type { Env } from '../env.js'
 import { InMemoryGamerRepository } from '../gamers/repository.js'
+import { InMemoryGameRepository } from '../games/repository.js'
 import { InMemoryGameNightRepository } from '../game-nights/repository.js'
 import { InMemoryRoomRepository } from '../rooms/repository.js'
 import { InMemorySquadStorage } from '../squad/in-memory-storage.js'
@@ -78,12 +79,14 @@ function buildTestApp() {
   const squadVersions = new InMemorySquadVersionRepository()
   const rooms = new InMemoryRoomRepository()
   const gamers = new InMemoryGamerRepository()
+  const games = new InMemoryGameRepository()
   const gameNights = new InMemoryGameNightRepository()
   const pinAttempts = new InMemoryPinAttemptRepository()
   const app = buildApp({
     dependencies: () => ({
       rooms,
       gamers,
+      games,
       gameNights,
       pinAttempts,
       squadStorage,
