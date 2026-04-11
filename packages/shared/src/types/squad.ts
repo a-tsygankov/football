@@ -23,6 +23,8 @@ export interface Club {
   readonly attackRating: number
   readonly midfieldRating: number
   readonly defenseRating: number
+  /** Club crest or fallback silhouette shown anywhere an avatar is needed. */
+  readonly avatarUrl: string | null
   /** R2 public URL — stable across versions because keyed by club id. */
   readonly logoUrl: string
   /** Math.round(overallRating / 20). */
@@ -51,6 +53,8 @@ export interface FcPlayer {
   readonly id: number
   readonly clubId: number
   readonly name: string
+  /** Headshot or fallback silhouette. */
+  readonly avatarUrl: string | null
   /** Position code, e.g. 'ST', 'CAM'. */
   readonly position: string
   readonly nationId: number

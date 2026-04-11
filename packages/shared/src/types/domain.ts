@@ -1,14 +1,41 @@
-import type { GamerId, GamerTeamKey, RoomId } from './ids.js'
+import type { GameNightId, GamerId, GamerTeamKey, RoomId } from './ids.js'
 
-/** A game is always 2 vs 2 (size=4) or 1 vs 1 (size=2). No other sizes allowed. */
-export type GameSize = 2 | 4
+export type GameSideSize = 1 | 2
+export type GameFormat = '1v1' | '1v2' | '2v1' | '2v2'
+export type GameSize = 2 | 3 | 4
+
+export interface GameFormatDefinition {
+  id: GameFormat
+  label: string
+  homeSize: GameSideSize
+  awaySize: GameSideSize
+  size: GameSize
+}
+
+export const GAME_FORMATS: Readonly<Record<GameFormat, GameFormatDefinition>> = {
+  '1v1': { id: '1v1', label: '1 vs 1', homeSize: 1, awaySize: 1, size: 2 },
+  '1v2': { id: '1v2', label: '1 vs 2', homeSize: 1, awaySize: 2, size: 3 },
+  '2v1': { id: '2v1', label: '2 vs 1', homeSize: 2, awaySize: 1, size: 3 },
+  '2v2': { id: '2v2', label: '2 vs 2', homeSize: 2, awaySize: 2, size: 4 },
+} as const
 
 export interface Room {
   id: RoomId
   name: string
+  avatarUrl: string | null
   /** Null when no PIN is set. */
   pinHash: string | null
   pinSalt: string | null
+  defaultSelectionStrategy: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface RoomSummary {
+  id: RoomId
+  name: string
+  avatarUrl: string | null
+  hasPin: boolean
   defaultSelectionStrategy: string
   createdAt: number
   updatedAt: number
@@ -21,7 +48,29 @@ export interface Gamer {
   /** 1..5, used by some selection strategies and rated-random side assignment. */
   rating: number
   active: boolean
+  avatarUrl: string | null
   createdAt: number
+  updatedAt: number
+}
+
+export type GameNightStatus = 'active' | 'completed'
+
+export interface GameNight {
+  id: GameNightId
+  roomId: RoomId
+  status: GameNightStatus
+  startedAt: number
+  endedAt: number | null
+  lastGameAt: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface GameNightActiveGamer {
+  gameNightId: GameNightId
+  roomId: RoomId
+  gamerId: GamerId
+  joinedAt: number
   updatedAt: number
 }
 

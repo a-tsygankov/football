@@ -18,6 +18,7 @@ port = 8787
 WORKER_VERSION = "0.1.0"
 SCHEMA_VERSION = "1"
 MIN_CLIENT_VERSION = "0.1.0"
+SESSION_SECRET = "fc26-local-dev-session-secret"
 
 # Phase 1 bindings. The Worker boots without these (falls back to in-memory
 # stores in src/dependencies.ts so the scaffold stays runnable), but the
@@ -28,11 +29,15 @@ MIN_CLIENT_VERSION = "0.1.0"
 #   wrangler r2 bucket create fc26-squads
 #   pnpm exec wrangler d1 migrations apply fc26 --local
 #
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "fc26"
-# database_id = "TODO"
-#
+[[d1_databases]]
+binding = "DB"
+database_name = "fc26"
+# Local-first placeholder. Replace with the real Cloudflare D1 UUID before
+# production deploys.
+database_id = "00000000-0000-0000-0000-000000000000"
+preview_database_id = "fc26-local-phase-2"
+migrations_dir = "src/db/migrations"
+
 # [[r2_buckets]]
 # binding = "SQUADS"
 # bucket_name = "fc26-squads"

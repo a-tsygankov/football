@@ -1,13 +1,14 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { App } from './App.jsx'
 
 describe('App shell', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    localStorage.clear()
   })
 
-  it('renders the Phase 0 heading and bottom nav', () => {
+  it('renders the room create and join entry points', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
@@ -25,16 +26,75 @@ describe('App shell', () => {
     )
 
     render(<App />)
-    expect(screen.getByRole('heading', { name: /FC 26 Team Picker/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /Room control for tonight's football session/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Create room/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Join room/i })).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: /main navigation/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /FC26 Team Picker/i })).toBeInTheDocument()
   })
 
-  it('shows worker version after the fetch resolves', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        new Response(
+  it('creates a room and renders the roster screen', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/version')) {
+        return new Response(
+          JSON.stringify({
+            workerVersion: '0.1.0',
+            schemaVersion: 1,
+            minClientVersion: '0.1.0',
+            gitSha: null,
+            builtAt: new Date().toISOString(),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/rooms') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            room: {
+              id: 'room-1',
+              name: 'Friday Night',
+              avatarUrl: null,
+              hasPin: false,
+              defaultSelectionStrategy: 'uniform-random',
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            gamers: [],
+            activeGameNight: null,
+            activeGameNightGamers: [],
+            session: {
+              roomId: 'room-1',
+              expiresAt: 2000,
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    }))
+
+    render(<App />)
+    fireEvent.change(screen.getAllByPlaceholderText(/Friday FC/i)[0]!, {
+      target: { value: 'Friday Night' },
+    })
+    fireEvent.click(screen.getAllByRole('button', { name: /Create room/i })[0]!)
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Friday Night/i })).toBeInTheDocument(),
+    )
+    expect(screen.getByRole('heading', { name: /Roster/i })).toBeInTheDocument()
+    expect(screen.getByText(/No gamers yet/i)).toBeInTheDocument()
+  })
+
+  it('restores the last room and shows an active game night banner', async () => {
+    localStorage.setItem('fc26:last-room-id', 'room-9')
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/version')) {
+        return new Response(
           JSON.stringify({
             workerVersion: '9.9.9',
             schemaVersion: 1,
@@ -43,13 +103,67 @@ describe('App shell', () => {
             builtAt: new Date().toISOString(),
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
-        ),
-      ),
-    )
+        )
+      }
+      if (url.endsWith('/api/rooms/room-9/bootstrap')) {
+        return new Response(
+          JSON.stringify({
+            room: {
+              id: 'room-9',
+              name: 'Sunday Ladder',
+              avatarUrl: null,
+              hasPin: true,
+              defaultSelectionStrategy: 'uniform-random',
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            gamers: [
+              {
+                id: 'g1',
+                roomId: 'room-9',
+                name: 'Alice',
+                rating: 5,
+                active: true,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+            ],
+            activeGameNight: {
+              id: 'gn1',
+              roomId: 'room-9',
+              status: 'active',
+              startedAt: Date.now() - 60_000,
+              endedAt: null,
+              lastGameAt: null,
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            activeGameNightGamers: [
+              {
+                gameNightId: 'gn1',
+                roomId: 'room-9',
+                gamerId: 'g1',
+                joinedAt: 1000,
+                updatedAt: 1000,
+              },
+            ],
+            session: {
+              roomId: 'room-9',
+              expiresAt: Date.now() + 10_000,
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    }))
 
     render(<App />)
     await waitFor(() =>
-      expect(screen.getByText(/v9\.9\.9/)).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: /Sunday Ladder/i })).toBeInTheDocument(),
     )
+    expect(screen.getByText(/1 gamers playing now/i)).toBeInTheDocument()
+    expect(screen.getByText(/Alice/i)).toBeInTheDocument()
   })
 })

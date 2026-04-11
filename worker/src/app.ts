@@ -7,6 +7,7 @@ import { withLogger } from './middleware/logging.js'
 import { buildDependencies, type AppDependencies } from './dependencies.js'
 import { versionRoutes } from './routes/version.js'
 import { healthRoutes } from './routes/health.js'
+import { roomRoutes } from './routes/rooms.js'
 import { squadRoutes } from './routes/squads.js'
 
 /** Hono variables exposed to every route. */
@@ -56,6 +57,7 @@ export function buildApp(options: BuildAppOptions = {}): Hono<AppContext> {
 
   app.route('/api', versionRoutes)
   app.route('/api', healthRoutes)
+  app.route('/api', roomRoutes)
   app.route('/api', squadRoutes)
 
   app.notFound((c) => c.json({ error: 'not_found', path: c.req.path }, 404))

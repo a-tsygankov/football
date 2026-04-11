@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Club, FcPlayer, SquadDiff, SquadVersion } from '@fc26/shared'
 import { buildApp } from '../app.js'
+import {
+  InMemoryPinAttemptRepository,
+} from '../auth/pin-attempt-repository.js'
 import type { Env } from '../env.js'
+import { InMemoryGamerRepository } from '../gamers/repository.js'
+import { InMemoryGameNightRepository } from '../game-nights/repository.js'
+import { InMemoryRoomRepository } from '../rooms/repository.js'
 import { InMemorySquadStorage } from '../squad/in-memory-storage.js'
 import { InMemorySquadVersionRepository } from '../squad/version-repository.js'
 
@@ -9,6 +15,7 @@ const env: Env = {
   WORKER_VERSION: '0.1.0-test',
   SCHEMA_VERSION: '1',
   MIN_CLIENT_VERSION: '0.1.0',
+  SESSION_SECRET: 'test-session-secret',
 }
 
 function execCtx(): ExecutionContext {
@@ -30,6 +37,7 @@ const club: Club = {
   attackRating: 88,
   midfieldRating: 90,
   defenseRating: 87,
+  avatarUrl: null,
   logoUrl: 'https://r2.example/logos/1.png',
   starRating: 5,
 }
@@ -38,6 +46,7 @@ const player: FcPlayer = {
   id: 100,
   clubId: 1,
   name: 'Erling Haaland',
+  avatarUrl: null,
   position: 'ST',
   nationId: 36,
   overall: 91,
@@ -67,8 +76,19 @@ function makeVersion(version: string, ingestedAt: number): SquadVersion {
 function buildTestApp() {
   const squadStorage = new InMemorySquadStorage()
   const squadVersions = new InMemorySquadVersionRepository()
+  const rooms = new InMemoryRoomRepository()
+  const gamers = new InMemoryGamerRepository()
+  const gameNights = new InMemoryGameNightRepository()
+  const pinAttempts = new InMemoryPinAttemptRepository()
   const app = buildApp({
-    dependencies: () => ({ squadStorage, squadVersions }),
+    dependencies: () => ({
+      rooms,
+      gamers,
+      gameNights,
+      pinAttempts,
+      squadStorage,
+      squadVersions,
+    }),
   })
   return { app, squadStorage, squadVersions }
 }

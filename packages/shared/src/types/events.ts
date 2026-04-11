@@ -1,5 +1,12 @@
-import type { EventId, GamerId, GamerTeamKey, GameId, RoomId } from './ids.js'
-import type { GameSize } from './domain.js'
+import type {
+  EventId,
+  GameNightId,
+  GamerId,
+  GamerTeamKey,
+  GameId,
+  RoomId,
+} from './ids.js'
+import type { GameFormat, GameSize } from './domain.js'
 
 /**
  * Event log schema. Versioned because event payloads are stored on disk forever
@@ -8,7 +15,7 @@ import type { GameSize } from './domain.js'
  */
 export const EVENT_SCHEMA_VERSION = 1 as const
 
-export type EventType = 'game_recorded' | 'game_voided'
+export type EventType = 'game_recorded' | 'game_interrupted' | 'game_voided'
 
 export type GameResult = 'home' | 'away' | 'draw'
 
@@ -25,7 +32,9 @@ export interface GameRecordedEvent {
   type: 'game_recorded'
   schemaVersion: typeof EVENT_SCHEMA_VERSION
   gameId: GameId
+  gameNightId: GameNightId
   roomId: RoomId
+  format: GameFormat
   size: GameSize
   /** When the game was actually played. */
   occurredAt: number
@@ -41,17 +50,33 @@ export interface GameRecordedEvent {
   ocrModel?: string
 }
 
+export interface GameInterruptedEvent {
+  type: 'game_interrupted'
+  schemaVersion: typeof EVENT_SCHEMA_VERSION
+  gameId: GameId
+  gameNightId: GameNightId
+  roomId: RoomId
+  format: GameFormat
+  size: GameSize
+  occurredAt: number
+  comment: string | null
+}
+
 export interface GameVoidedEvent {
   type: 'game_voided'
   schemaVersion: typeof EVENT_SCHEMA_VERSION
   /** Refers to a previous game_recorded by gameId. */
   gameId: GameId
+  gameNightId: GameNightId
   roomId: RoomId
   occurredAt: number
   reason: string
 }
 
-export type GameEventPayload = GameRecordedEvent | GameVoidedEvent
+export type GameEventPayload =
+  | GameRecordedEvent
+  | GameInterruptedEvent
+  | GameVoidedEvent
 
 /** Wire/storage envelope around a payload. Always written by the worker. */
 export interface PersistedGameEvent {
