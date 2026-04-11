@@ -17,7 +17,11 @@ export default defineConfig({
     __BUILT_AT__: JSON.stringify(new Date().toISOString()),
   },
   server: {
+    // host: true binds to 0.0.0.0 so phones on the same Wi-Fi can hit us at
+    // http://<LAN-IP>:5173. Vite also prints the Network URL on startup.
+    host: true,
     port: 5173,
+    strictPort: true,
   },
   build: {
     target: 'es2022',
