@@ -213,3 +213,29 @@ export interface SquadResetResult {
   readonly status: 'reset' | 'noop'
   readonly deletedVersionCount: number
 }
+
+export interface EaSquadPreviewClub {
+  readonly id: number
+  readonly name: string
+  readonly shortName: string
+  readonly leagueName: string
+  readonly logoUrl: string
+  readonly avatarUrl: string | null
+  readonly country: string | null
+  readonly foundInSquad: boolean
+  readonly matchTerm: string | null
+}
+
+export interface EaSquadPreviewResponse {
+  readonly platform: string
+  readonly leagueName: string
+  readonly squadVersion: string
+  readonly discoveryUrl: string
+  readonly squadUrl: string
+  readonly fetchedAt: number
+  readonly rawBytes: number
+  readonly unpackedBytes: number
+  readonly matchedClubCount: number
+  readonly missingClubNames: ReadonlyArray<string>
+  readonly clubs: ReadonlyArray<EaSquadPreviewClub>
+}

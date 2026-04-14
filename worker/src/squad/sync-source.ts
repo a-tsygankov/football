@@ -1,5 +1,12 @@
 import { z } from 'zod'
-import type { Club, FcPlayer, ILogger, SquadSnapshot } from '@fc26/shared'
+import {
+  extractRosterUpdatePlatformMetadata,
+  type Club,
+  type FcPlayer,
+  type ILogger,
+  type RosterUpdatePlatformMetadata,
+  type SquadSnapshot,
+} from '@fc26/shared'
 import type { SquadSyncConfig } from './sync-config.js'
 
 const clubSchema = z.object({
@@ -51,13 +58,8 @@ export interface ISquadSnapshotSource {
   getLatestSnapshot(): Promise<SquadSnapshot>
 }
 
-export interface RosterUpdatePlatformMetadata {
-  readonly platform: string
-  readonly squadVersion: string
-  readonly squadLocation: string | null
-  readonly futVersion: string | null
-  readonly futLocation: string | null
-}
+export { extractRosterUpdatePlatformMetadata }
+export type { RosterUpdatePlatformMetadata }
 
 export function buildSquadSnapshotSource(
   config: SquadSyncConfig,
@@ -68,32 +70,6 @@ export function buildSquadSnapshotSource(
     return new JsonSnapshotSource(fetchImpl, config.sourceUrl, logger)
   }
   return new EaRosterupdateJsonSnapshotSource(fetchImpl, config, logger)
-}
-
-export function extractRosterUpdatePlatformMetadata(
-  xml: string,
-  platform: string,
-): RosterUpdatePlatformMetadata {
-  const escapedPlatform = escapeRegExp(platform)
-  const blockPattern = new RegExp(
-    `<([A-Za-z0-9:_-]+)[^>]*platform=["']${escapedPlatform}["'][^>]*>([\\s\\S]*?)<\\/\\1>`,
-    'i',
-  )
-  const block = blockPattern.exec(xml)?.[2]
-  if (!block) {
-    throw new Error(`platform ${platform} not found in rosterupdate.xml`)
-  }
-  const squadVersion = readXmlTag(block, 'dbMajor')
-  if (!squadVersion) {
-    throw new Error(`platform ${platform} does not expose dbMajor in rosterupdate.xml`)
-  }
-  return {
-    platform,
-    squadVersion,
-    squadLocation: readXmlTag(block, 'dbMajorLoc'),
-    futVersion: readXmlTag(block, 'dbFUTVer'),
-    futLocation: readXmlTag(block, 'dbFUTLoc'),
-  }
 }
 
 class JsonSnapshotSource implements ISquadSnapshotSource {
@@ -237,15 +213,6 @@ function assertNoDuplicateIds(ids: ReadonlyArray<number>, kind: 'club' | 'player
     }
     seen.add(id)
   }
-}
-
-function readXmlTag(xmlBlock: string, tagName: string): string | null {
-  const match = new RegExp(`<${tagName}>([^<]+)<\\/${tagName}>`, 'i').exec(xmlBlock)
-  return match?.[1]?.trim() ?? null
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function applyTemplate(

@@ -39,6 +39,7 @@ import { apiJson, persistRoomSession } from './lib/api.js'
 import { logger } from './lib/logger.js'
 import { APP_VERSION, type WorkerVersionInfo } from './lib/version.js'
 import { BottomNav } from './components/BottomNav.jsx'
+import { EaPremierLeagueLivePanel } from './components/EaPremierLeagueLivePanel.jsx'
 import {
   ClubIdentity,
   FcPlayerIdentity,
@@ -113,7 +114,7 @@ export function App() {
       setScoreboard(null)
       return
     }
-    setRoomSquadPlatform(bootstrap.room.squadPlatform)
+    setRoomSquadPlatform(bootstrap.room.squadPlatform ?? DEFAULT_SQUAD_PLATFORM)
     void refreshScoreboard(bootstrap.room.id)
   }, [bootstrap])
 
@@ -1915,13 +1916,15 @@ function RoomScreen({
           title="Teams"
           subtitle="Browse stored FC clubs, league logos, and player avatars from the selected squad version."
         >
-          {!latestSquadVersion ? (
-            <InlineNotice
-              tone="warn"
-              message="Retrieve club and player data in Settings to unlock the Teams view."
-            />
-          ) : (
-            <div style={{ display: 'grid', gap: 14 }}>
+          <div style={{ display: 'grid', gap: 14 }}>
+            <EaPremierLeagueLivePanel platform={roomSquadPlatform} />
+            {!latestSquadVersion ? (
+              <InlineNotice
+                tone="warn"
+                message="Retrieve club and player data in Settings to unlock the stored Teams view. The live EA preview above does not store anything."
+              />
+            ) : (
+              <div style={{ display: 'grid', gap: 14 }}>
               {squadPanelError ? <InlineNotice tone="warn" message={squadPanelError} /> : null}
               <Field label="Squad version">
                 <select
@@ -2063,8 +2066,9 @@ function RoomScreen({
                   )}
                 </div>
               </div>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </Panel>
       </section>
 

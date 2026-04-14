@@ -15,7 +15,8 @@
     "lint": "pnpm -r lint",
     "dev:web": "pnpm --filter @fc26/web dev",
     "dev:worker": "pnpm --filter @fc26/worker dev",
-    "sync:squads": "pnpm --filter @fc26/squad-sync sync"
+    "sync:squads": "pnpm --filter @fc26/squad-sync sync",
+    "preview:squads": "pnpm --filter @fc26/squad-sync preview"
   },
   "devDependencies": {
     "typescript": "^5.6.3",
