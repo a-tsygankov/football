@@ -12,7 +12,10 @@ import type { RoomId } from './ids.js'
 export interface RoomSessionInfo {
   roomId: RoomId
   expiresAt: number
+  token?: string
 }
+
+export const ROOM_SESSION_HEADER = 'x-fc26-room-session'
 
 export interface RoomBootstrapResponse {
   room: RoomSummary

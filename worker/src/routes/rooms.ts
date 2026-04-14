@@ -23,6 +23,7 @@ import {
   type JoinRoomRequest,
   mulberry32,
   normalizeNameStem,
+  ROOM_SESSION_HEADER,
   type RecordCurrentGameResultRequest,
   type Room,
   type RoomBootstrapResponse,
@@ -116,6 +117,11 @@ const interruptCurrentGameSchema = z.object({
 
 export const roomRoutes = new Hono<AppContext>()
 
+interface ResolvedRoomSession extends RoomSessionPayload {
+  token: string
+  source: 'cookie' | 'header'
+}
+
 roomRoutes.post('/rooms', async (c) => {
   const parsed = createRoomSchema.safeParse(await parseJson(c))
   if (!parsed.success) {
@@ -167,7 +173,7 @@ roomRoutes.post('/rooms', async (c) => {
 
   await c.get('deps').rooms.insert(room)
   const session = await issueRoomSession(c, room.id, now)
-  return c.json(await buildBootstrap(c, room.id, session.exp, now), 201)
+  return c.json(await buildBootstrap(c, room.id, session, now), 201)
 })
 
 roomRoutes.post('/rooms/:roomId/sessions', async (c) => {
@@ -211,14 +217,14 @@ roomRoutes.post('/rooms/:roomId/sessions', async (c) => {
   }
 
   const session = await issueRoomSession(c, roomId, now)
-  return c.json(await buildBootstrap(c, roomId, session.exp, now))
+  return c.json(await buildBootstrap(c, roomId, session, now))
 })
 
 roomRoutes.get('/rooms/:roomId/bootstrap', async (c) => {
   const roomId = RoomId(c.req.param('roomId'))
   const session = await requireRoomSession(c, roomId)
   if (!session) return c.json({ error: 'unauthorized' }, 401)
-  return c.json(await buildBootstrap(c, roomId, session.exp, Date.now()))
+  return c.json(await buildBootstrap(c, roomId, session, Date.now()))
 })
 
 roomRoutes.post('/rooms/:roomId/gamers', async (c) => {
@@ -717,7 +723,7 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/interrupt
 async function buildBootstrap(
   c: RouteContext,
   roomId: RoomIdType,
-  expiresAt: number,
+  session: ResolvedRoomSession,
   now: number,
 ): Promise<RoomBootstrapResponse> {
   const room = await c.get('deps').rooms.get(roomId)
@@ -737,7 +743,7 @@ async function buildBootstrap(
     activeGameNight,
     activeGameNightGamers,
     currentGame,
-    session: { roomId, expiresAt },
+    session: { roomId, expiresAt: session.exp, token: session.token },
   }
 }
 
@@ -761,15 +767,39 @@ async function getFreshActiveGameNight(
 async function requireRoomSession(
   c: RouteContext,
   roomId: RoomIdType,
-): Promise<RoomSessionPayload | null> {
-  const token = getCookie(c, ROOM_SESSION_COOKIE)
-  if (!token) return null
+): Promise<ResolvedRoomSession | null> {
+  const headerToken = c.req.header(ROOM_SESSION_HEADER)
+  const cookieToken = getCookie(c, ROOM_SESSION_COOKIE)
+  const token = headerToken ?? cookieToken
+  const source = headerToken ? 'header' : 'cookie'
+
+  if (!token) {
+    c.get('logger').warn('auth', 'room session missing', { roomId })
+    return null
+  }
 
   const payload = await verifyRoomSession(token, c.env.SESSION_SECRET)
-  if (!payload) return null
-  if (payload.roomId !== roomId) return null
-  if (payload.exp <= Date.now()) return null
-  return payload
+  if (!payload) {
+    c.get('logger').warn('auth', 'room session invalid', { roomId, source })
+    return null
+  }
+  if (payload.roomId !== roomId) {
+    c.get('logger').warn('auth', 'room session room mismatch', {
+      roomId,
+      source,
+      tokenRoomId: payload.roomId,
+    })
+    return null
+  }
+  if (payload.exp <= Date.now()) {
+    c.get('logger').warn('auth', 'room session expired', {
+      roomId,
+      source,
+      expiresAt: payload.exp,
+    })
+    return null
+  }
+  return { ...payload, token, source }
 }
 
 async function requireActiveGameNight(
@@ -787,7 +817,7 @@ async function issueRoomSession(
   c: RouteContext,
   roomId: RoomIdType,
   now: number,
-): Promise<RoomSessionPayload> {
+): Promise<ResolvedRoomSession> {
   const exp = now + ROOM_SESSION_TTL_MS
   const token = await signRoomSession({ roomId, exp }, c.env.SESSION_SECRET)
   const isHttps = new URL(c.req.url).protocol === 'https:'
@@ -801,7 +831,7 @@ async function issueRoomSession(
     expires: new Date(exp),
     maxAge: Math.floor(ROOM_SESSION_TTL_MS / 1000),
   })
-  return { roomId, exp }
+  return { roomId, exp, token, source: 'cookie' }
 }
 
 async function resolveRoomByLookup(

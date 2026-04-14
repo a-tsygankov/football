@@ -1,11 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { App } from './App.jsx'
 
 describe('App shell', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     localStorage.clear()
+  })
+
+  afterEach(() => {
+    cleanup()
   })
 
   it('renders the room create and join entry points', () => {
@@ -169,7 +173,7 @@ describe('App shell', () => {
     expect(screen.getAllByText(/Alice/i).length).toBeGreaterThan(0)
   })
 
-  it('reveals random game controls only after switching modes', async () => {
+  it('reveals only relevant random formats for a two-gamer live pool', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input, init) => {
       const url = String(input)
       if (url.endsWith('/api/version')) {
@@ -267,8 +271,131 @@ describe('App shell', () => {
     )
     expect(screen.queryByLabelText(/Format/i)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Random/i }))
-    expect(screen.getByLabelText(/Format/i)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('option', { name: '1 vs 1' })).toBeInTheDocument())
+    expect(screen.queryByRole('option', { name: '1 vs 2' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: '2 vs 1' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: '2 vs 2' })).not.toBeInTheDocument()
     expect(screen.getByLabelText(/Random strategy/i)).toBeInTheDocument()
+  })
+
+  it('hides 2 vs 2 random allocation until four active gamers are available', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/version')) {
+        return new Response(
+          JSON.stringify({
+            workerVersion: '0.1.0',
+            schemaVersion: 1,
+            minClientVersion: '0.1.0',
+            gitSha: null,
+            builtAt: new Date().toISOString(),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/rooms') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            room: {
+              id: 'room-4',
+              name: 'Three Up',
+              avatarUrl: null,
+              hasPin: false,
+              defaultSelectionStrategy: 'uniform-random',
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            gamers: [
+              {
+                id: 'g1',
+                roomId: 'room-4',
+                name: 'Alice',
+                rating: 5,
+                active: true,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                id: 'g2',
+                roomId: 'room-4',
+                name: 'Bob',
+                rating: 4,
+                active: true,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                id: 'g3',
+                roomId: 'room-4',
+                name: 'Cara',
+                rating: 3,
+                active: true,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+            ],
+            activeGameNight: {
+              id: 'gn4',
+              roomId: 'room-4',
+              status: 'active',
+              startedAt: Date.now() - 60_000,
+              endedAt: null,
+              lastGameAt: null,
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            activeGameNightGamers: [
+              {
+                gameNightId: 'gn4',
+                roomId: 'room-4',
+                gamerId: 'g1',
+                joinedAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                gameNightId: 'gn4',
+                roomId: 'room-4',
+                gamerId: 'g2',
+                joinedAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                gameNightId: 'gn4',
+                roomId: 'room-4',
+                gamerId: 'g3',
+                joinedAt: 1000,
+                updatedAt: 1000,
+              },
+            ],
+            currentGame: null,
+            session: {
+              roomId: 'room-4',
+              expiresAt: Date.now() + 10_000,
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    }))
+
+    render(<App />)
+    fireEvent.change(screen.getAllByPlaceholderText(/Friday FC/i)[0]!, {
+      target: { value: 'Three Up' },
+    })
+    fireEvent.click(screen.getAllByRole('button', { name: /Create room/i })[0]!)
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Game creation/i })).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Random/i }))
+    await waitFor(() => expect(screen.getByRole('option', { name: '1 vs 1' })).toBeInTheDocument())
+    expect(screen.getByRole('option', { name: '1 vs 2' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '2 vs 1' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: '2 vs 2' })).not.toBeInTheDocument()
   })
 
   it('records the active game result and returns to game creation', async () => {

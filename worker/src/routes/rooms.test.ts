@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { RoomBootstrapResponse } from '@fc26/shared'
+import { ROOM_SESSION_HEADER, type RoomBootstrapResponse } from '@fc26/shared'
 import { buildApp } from '../app.js'
 import {
   InMemoryPinAttemptRepository,
@@ -81,6 +81,7 @@ describe('room routes', () => {
     expect(body.room.hasPin).toBe(false)
     expect(body.gamers).toEqual([])
     expect(body.currentGame).toBeNull()
+    expect(body.session.token).toBeTruthy()
 
     const bootstrapRes = await app.fetch(
       new Request(`http://localhost/api/rooms/${body.room.id}/bootstrap`, {
@@ -94,6 +95,51 @@ describe('room routes', () => {
     const bootstrap = (await bootstrapRes.json()) as RoomBootstrapResponse
     expect(bootstrap.room.id).toBe(body.room.id)
     expect(bootstrap.currentGame).toBeNull()
+  })
+
+  it('accepts the room session token through the explicit session header', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Header Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(createRes.status).toBe(201)
+    const created = (await createRes.json()) as RoomBootstrapResponse
+    expect(created.session.token).toBeTruthy()
+
+    const gamerRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${created.room.id}/gamers`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          [ROOM_SESSION_HEADER]: created.session.token!,
+        },
+        body: JSON.stringify({ name: 'Alice' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(gamerRes.status).toBe(201)
+
+    const bootstrapRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${created.room.id}/bootstrap`, {
+        headers: {
+          [ROOM_SESSION_HEADER]: created.session.token!,
+        },
+      }),
+      env,
+      execCtx(),
+    )
+    expect(bootstrapRes.status).toBe(200)
+    const bootstrap = (await bootstrapRes.json()) as RoomBootstrapResponse
+    expect(bootstrap.gamers).toHaveLength(1)
+    expect(bootstrap.session.token).toBe(created.session.token)
   })
 
   it('rejects a wrong PIN and accepts the correct one', async () => {

@@ -17,7 +17,7 @@ import {
   type RoomBootstrapResponse,
   type UpdateGamerRequest,
 } from '@fc26/shared'
-import { apiJson } from './lib/api.js'
+import { apiJson, persistRoomSession } from './lib/api.js'
 import { logger } from './lib/logger.js'
 import { APP_VERSION, type WorkerVersionInfo } from './lib/version.js'
 import { BottomNav } from './components/BottomNav.jsx'
@@ -409,6 +409,7 @@ export function App() {
   }
 
   function applyBootstrap(next: RoomBootstrapResponse): void {
+    persistRoomSession(next.session)
     startTransition(() => {
       setBootstrap(next)
       setJoinRoomId(next.room.id)
@@ -720,6 +721,13 @@ function RoomScreen({
   const [editingRating, setEditingRating] = useState('3')
   const [editingCurrentPin, setEditingCurrentPin] = useState('')
   const [editingNextPin, setEditingNextPin] = useState('')
+  const activeRoomGamers = bootstrap.gamers.filter((gamer) => gamer.active)
+  const activeGameNightGamers = bootstrap.activeGameNightGamers
+    .map((item) => bootstrap.gamers.find((gamer) => gamer.id === item.gamerId))
+    .filter((gamer): gamer is Gamer => gamer !== undefined)
+  const availableRandomFormats = Object.values(GAME_FORMATS).filter(
+    (format) => format.size <= activeGameNightGamers.length,
+  )
 
   useEffect(() => {
     setDraftActiveGamerIds(bootstrap.activeGameNightGamers.map((item) => item.gamerId))
@@ -733,10 +741,11 @@ function RoomScreen({
     setManualAssignments(buildManualAssignments(bootstrap.currentGame))
   }, [bootstrap.activeGameNight?.id, bootstrap.currentGame])
 
-  const activeRoomGamers = bootstrap.gamers.filter((gamer) => gamer.active)
-  const activeGameNightGamers = bootstrap.activeGameNightGamers
-    .map((item) => bootstrap.gamers.find((gamer) => gamer.id === item.gamerId))
-    .filter((gamer): gamer is Gamer => gamer !== undefined)
+  useEffect(() => {
+    if (availableRandomFormats.some((format) => format.id === randomFormat)) return
+    setRandomFormat(availableRandomFormats.at(-1)?.id ?? '1v1')
+  }, [availableRandomFormats, randomFormat])
+
   const manualHomeIds = Object.entries(manualAssignments)
     .filter(([gamerId, side]) => side === 'home' && activeGameNightGamerIds.has(gamerId))
     .map(([gamerId]) => gamerId)
@@ -750,6 +759,8 @@ function RoomScreen({
   )
   const canCreateManualGame =
     !bootstrap.currentGame && !hasUnsavedActiveGamers && manualFormat !== null
+  const canCreateRandomGame =
+    !bootstrap.currentGame && !hasUnsavedActiveGamers && availableRandomFormats.length > 0
   const gamerNameStem = normalizeNameStem(gamerName)
   const gamerNameTakenLocally = bootstrap.gamers.some(
     (gamer) => normalizeNameStem(gamer.name) === gamerNameStem,
@@ -1248,13 +1259,19 @@ function RoomScreen({
                         }
                         style={inputStyle}
                       >
-                        {Object.values(GAME_FORMATS).map((format) => (
+                        {availableRandomFormats.map((format) => (
                           <option key={format.id} value={format.id}>
                             {format.label}
                           </option>
                         ))}
                       </select>
                     </Field>
+                    {availableRandomFormats.length === 0 ? (
+                      <InlineNotice
+                        tone="warn"
+                        message="Add at least 2 active gamers to unlock random allocation."
+                      />
+                    ) : null}
                     <Field label="Random strategy">
                       <select
                         value={randomStrategyId}
@@ -1274,7 +1291,7 @@ function RoomScreen({
                     </p>
                     <button
                       type="button"
-                      disabled={busy !== null || hasUnsavedActiveGamers}
+                      disabled={busy !== null || !canCreateRandomGame}
                       onClick={() =>
                         bootstrap.activeGameNight
                           ? void onCreateGame(bootstrap.activeGameNight.id, {

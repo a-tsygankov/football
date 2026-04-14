@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { CORRELATION_HEADER, LOG_HEADER } from '@fc26/shared/logger'
+import { ROOM_SESSION_HEADER } from '@fc26/shared'
 import type { Env } from './env.js'
 import type { WorkerLogger } from './logger.js'
 import { withLogger } from './middleware/logging.js'
@@ -41,7 +42,7 @@ export function buildApp(options: BuildAppOptions = {}): Hono<AppContext> {
     cors({
       origin: (origin) => origin,
       allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowHeaders: ['Content-Type', CORRELATION_HEADER],
+      allowHeaders: ['Content-Type', CORRELATION_HEADER, ROOM_SESSION_HEADER],
       exposeHeaders: [LOG_HEADER],
       credentials: true,
       maxAge: 86_400,

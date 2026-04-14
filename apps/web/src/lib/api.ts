@@ -1,5 +1,9 @@
 import { nanoid } from 'nanoid'
 import {
+  ROOM_SESSION_HEADER,
+  type RoomSessionInfo,
+} from '@fc26/shared'
+import {
   CORRELATION_HEADER,
   LOG_HEADER,
   type LogHeaderPayload,
@@ -13,16 +17,76 @@ import { logger } from './logger.js'
  *    client logger so Worker logs appear in the hidden Console.
  */
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '') as string
+const ROOM_SESSION_STORAGE_KEY = 'fc26:last-room-session'
 
 export interface ApiError extends Error {
   status: number
   code?: string
 }
 
+interface StoredRoomSession {
+  roomId: string
+  token: string
+  expiresAt: number
+}
+
+export function persistRoomSession(session: RoomSessionInfo): void {
+  if (typeof localStorage === 'undefined') return
+  if (!session.token) return
+  localStorage.setItem(
+    ROOM_SESSION_STORAGE_KEY,
+    JSON.stringify({
+      roomId: session.roomId,
+      token: session.token,
+      expiresAt: session.expiresAt,
+    } satisfies StoredRoomSession),
+  )
+}
+
+export function clearPersistedRoomSession(): void {
+  if (typeof localStorage === 'undefined') return
+  localStorage.removeItem(ROOM_SESSION_STORAGE_KEY)
+}
+
+function readPersistedRoomSession(): StoredRoomSession | null {
+  if (typeof localStorage === 'undefined') return null
+  const raw = localStorage.getItem(ROOM_SESSION_STORAGE_KEY)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as Partial<StoredRoomSession>
+    if (
+      typeof parsed.roomId !== 'string' ||
+      typeof parsed.token !== 'string' ||
+      typeof parsed.expiresAt !== 'number'
+    ) {
+      clearPersistedRoomSession()
+      return null
+    }
+    if (parsed.expiresAt <= Date.now()) {
+      clearPersistedRoomSession()
+      return null
+    }
+    return parsed as StoredRoomSession
+  } catch {
+    clearPersistedRoomSession()
+    return null
+  }
+}
+
+function matchRoomIdFromPath(path: string): string | null {
+  const matched = /^\/api\/rooms\/([^/]+)/.exec(path)
+  return matched?.[1] ?? null
+}
+
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const correlationId = nanoid()
   const headers = new Headers(init.headers ?? {})
   headers.set(CORRELATION_HEADER, correlationId)
+  const roomId = matchRoomIdFromPath(path)
+  const persistedSession = readPersistedRoomSession()
+  if (roomId && persistedSession?.roomId === roomId) {
+    headers.set(ROOM_SESSION_HEADER, persistedSession.token)
+  }
 
   logger.debug('http', `→ ${init.method ?? 'GET'} ${path}`, { correlationId })
 
