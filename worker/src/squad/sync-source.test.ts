@@ -87,4 +87,67 @@ describe('squad sync source', () => {
     expect(snapshot.players).toHaveLength(1)
     expect(snapshot.players[0]?.name).toBe('Erling Haaland')
   })
+
+  it('builds a full snapshot from a github release asset source', async () => {
+    const fetchCalls: Array<{ url: string; headers?: HeadersInit }> = []
+    const source = buildSquadSnapshotSource(
+      {
+        sourceKind: 'github-release-json',
+        repository: 'example/fc26-snapshots',
+        assetName: 'fc26-latest.json',
+        token: null,
+        retentionCount: 12,
+      },
+      async (input, init) => {
+        const url = typeof input === 'string' ? input : input.url
+        fetchCalls.push({ url, headers: init?.headers })
+        if (url.endsWith('/releases/latest')) {
+          return new Response(
+            JSON.stringify({
+              html_url: 'https://github.com/example/fc26-snapshots/releases/tag/fc26-r12',
+              published_at: '2026-04-14T06:00:00.000Z',
+              assets: [
+                {
+                  id: 42,
+                  name: 'fc26-latest.json',
+                  browser_download_url:
+                    'https://github.com/example/fc26-snapshots/releases/download/fc26-r12/fc26-latest.json',
+                  url: 'https://api.github.com/repos/example/fc26-snapshots/releases/assets/42',
+                },
+              ],
+            }),
+            {
+              status: 200,
+              headers: { 'content-type': 'application/json' },
+            },
+          )
+        }
+
+        return new Response(
+          JSON.stringify({
+            ...snapshotPayload,
+            releasedAt: undefined,
+            sourceUrl: undefined,
+            notes: undefined,
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        )
+      },
+    )
+
+    const snapshot = await source.getLatestSnapshot()
+    expect(snapshot.version).toBe('fc26-r12')
+    expect(snapshot.releasedAt).toBe(Date.parse('2026-04-14T06:00:00.000Z'))
+    expect(snapshot.sourceUrl).toBe(
+      'https://github.com/example/fc26-snapshots/releases/download/fc26-r12/fc26-latest.json',
+    )
+    expect(snapshot.notes).toBe('github-release:example/fc26-snapshots')
+    expect(fetchCalls.map((call) => call.url)).toEqual([
+      'https://api.github.com/repos/example/fc26-snapshots/releases/latest',
+      'https://github.com/example/fc26-snapshots/releases/download/fc26-r12/fc26-latest.json',
+    ])
+  })
 })

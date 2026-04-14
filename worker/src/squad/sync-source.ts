@@ -47,6 +47,19 @@ const squadSnapshotPayloadSchema = z.object({
   playersByClubId: z.record(z.string(), z.array(fcPlayerSchema)).optional(),
 })
 
+const gitHubReleaseAssetSchema = z.object({
+  id: z.number().int().positive(),
+  name: z.string().min(1),
+  browser_download_url: z.string().url(),
+  url: z.string().url(),
+})
+
+const gitHubReleaseSchema = z.object({
+  html_url: z.string().url(),
+  published_at: z.string().datetime({ offset: true }).nullable().optional(),
+  assets: z.array(gitHubReleaseAssetSchema),
+})
+
 export interface ISquadSnapshotSource {
   getLatestSnapshot(): Promise<SquadSnapshot>
 }
@@ -66,7 +79,10 @@ export function buildSquadSnapshotSource(
   if (config.sourceKind === 'json-snapshot') {
     return new JsonSnapshotSource(fetchImpl, config.sourceUrl)
   }
-  return new EaRosterupdateJsonSnapshotSource(fetchImpl, config)
+  if (config.sourceKind === 'ea-rosterupdate-json') {
+    return new EaRosterupdateJsonSnapshotSource(fetchImpl, config)
+  }
+  return new GitHubReleaseJsonSnapshotSource(fetchImpl, config)
 }
 
 export function extractRosterUpdatePlatformMetadata(
@@ -147,9 +163,86 @@ class EaRosterupdateJsonSnapshotSource implements ISquadSnapshotSource {
   }
 }
 
+class GitHubReleaseJsonSnapshotSource implements ISquadSnapshotSource {
+  constructor(
+    private readonly fetchImpl: typeof fetch,
+    private readonly config: Extract<SquadSyncConfig, { sourceKind: 'github-release-json' }>,
+  ) {}
+
+  async getLatestSnapshot(): Promise<SquadSnapshot> {
+    const release = await this.fetchLatestRelease()
+    const asset = release.assets.find((entry) => entry.name === this.config.assetName)
+    if (!asset) {
+      const availableAssets = release.assets.map((entry) => entry.name).sort()
+      throw new Error(
+        `release asset ${this.config.assetName} not found in ${this.config.repository}; available assets: ${availableAssets.join(', ')}`,
+      )
+    }
+
+    const snapshotResponse = await this.fetchAsset(asset)
+    if (!snapshotResponse.ok) {
+      throw new Error(
+        `github release asset fetch failed with status ${snapshotResponse.status}`,
+      )
+    }
+    const payload = squadSnapshotPayloadSchema.parse(await snapshotResponse.json())
+    return normalizeSnapshotPayloadWithDefaults(payload, {
+      fallbackReleasedAt: release.published_at
+        ? Date.parse(release.published_at)
+        : null,
+      fallbackSourceUrl: asset.browser_download_url,
+      fallbackNotes: `github-release:${this.config.repository}`,
+    })
+  }
+
+  private async fetchLatestRelease(): Promise<z.infer<typeof gitHubReleaseSchema>> {
+    const response = await this.fetchImpl(
+      `https://api.github.com/repos/${this.config.repository}/releases/latest`,
+      {
+        headers: buildGitHubHeaders(this.config.token),
+      },
+    )
+    if (!response.ok) {
+      throw new Error(
+        `github latest release fetch failed with status ${response.status}`,
+      )
+    }
+    return gitHubReleaseSchema.parse(await response.json())
+  }
+
+  private fetchAsset(
+    asset: z.infer<typeof gitHubReleaseAssetSchema>,
+  ): Promise<Response> {
+    if (this.config.token) {
+      return this.fetchImpl(asset.url, {
+        headers: {
+          ...buildGitHubHeaders(this.config.token),
+          Accept: 'application/octet-stream',
+        },
+      })
+    }
+    return this.fetchImpl(asset.browser_download_url)
+  }
+}
+
 function normalizeSnapshotPayload(
   payload: z.infer<typeof squadSnapshotPayloadSchema>,
   fallbackSourceUrl: string,
+): SquadSnapshot {
+  return normalizeSnapshotPayloadWithDefaults(payload, {
+    fallbackReleasedAt: null,
+    fallbackSourceUrl,
+    fallbackNotes: null,
+  })
+}
+
+function normalizeSnapshotPayloadWithDefaults(
+  payload: z.infer<typeof squadSnapshotPayloadSchema>,
+  defaults: {
+    fallbackReleasedAt: number | null
+    fallbackSourceUrl: string
+    fallbackNotes: string | null
+  },
 ): SquadSnapshot {
   const players = payload.players ?? flattenPlayersByClubId(payload.playersByClubId)
   if (!players) {
@@ -165,9 +258,9 @@ function normalizeSnapshotPayload(
   }
   return {
     version: payload.version,
-    releasedAt: payload.releasedAt ?? null,
-    sourceUrl: payload.sourceUrl ?? fallbackSourceUrl,
-    notes: payload.notes ?? null,
+    releasedAt: payload.releasedAt ?? defaults.fallbackReleasedAt,
+    sourceUrl: payload.sourceUrl ?? defaults.fallbackSourceUrl,
+    notes: payload.notes ?? defaults.fallbackNotes,
     clubs: payload.clubs,
     players,
   }
@@ -208,8 +301,18 @@ function applyTemplate(
   )
 }
 
+function buildGitHubHeaders(token: string | null | undefined): HeadersInit {
+  return {
+    Accept: 'application/vnd.github+json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    'X-GitHub-Api-Version': '2022-11-28',
+  }
+}
+
 export const __TEST_ONLY__ = {
   normalizeSnapshotPayload,
+  normalizeSnapshotPayloadWithDefaults,
   flattenPlayersByClubId,
   applyTemplate,
+  buildGitHubHeaders,
 }

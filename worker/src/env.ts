@@ -11,11 +11,17 @@ export interface Env {
   readonly MIN_CLIENT_VERSION: string
   readonly SESSION_SECRET: string
   readonly GIT_SHA?: string
-  readonly SQUAD_SYNC_SOURCE_KIND?: 'json-snapshot' | 'ea-rosterupdate-json'
+  readonly SQUAD_SYNC_SOURCE_KIND?:
+    | 'json-snapshot'
+    | 'ea-rosterupdate-json'
+    | 'github-release-json'
   readonly SQUAD_SYNC_SOURCE_URL?: string
   readonly SQUAD_SYNC_DISCOVERY_URL?: string
   readonly SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE?: string
   readonly SQUAD_SYNC_PLATFORM?: string
+  readonly SQUAD_SYNC_GITHUB_REPOSITORY?: string
+  readonly SQUAD_SYNC_GITHUB_ASSET_NAME?: string
+  readonly SQUAD_SYNC_GITHUB_TOKEN?: string
   readonly SQUAD_SYNC_RETENTION_COUNT?: string
   readonly SQUAD_SYNC_ADMIN_SECRET?: string
   readonly SQUAD_ASSET_PROVIDER_BASE_URL?: string

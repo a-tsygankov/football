@@ -4,7 +4,10 @@ export const DEFAULT_SQUAD_RETENTION_COUNT = 12
 export const DEFAULT_EA_ROSTERUPDATE_URL =
   'https://eafc26.content.easports.com/fc/fltOnlineAssets/26E4D4D6-8DBB-4A9A-BD99-9C47D3AA341D/2026/fc/fclive/genxtitle/rosterupdate.xml'
 
-export type SquadSyncSourceKind = 'json-snapshot' | 'ea-rosterupdate-json'
+export type SquadSyncSourceKind =
+  | 'json-snapshot'
+  | 'ea-rosterupdate-json'
+  | 'github-release-json'
 
 export interface JsonSnapshotSquadSyncConfig {
   readonly sourceKind: 'json-snapshot'
@@ -20,9 +23,18 @@ export interface EaRosterupdateJsonSquadSyncConfig {
   readonly retentionCount: number
 }
 
+export interface GitHubReleaseJsonSquadSyncConfig {
+  readonly sourceKind: 'github-release-json'
+  readonly repository: string
+  readonly assetName: string
+  readonly token: string | null
+  readonly retentionCount: number
+}
+
 export type SquadSyncConfig =
   | JsonSnapshotSquadSyncConfig
   | EaRosterupdateJsonSquadSyncConfig
+  | GitHubReleaseJsonSquadSyncConfig
 
 export function resolveSquadSyncConfig(env: Env): SquadSyncConfig | null {
   const retentionCount = resolveRetentionCount(env.SQUAD_SYNC_RETENTION_COUNT)
@@ -53,6 +65,19 @@ export function resolveSquadSyncConfig(env: Env): SquadSyncConfig | null {
     }
   }
 
+  if (sourceKind === 'github-release-json') {
+    const repository = env.SQUAD_SYNC_GITHUB_REPOSITORY?.trim()
+    const assetName = env.SQUAD_SYNC_GITHUB_ASSET_NAME?.trim()
+    if (!repository || !assetName) return null
+    return {
+      sourceKind,
+      repository,
+      assetName,
+      token: env.SQUAD_SYNC_GITHUB_TOKEN?.trim() || null,
+      retentionCount,
+    }
+  }
+
   return null
 }
 
@@ -65,5 +90,6 @@ function resolveRetentionCount(raw: string | undefined): number {
 function inferSourceKind(env: Env): SquadSyncSourceKind | null {
   if (env.SQUAD_SYNC_SOURCE_URL?.trim()) return 'json-snapshot'
   if (env.SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE?.trim()) return 'ea-rosterupdate-json'
+  if (env.SQUAD_SYNC_GITHUB_REPOSITORY?.trim()) return 'github-release-json'
   return null
 }

@@ -43,6 +43,18 @@ import {
 } from './squad/version-repository.js'
 import type { ISquadStorage } from './squad/storage.js'
 
+const inMemoryFallbacks = {
+  rooms: new InMemoryRoomRepository(),
+  gamers: new InMemoryGamerRepository(),
+  games: new InMemoryGameRepository(),
+  events: new InMemoryGameEventRepository(),
+  projections: new InMemoryGameProjectionRepository(),
+  gameNights: new InMemoryGameNightRepository(),
+  pinAttempts: new InMemoryPinAttemptRepository(),
+  squadStorage: new InMemorySquadStorage(),
+  squadVersions: new InMemorySquadVersionRepository(),
+} as const
+
 /**
  * The composition root for Worker dependencies.
  *
@@ -72,24 +84,24 @@ export interface AppDependencies {
  */
 export function buildDependencies(env: Env): AppDependencies {
   return {
-    rooms: env.DB ? new D1RoomRepository(env.DB) : new InMemoryRoomRepository(),
-    gamers: env.DB ? new D1GamerRepository(env.DB) : new InMemoryGamerRepository(),
-    games: env.DB ? new D1GameRepository(env.DB) : new InMemoryGameRepository(),
-    events: env.DB ? new D1GameEventRepository(env.DB) : new InMemoryGameEventRepository(),
+    rooms: env.DB ? new D1RoomRepository(env.DB) : inMemoryFallbacks.rooms,
+    gamers: env.DB ? new D1GamerRepository(env.DB) : inMemoryFallbacks.gamers,
+    games: env.DB ? new D1GameRepository(env.DB) : inMemoryFallbacks.games,
+    events: env.DB ? new D1GameEventRepository(env.DB) : inMemoryFallbacks.events,
     projections: env.DB
       ? new D1GameProjectionRepository(env.DB)
-      : new InMemoryGameProjectionRepository(),
+      : inMemoryFallbacks.projections,
     gameNights: env.DB
       ? new D1GameNightRepository(env.DB)
-      : new InMemoryGameNightRepository(),
+      : inMemoryFallbacks.gameNights,
     pinAttempts: env.DB
       ? new D1PinAttemptRepository(env.DB)
-      : new InMemoryPinAttemptRepository(),
+      : inMemoryFallbacks.pinAttempts,
     squadStorage: env.SQUADS
       ? new R2SquadStorage(env.SQUADS)
-      : new InMemorySquadStorage(),
+      : inMemoryFallbacks.squadStorage,
     squadVersions: env.DB
       ? new D1SquadVersionRepository(env.DB)
-      : new InMemorySquadVersionRepository(),
+      : inMemoryFallbacks.squadVersions,
   }
 }
