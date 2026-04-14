@@ -34,7 +34,7 @@ binding = "DB"
 database_name = "fc26"
 # Local-first placeholder. Replace with the real Cloudflare D1 UUID before
 # production deploys.
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "b0e1922f-6b23-4a37-b125-a71aee4ee8b2"
 preview_database_id = "fc26-local-phase-2"
 migrations_dir = "src/db/migrations"
 
