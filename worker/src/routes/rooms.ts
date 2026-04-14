@@ -790,10 +790,13 @@ async function issueRoomSession(
 ): Promise<RoomSessionPayload> {
   const exp = now + ROOM_SESSION_TTL_MS
   const token = await signRoomSession({ roomId, exp }, c.env.SESSION_SECRET)
+  const isHttps = new URL(c.req.url).protocol === 'https:'
   setCookie(c, ROOM_SESSION_COOKIE, token, {
     httpOnly: true,
-    sameSite: 'Lax',
-    secure: new URL(c.req.url).protocol === 'https:',
+    // GitHub Pages -> workers.dev is cross-site, so production needs
+    // SameSite=None; Secure for the room session cookie to round-trip.
+    sameSite: isHttps ? 'None' : 'Lax',
+    secure: isHttps,
     path: '/',
     expires: new Date(exp),
     maxAge: Math.floor(ROOM_SESSION_TTL_MS / 1000),
