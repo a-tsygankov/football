@@ -1,6 +1,7 @@
 import { startTransition, useEffect, useMemo, useState } from 'react'
 import {
   SQUAD_PLATFORMS,
+  resolveEaTeamStarRating10,
   type EaSquadPreviewResponse,
   type SquadPlatform,
 } from '@fc26/shared'
@@ -175,8 +176,8 @@ export function EaPremierLeagueLivePanel({
               lineHeight: 1.5,
             }}
           >
-            Stars are intentionally hidden here until we can read an exact FC 26 star source from the
-            EA roster. The values below are direct EA numeric ratings, not inferred approximations.
+            Stars use the exact EA value when available. Until we find the PS5 star source in FC 26,
+            the preview falls back to the established OVR-to-stars thresholds.
           </div>
 
           {missingClubNames.length > 0 ? (
@@ -200,7 +201,10 @@ export function EaPremierLeagueLivePanel({
               gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
             }}
           >
-            {preview.clubs.map((club) => (
+            {preview.clubs.map((club) => {
+              const starRating10 = resolveEaTeamStarRating10(club.starRating, club.overallRating)
+
+              return (
               <article
                 key={club.id}
                 style={{
@@ -229,7 +233,21 @@ export function EaPremierLeagueLivePanel({
                 <div style={{ display: 'grid', justifyItems: 'center', gap: 14 }}>
                   <ClubAvatar club={club} size={92} />
                   <div style={{ textAlign: 'center' }}>
-                    <strong style={{ display: 'block', fontSize: 26, lineHeight: 1.05 }}>{club.name}</strong>
+                    <strong
+                      style={{
+                        display: 'block',
+                        fontSize: club.name.length >= 22 ? 20 : club.name.length >= 16 ? 23 : 26,
+                        lineHeight: 1.02,
+                        maxWidth: '100%',
+                        overflowWrap: 'anywhere',
+                        textWrap: 'balance',
+                      }}
+                    >
+                      {club.name}
+                    </strong>
+                    <div style={{ marginTop: 10, display: 'flex', justifyContent: 'center' }}>
+                      <StarMeter rating10={starRating10} />
+                    </div>
                   </div>
                 </div>
 
@@ -271,14 +289,15 @@ export function EaPremierLeagueLivePanel({
                     style={{
                       fontSize: 11,
                       color: 'rgba(226,232,240,0.58)',
-                      textAlign: 'right',
+                      textAlign: 'center',
                     }}
                   >
                     Updated: {new Date(preview.fetchedAt).toLocaleString()}
                   </div>
                 </div>
               </article>
-            ))}
+              )
+            })}
           </div>
         </>
       ) : null}
@@ -344,6 +363,42 @@ function DeltaTriangle({ delta }: { delta: number | null }) {
         display: 'inline-block',
       }}
     />
+  )
+}
+
+function StarMeter({ rating10 }: { rating10: number | null }) {
+  const fillWidth = Math.max(0, Math.min(100, ((rating10 ?? 0) / 10) * 100))
+
+  return (
+    <div style={{ display: 'grid', gap: 4, justifyItems: 'center' }}>
+      <div
+        aria-label={rating10 === null ? 'No stars' : `${(rating10 / 2).toFixed(1)} stars`}
+        style={{
+          position: 'relative',
+          display: 'inline-block',
+          fontSize: 18,
+          letterSpacing: 2,
+          lineHeight: 1,
+        }}
+      >
+        <span style={{ color: 'rgba(226,232,240,0.26)' }}>★★★★★</span>
+        <span
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: `${fillWidth}%`,
+            overflow: 'hidden',
+            color: '#facc15',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          ★★★★★
+        </span>
+      </div>
+      <span style={{ fontSize: 11, opacity: 0.72 }}>
+        {rating10 === null ? 'No stars' : `${(rating10 / 2).toFixed(1)} stars`}
+      </span>
+    </div>
   )
 }
 

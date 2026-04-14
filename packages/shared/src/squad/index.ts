@@ -1,6 +1,10 @@
 export { diffSquads } from './diff.js'
 export type { DiffSquadsInput } from './diff.js'
 export {
+  deriveTeamStarRating10FromOverall,
+  resolveEaTeamStarRating10,
+} from './stars.js'
+export {
   buildEaContentUrl,
   decodeEaRosterText,
   extractRosterUpdatePlatformMetadata,
