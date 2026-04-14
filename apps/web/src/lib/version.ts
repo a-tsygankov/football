@@ -8,4 +8,5 @@ export interface WorkerVersionInfo {
   minClientVersion: string
   gitSha: string | null
   builtAt: string
+  latestSquadVersion?: string | null
 }

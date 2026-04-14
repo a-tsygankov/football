@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { SquadLeague } from '@fc26/shared'
 import type { AppContext } from '../app.js'
 
 /**
@@ -41,6 +42,30 @@ squadRoutes.get('/squads/:version/clubs', async (c) => {
   return c.json({ version, clubs })
 })
 
+squadRoutes.get('/squads/latest/leagues', async (c) => {
+  const { squadStorage, squadVersions } = c.get('deps')
+  const latest = await squadVersions.latest()
+  if (!latest) {
+    c.get('logger').warn('squad-sync', 'no squad versions ingested yet')
+    return c.json({ error: 'no_squad_data' }, 503)
+  }
+  const clubs = await squadStorage.getClubs(latest.version)
+  if (!clubs) {
+    c.get('logger').error('squad-sync', 'latest version missing clubs in R2', {
+      version: latest.version,
+    })
+    return c.json({ error: 'squad_data_missing' }, 500)
+  }
+  return c.json({ version: latest.version, leagues: deriveLeagues(clubs) })
+})
+
+squadRoutes.get('/squads/:version/leagues', async (c) => {
+  const version = c.req.param('version')
+  const clubs = await c.get('deps').squadStorage.getClubs(version)
+  if (!clubs) return c.json({ error: 'not_found', version }, 404)
+  return c.json({ version, leagues: deriveLeagues(clubs) })
+})
+
 squadRoutes.get('/squads/:version/players/:clubId', async (c) => {
   const version = c.req.param('version')
   const clubIdRaw = c.req.param('clubId')
@@ -65,3 +90,29 @@ squadRoutes.get('/squads/:version/diff', async (c) => {
   }
   return c.json(diff)
 })
+
+function deriveLeagues(clubs: ReadonlyArray<{
+  leagueId: number
+  leagueName: string
+  leagueLogoUrl?: string | null
+}>): ReadonlyArray<SquadLeague> {
+  const grouped = new Map<number, SquadLeague>()
+  for (const club of clubs) {
+    const existing = grouped.get(club.leagueId)
+    if (existing) {
+      grouped.set(club.leagueId, {
+        ...existing,
+        clubCount: existing.clubCount + 1,
+        logoUrl: existing.logoUrl ?? club.leagueLogoUrl ?? null,
+      })
+      continue
+    }
+    grouped.set(club.leagueId, {
+      id: club.leagueId,
+      name: club.leagueName,
+      logoUrl: club.leagueLogoUrl ?? null,
+      clubCount: 1,
+    })
+  }
+  return [...grouped.values()].sort((left, right) => left.name.localeCompare(right.name))
+}

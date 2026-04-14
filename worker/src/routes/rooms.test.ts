@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   ROOM_SESSION_HEADER,
+  type RefreshRoomSquadAssetsResponse,
+  type ResetRoomSquadsResponse,
+  type RetrieveRoomSquadsResponse,
   type RoomBootstrapResponse,
   type RoomScoreboardResponse,
 } from '@fc26/shared'
@@ -56,7 +59,10 @@ function buildTestApp() {
       squadVersions,
     }),
   })
-  return app
+  return Object.assign(app, {
+    squadStorage,
+    squadVersions,
+  })
 }
 
 function cookieFrom(res: Response): string {
@@ -144,6 +150,258 @@ describe('room routes', () => {
     const bootstrap = (await bootstrapRes.json()) as RoomBootstrapResponse
     expect(bootstrap.gamers).toHaveLength(1)
     expect(bootstrap.session.token).toBe(created.session.token)
+  })
+
+  it('refreshes squad assets from the room settings route', async () => {
+    const app = buildTestApp()
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Settings Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const created = (await createRes.json()) as RoomBootstrapResponse
+    await app.squadVersions.insert({
+      version: 'fc26-r11',
+      releasedAt: null,
+      ingestedAt: 2_000,
+      clubsBytes: 1,
+      clubCount: 1,
+      playerCount: 0,
+      sourceUrl: 'https://example.com',
+      notes: null,
+    })
+    await app.squadStorage.putClubs('fc26-r11', [
+      {
+        id: 1,
+        name: 'Arsenal',
+        shortName: 'ARS',
+        leagueId: 13,
+        leagueName: 'Premier League',
+        nationId: 14,
+        overallRating: 84,
+        attackRating: 84,
+        midfieldRating: 84,
+        defenseRating: 82,
+        avatarUrl: null,
+        logoUrl: 'https://placeholder.example/arsenal.png',
+        starRating: 4,
+      },
+    ])
+
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async (input) => {
+      const url = String(input)
+      if (url.endsWith('/all_leagues.php')) {
+        return Response.json({
+          leagues: [
+            {
+              idLeague: '4328',
+              strSport: 'Soccer',
+              strLeague: 'English Premier League',
+              strLeagueAlternate: 'Premier League, EPL, England',
+            },
+          ],
+        })
+      }
+      if (url.includes('/search_all_teams.php?l=')) {
+        return Response.json({
+          teams: [
+            {
+              idTeam: '133604',
+              idLeague: '4328',
+              strTeam: 'Arsenal',
+              strTeamAlternate: 'Arsenal Football Club, AFC, Arsenal FC',
+              strLeague: 'English Premier League',
+              strBadge: 'https://assets.example/teams/arsenal.png',
+            },
+          ],
+        })
+      }
+      if (url.includes('/lookupleague.php?id=4328')) {
+        return Response.json({
+          leagues: [
+            {
+              idLeague: '4328',
+              strLeague: 'English Premier League',
+              strBadge: 'https://assets.example/leagues/epl.png',
+            },
+          ],
+        })
+      }
+      throw new Error(`unexpected URL ${url}`)
+    }) as typeof fetch
+
+    try {
+      const refreshRes = await app.fetch(
+        new Request(`http://localhost/api/rooms/${created.room.id}/settings/squad-assets/refresh`, {
+          method: 'POST',
+          headers: {
+            [ROOM_SESSION_HEADER]: created.session.token!,
+          },
+        }),
+        env,
+        execCtx(),
+      )
+      expect(refreshRes.status).toBe(200)
+      const body = (await refreshRes.json()) as RefreshRoomSquadAssetsResponse
+      expect(body.result.status).toBe('refreshed')
+      const updated = await app.squadStorage.getClubs('fc26-r11')
+      expect(updated?.[0]?.logoUrl).toBe('https://assets.example/teams/arsenal.png')
+      expect(updated?.[0]?.leagueLogoUrl).toBe('https://assets.example/leagues/epl.png')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('retrieves squad clubs and players from settings', async () => {
+    const app = buildTestApp()
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Sync Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const created = (await createRes.json()) as RoomBootstrapResponse
+
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async (input) => {
+      const url = String(input)
+      if (url === 'https://snapshots.example/latest.json') {
+        return Response.json({
+          version: 'fc26-r12',
+          releasedAt: 1_710_000_000_000,
+          clubs: [
+            {
+              id: 1,
+              name: 'Arsenal',
+              shortName: 'ARS',
+              leagueId: 13,
+              leagueName: 'Premier League',
+              nationId: 14,
+              overallRating: 84,
+              attackRating: 84,
+              midfieldRating: 84,
+              defenseRating: 82,
+              avatarUrl: null,
+              logoUrl: 'https://placeholder.example/arsenal.png',
+              starRating: 4,
+            },
+          ],
+          players: [
+            {
+              id: 100,
+              clubId: 1,
+              name: 'Bukayo Saka',
+              avatarUrl: null,
+              position: 'RW',
+              nationId: 14,
+              overall: 89,
+              attributes: {
+                pace: 90,
+                shooting: 84,
+                passing: 83,
+                dribbling: 90,
+                defending: 60,
+                physical: 72,
+              },
+            },
+          ],
+        })
+      }
+      throw new Error(`unexpected URL ${url}`)
+    }) as typeof fetch
+
+    try {
+      const syncEnv: Env = {
+        ...env,
+        SQUAD_SYNC_SOURCE_KIND: 'json-snapshot',
+        SQUAD_SYNC_SOURCE_URL: 'https://snapshots.example/latest.json',
+      }
+      const retrieveRes = await app.fetch(
+        new Request(`http://localhost/api/rooms/${created.room.id}/settings/squads/retrieve`, {
+          method: 'POST',
+          headers: {
+            [ROOM_SESSION_HEADER]: created.session.token!,
+          },
+        }),
+        syncEnv,
+        execCtx(),
+      )
+      expect(retrieveRes.status).toBe(200)
+      const body = (await retrieveRes.json()) as RetrieveRoomSquadsResponse
+      expect(body.result.status).toBe('ingested')
+      expect((await app.squadVersions.latest())?.version).toBe('fc26-r12')
+      expect(await app.squadStorage.getPlayersForClub('fc26-r12', 1)).toHaveLength(1)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('fully resets stored squad data from settings', async () => {
+    const app = buildTestApp()
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Reset Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const created = (await createRes.json()) as RoomBootstrapResponse
+    await app.squadVersions.insert({
+      version: 'fc26-r10',
+      releasedAt: null,
+      ingestedAt: 1_000,
+      clubsBytes: 1,
+      clubCount: 1,
+      playerCount: 0,
+      sourceUrl: 'https://example.com',
+      notes: null,
+    })
+    await app.squadStorage.putClubs('fc26-r10', [
+      {
+        id: 1,
+        name: 'Arsenal',
+        shortName: 'ARS',
+        leagueId: 13,
+        leagueName: 'Premier League',
+        nationId: 14,
+        overallRating: 84,
+        attackRating: 84,
+        midfieldRating: 84,
+        defenseRating: 82,
+        avatarUrl: null,
+        logoUrl: 'https://placeholder.example/arsenal.png',
+        starRating: 4,
+      },
+    ])
+    await app.squadStorage.setLatestVersion('fc26-r10')
+
+    const resetRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${created.room.id}/settings/squads/reset`, {
+        method: 'POST',
+        headers: {
+          [ROOM_SESSION_HEADER]: created.session.token!,
+        },
+      }),
+      env,
+      execCtx(),
+    )
+    expect(resetRes.status).toBe(200)
+    const body = (await resetRes.json()) as ResetRoomSquadsResponse
+    expect(body.result.status).toBe('reset')
+    expect(body.result.deletedVersionCount).toBe(1)
+    expect(await app.squadVersions.latest()).toBeNull()
+    expect(await app.squadStorage.getLatestVersion()).toBeNull()
+    expect(await app.squadStorage.getClubs('fc26-r10')).toBeNull()
   })
 
   it('rejects a wrong PIN and accepts the correct one', async () => {

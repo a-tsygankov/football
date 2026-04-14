@@ -19,6 +19,8 @@ export interface ISquadStorage {
   getLatestVersion(): Promise<string | null>
   /** Atomically sets the latest version pointer. */
   setLatestVersion(version: string): Promise<void>
+  /** Clears the latest version pointer after a full reset. */
+  clearLatestVersion(): Promise<void>
 
   /** Reads the clubs shard for a specific version. */
   getClubs(version: string): Promise<ReadonlyArray<Club> | null>

@@ -21,6 +21,10 @@ export class InMemorySquadStorage implements ISquadStorage {
     this.entries.set(squadKeys('').latestPointer, { version })
   }
 
+  async clearLatestVersion(): Promise<void> {
+    this.entries.delete(squadKeys('').latestPointer)
+  }
+
   async getClubs(version: string): Promise<ReadonlyArray<Club> | null> {
     const value = this.entries.get(squadKeys(version).clubs) as
       | ReadonlyArray<Club>

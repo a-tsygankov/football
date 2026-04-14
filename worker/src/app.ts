@@ -10,6 +10,7 @@ import { versionRoutes } from './routes/version.js'
 import { healthRoutes } from './routes/health.js'
 import { roomRoutes } from './routes/rooms.js'
 import { squadRoutes } from './routes/squads.js'
+import { squadSyncRoutes, SQUAD_SYNC_SECRET_HEADER } from './routes/squad-sync.js'
 
 /** Hono variables exposed to every route. */
 export interface AppVariables {
@@ -42,7 +43,12 @@ export function buildApp(options: BuildAppOptions = {}): Hono<AppContext> {
     cors({
       origin: (origin) => origin,
       allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowHeaders: ['Content-Type', CORRELATION_HEADER, ROOM_SESSION_HEADER],
+      allowHeaders: [
+        'Content-Type',
+        CORRELATION_HEADER,
+        ROOM_SESSION_HEADER,
+        SQUAD_SYNC_SECRET_HEADER,
+      ],
       exposeHeaders: [LOG_HEADER],
       credentials: true,
       maxAge: 86_400,
@@ -60,6 +66,7 @@ export function buildApp(options: BuildAppOptions = {}): Hono<AppContext> {
   app.route('/api', healthRoutes)
   app.route('/api', roomRoutes)
   app.route('/api', squadRoutes)
+  app.route('/api', squadSyncRoutes)
 
   app.notFound((c) => c.json({ error: 'not_found', path: c.req.path }, 404))
 

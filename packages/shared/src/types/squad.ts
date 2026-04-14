@@ -17,6 +17,8 @@ export interface Club {
   readonly shortName: string
   readonly leagueId: number
   readonly leagueName: string
+  /** Optional league badge URL, refreshed separately from squad stat ingests. */
+  readonly leagueLogoUrl?: string | null
   readonly nationId: number
   /** 1..99 */
   readonly overallRating: number
@@ -136,4 +138,57 @@ export interface SquadDiff {
   readonly clubChanges: ReadonlyArray<ClubFieldChange>
   readonly addedPlayers: ReadonlyArray<FcPlayerRosterEntry>
   readonly removedPlayers: ReadonlyArray<FcPlayerRosterEntry>
+}
+
+/**
+ * A full, normalized squad snapshot ready for ingestion.
+ *
+ * Upstream FC 26 updates are treated as full snapshots in this codebase.
+ * Historical diffs are generated during ingest and stored alongside the
+ * snapshot; they are not the upstream source of truth.
+ */
+export interface SquadSnapshot {
+  readonly version: string
+  readonly releasedAt: number | null
+  readonly sourceUrl: string
+  readonly notes: string | null
+  readonly clubs: ReadonlyArray<Club>
+  readonly players: ReadonlyArray<FcPlayer>
+}
+
+export interface SquadLeague {
+  readonly id: number
+  readonly name: string
+  readonly logoUrl: string | null
+  readonly clubCount: number
+}
+
+export type SquadSyncStatus = 'disabled' | 'noop' | 'ingested'
+
+export interface SquadSyncResult {
+  readonly status: SquadSyncStatus
+  readonly version: string | null
+  readonly sourceKind: string | null
+  readonly sourceUrl: string | null
+  readonly releasedAt: number | null
+  readonly previousVersion: string | null
+  readonly clubCount: number
+  readonly playerCount: number
+  readonly retainedVersions: number
+}
+
+export interface SquadAssetRefreshResult {
+  readonly status: 'refreshed' | 'noop'
+  readonly versionCount: number
+  readonly clubCount: number
+  readonly updatedClubCount: number
+  readonly matchedClubCount: number
+  readonly matchedLeagueCount: number
+  readonly unmatchedClubs: ReadonlyArray<string>
+  readonly unmatchedLeagues: ReadonlyArray<string>
+}
+
+export interface SquadResetResult {
+  readonly status: 'reset' | 'noop'
+  readonly deletedVersionCount: number
 }

@@ -30,6 +30,10 @@ export class R2SquadStorage implements ISquadStorage {
     )
   }
 
+  async clearLatestVersion(): Promise<void> {
+    await this.bucket.delete(squadKeys('').latestPointer)
+  }
+
   async getClubs(version: string): Promise<ReadonlyArray<Club> | null> {
     const obj = await this.bucket.get(squadKeys(version).clubs)
     if (!obj) return null

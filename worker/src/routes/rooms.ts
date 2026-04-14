@@ -27,6 +27,9 @@ import {
   type JoinRoomRequest,
   mulberry32,
   normalizeNameStem,
+  type RefreshRoomSquadAssetsResponse,
+  type ResetRoomSquadsResponse,
+  type RetrieveRoomSquadsResponse,
   ROOM_SESSION_HEADER,
   type RecordCurrentGameResultRequest,
   type Room,
@@ -54,6 +57,11 @@ import {
 } from '../auth/session.js'
 import { toRoomSummary } from '../rooms/repository.js'
 import { toPublicGamer } from '../gamers/repository.js'
+import { resolveSquadAssetRefreshConfig } from '../squad/asset-config.js'
+import { SquadAssetRefreshService } from '../squad/asset-refresh-service.js'
+import { resolveSquadSyncConfig } from '../squad/sync-config.js'
+import { SquadSyncService } from '../squad/sync-service.js'
+import { SquadResetService } from '../squad/reset-service.js'
 
 const GAME_NIGHT_IDLE_TIMEOUT_MS = 12 * 60 * 60 * 1000
 type RouteContext = Context<AppContext>
@@ -237,6 +245,53 @@ roomRoutes.get('/rooms/:roomId/scoreboard', async (c) => {
   const session = await requireRoomSession(c, roomId)
   if (!session) return c.json({ error: 'unauthorized' }, 401)
   return c.json(await buildScoreboard(c, roomId))
+})
+
+roomRoutes.post('/rooms/:roomId/settings/squad-assets/refresh', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const service = new SquadAssetRefreshService({
+    config: resolveSquadAssetRefreshConfig(c.env),
+    fetchImpl: fetch,
+    logger: c.get('logger'),
+    squadStorage: c.get('deps').squadStorage,
+    squadVersions: c.get('deps').squadVersions,
+  })
+  const result = await service.refreshLogos()
+  return c.json({ result } satisfies RefreshRoomSquadAssetsResponse)
+})
+
+roomRoutes.post('/rooms/:roomId/settings/squads/retrieve', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const service = new SquadSyncService({
+    config: resolveSquadSyncConfig(c.env),
+    fetchImpl: fetch,
+    logger: c.get('logger'),
+    now: () => Date.now(),
+    squadStorage: c.get('deps').squadStorage,
+    squadVersions: c.get('deps').squadVersions,
+  })
+  const result = await service.syncLatest()
+  return c.json({ result } satisfies RetrieveRoomSquadsResponse)
+})
+
+roomRoutes.post('/rooms/:roomId/settings/squads/reset', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const service = new SquadResetService({
+    logger: c.get('logger'),
+    squadStorage: c.get('deps').squadStorage,
+    squadVersions: c.get('deps').squadVersions,
+  })
+  const result = await service.resetAll()
+  return c.json({ result } satisfies ResetRoomSquadsResponse)
 })
 
 roomRoutes.post('/rooms/:roomId/gamers', async (c) => {

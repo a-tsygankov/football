@@ -10,6 +10,7 @@ import type {
 } from './domain.js'
 import type { GameResult } from './events.js'
 import type { RoomId } from './ids.js'
+import type { SquadAssetRefreshResult, SquadResetResult, SquadSyncResult } from './squad.js'
 
 export interface RoomSessionInfo {
   roomId: RoomId
@@ -136,4 +137,16 @@ export interface RoomScoreboardResponse {
   gamerRowsWithoutTeamGames: ReadonlyArray<GamerScoreboardRow>
   gamerTeamRows: ReadonlyArray<GamerTeamScoreboardRow>
   updatedAt: number | null
+}
+
+export interface RefreshRoomSquadAssetsResponse {
+  result: SquadAssetRefreshResult
+}
+
+export interface RetrieveRoomSquadsResponse {
+  result: SquadSyncResult
+}
+
+export interface ResetRoomSquadsResponse {
+  result: SquadResetResult
 }

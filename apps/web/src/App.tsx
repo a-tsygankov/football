@@ -13,7 +13,10 @@ import {
   listStrategies,
   normalizeNameStem,
   type RecordCurrentGameResultRequest,
+  type RefreshRoomSquadAssetsResponse,
+  type ResetRoomSquadsResponse,
   type ResolveCurrentGameResponse,
+  type RetrieveRoomSquadsResponse,
   type RoomBootstrapResponse,
   type RoomScoreboardResponse,
   type UpdateGamerRequest,
@@ -38,6 +41,9 @@ type BusyState =
   | 'creating-game'
   | 'recording-game'
   | 'interrupting-game'
+  | 'refreshing-squad-assets'
+  | 'retrieving-squad-data'
+  | 'resetting-squad-data'
   | null
 
 export function App() {
@@ -47,6 +53,7 @@ export function App() {
   const [scoreboard, setScoreboard] = useState<RoomScoreboardResponse | null>(null)
   const [busy, setBusy] = useState<BusyState>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
   const [createName, setCreateName] = useState('')
   const [createPin, setCreatePin] = useState('')
@@ -119,6 +126,83 @@ export function App() {
         roomId,
         error: err instanceof Error ? err.message : String(err),
       })
+    }
+  }
+
+  async function refreshSquadAssets(roomId: string): Promise<void> {
+    setBusy('refreshing-squad-assets')
+    setError(null)
+    setNotice(null)
+    try {
+      const response = await apiJson<RefreshRoomSquadAssetsResponse>(
+        `/api/rooms/${roomId}/settings/squad-assets/refresh`,
+        {
+          method: 'POST',
+        },
+      )
+      const { result } = response
+      setNotice(
+        result.status === 'refreshed'
+          ? `Logos refreshed across ${result.versionCount} stored squad versions. Matched ${result.matchedClubCount} clubs and ${result.matchedLeagueCount} leagues.`
+          : 'No stored squad logos needed updating.',
+      )
+      void apiJson<WorkerVersionInfo>('/api/version')
+        .then((value) => setWorker(value))
+        .catch(() => undefined)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function retrieveSquadData(roomId: string): Promise<void> {
+    setBusy('retrieving-squad-data')
+    setError(null)
+    setNotice(null)
+    try {
+      const response = await apiJson<RetrieveRoomSquadsResponse>(
+        `/api/rooms/${roomId}/settings/squads/retrieve`,
+        { method: 'POST' },
+      )
+      const { result } = response
+      setNotice(
+        result.status === 'ingested'
+          ? `Fetched squad clubs and players for ${result.version}. Stored ${result.clubCount} clubs and ${result.playerCount} players.`
+          : result.status === 'noop'
+            ? `Squad version ${result.version ?? 'unknown'} is already stored.`
+            : 'Squad retrieval is disabled because no upstream source is configured.',
+      )
+      void apiJson<WorkerVersionInfo>('/api/version')
+        .then((value) => setWorker(value))
+        .catch(() => undefined)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function resetSquadData(roomId: string): Promise<void> {
+    setBusy('resetting-squad-data')
+    setError(null)
+    setNotice(null)
+    try {
+      const response = await apiJson<ResetRoomSquadsResponse>(
+        `/api/rooms/${roomId}/settings/squads/reset`,
+        { method: 'POST' },
+      )
+      const { result } = response
+      setNotice(
+        result.status === 'reset'
+          ? `Deleted ${result.deletedVersionCount} stored squad version${result.deletedVersionCount === 1 ? '' : 's'}.`
+          : 'No stored squad data was present to reset.',
+      )
+      setWorker((current) => (current ? { ...current, latestSquadVersion: null } : current))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -496,6 +580,17 @@ export function App() {
             }
             tone={workerError ? 'warn' : 'light'}
           />
+          <StatusCard
+            label="Squads"
+            value={
+              worker
+                ? worker.latestSquadVersion
+                  ? worker.latestSquadVersion
+                  : 'unseeded'
+                : 'loading...'
+            }
+            tone={worker?.latestSquadVersion ? 'light' : 'warn'}
+          />
         </section>
 
         {error ? (
@@ -513,11 +608,26 @@ export function App() {
             {error}
           </div>
         ) : null}
+        {notice ? (
+          <div
+            style={{
+              marginTop: 16,
+              padding: '14px 16px',
+              borderRadius: 18,
+              background: '#ecfdf5',
+              border: '1px solid #86efac',
+              color: '#166534',
+            }}
+          >
+            {notice}
+          </div>
+        ) : null}
 
         {bootstrap ? (
           <RoomScreen
             bootstrap={bootstrap}
             busy={busy}
+            latestSquadVersion={worker?.latestSquadVersion ?? null}
             gamerName={gamerName}
             gamerRating={gamerRating}
             gamerPin={gamerPin}
@@ -531,6 +641,9 @@ export function App() {
             onInterruptGame={interruptGame}
             onRecordGameResult={recordGameResult}
             onRefresh={() => refreshRoom(bootstrap.room.id)}
+            onResetSquadData={() => resetSquadData(bootstrap.room.id)}
+            onRetrieveSquadData={() => retrieveSquadData(bootstrap.room.id)}
+            onRefreshSquadAssets={() => refreshSquadAssets(bootstrap.room.id)}
             scoreboard={scoreboard}
             onSaveActiveGameNightGamers={saveActiveGameNightGamers}
             onStartGameNight={startGameNight}
@@ -673,6 +786,7 @@ function LandingScreen({
 function RoomScreen({
   bootstrap,
   busy,
+  latestSquadVersion,
   scoreboard,
   gamerName,
   gamerRating,
@@ -687,6 +801,9 @@ function RoomScreen({
   onInterruptGame,
   onRecordGameResult,
   onRefresh,
+  onResetSquadData,
+  onRetrieveSquadData,
+  onRefreshSquadAssets,
   onSaveActiveGameNightGamers,
   onStartGameNight,
   onToggleGamer,
@@ -694,6 +811,7 @@ function RoomScreen({
 }: {
   bootstrap: RoomBootstrapResponse
   busy: BusyState
+  latestSquadVersion: string | null
   scoreboard: RoomScoreboardResponse | null
   gamerName: string
   gamerRating: string
@@ -716,6 +834,9 @@ function RoomScreen({
     request: RecordCurrentGameResultRequest,
   ) => Promise<void>
   onRefresh: () => Promise<void>
+  onResetSquadData: () => Promise<void>
+  onRetrieveSquadData: () => Promise<void>
+  onRefreshSquadAssets: () => Promise<void>
   onSaveActiveGameNightGamers: (
     gameNightId: string,
     activeGamerIds: string[],
@@ -1510,6 +1631,70 @@ function RoomScreen({
               ))}
             </div>
           )}
+        </Panel>
+      </section>
+
+      <section style={{ marginTop: 18 }}>
+        <Panel
+          title="Settings"
+          subtitle="Manual maintenance only. Squad logo refresh stays off the daily squad stat sync."
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 18,
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+              }}
+            >
+              <strong style={{ display: 'block', fontSize: 16 }}>Squad source maintenance</strong>
+              <p style={{ margin: '8px 0 0', fontSize: 14, opacity: 0.76 }}>
+                Latest stored squad version: {latestSquadVersion ?? 'unseeded'}.
+                Pull clubs and players manually, refresh static logos only from here, or wipe stored
+                squad data completely.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void onRetrieveSquadData()}
+              style={primaryButtonStyle}
+            >
+              {busy === 'retrieving-squad-data'
+                ? 'Retrieving clubs and players...'
+                : 'Retrieve club and player data'}
+            </button>
+            <button
+              type="button"
+              disabled={busy !== null || !latestSquadVersion}
+              onClick={() => void onRefreshSquadAssets()}
+              style={secondaryButtonStyle}
+            >
+              {busy === 'refreshing-squad-assets'
+                ? 'Refreshing logos...'
+                : 'Refresh squad logos'}
+            </button>
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void onResetSquadData()}
+              style={{
+                ...secondaryButtonStyle,
+                background: '#fef2f2',
+                borderColor: '#fecaca',
+                color: '#991b1b',
+              }}
+            >
+              {busy === 'resetting-squad-data' ? 'Resetting squad data...' : 'Full reset squad data'}
+            </button>
+            {!latestSquadVersion ? (
+              <InlineNotice
+                tone="warn"
+                message="Retrieve squad clubs and players first, then refresh club and league logos from here."
+              />
+            ) : null}
+          </div>
         </Panel>
       </section>
 

@@ -19,6 +19,22 @@ WORKER_VERSION = "0.1.0"
 SCHEMA_VERSION = "1"
 MIN_CLIENT_VERSION = "0.1.0"
 SESSION_SECRET = "fc26-local-dev-session-secret"
+SQUAD_SYNC_RETENTION_COUNT = "12"
+# Choose one source mode:
+# - json-snapshot: fetch a single full snapshot JSON from SQUAD_SYNC_SOURCE_URL
+# - ea-rosterupdate-json: scrape EA's rosterupdate.xml for the latest version,
+#   then fetch the normalized snapshot from SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE
+#   with {version} and {platform} placeholders.
+# SQUAD_SYNC_SOURCE_KIND = "json-snapshot"
+# SQUAD_SYNC_SOURCE_URL = "https://example.com/fc26/latest.json"
+# SQUAD_SYNC_SOURCE_KIND = "ea-rosterupdate-json"
+# SQUAD_SYNC_DISCOVERY_URL = "https://eafc26.content.easports.com/fc/fltOnlineAssets/26E4D4D6-8DBB-4A9A-BD99-9C47D3AA341D/2026/fc/fclive/genxtitle/rosterupdate.xml"
+# SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE = "https://example.com/fc26/{version}.json"
+# SQUAD_SYNC_PLATFORM = "PC64"
+# On-demand club + league logo refresh (triggered from the app Settings panel):
+# SQUAD_ASSET_PROVIDER_BASE_URL = "https://www.thesportsdb.com/api/v1/json/123"
+# Optional exact-name overrides when EA and provider league names differ.
+# SQUAD_ASSET_LEAGUE_ALIASES_JSON = "{\"Premier League\":\"English Premier League\"}"
 
 # Phase 1 bindings. The Worker boots without these (falls back to in-memory
 # stores in src/dependencies.ts so the scaffold stays runnable), but the

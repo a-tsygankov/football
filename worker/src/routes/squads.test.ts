@@ -165,6 +165,39 @@ describe('squad routes', () => {
     expect(body.clubs).toEqual([club])
   })
 
+  it('GET /api/squads/:version/leagues derives league rows from clubs', async () => {
+    const { app, squadStorage } = buildTestApp()
+    await squadStorage.putClubs('fc26-r10', [
+      { ...club, leagueLogoUrl: 'https://r2.example/leagues/13.png' },
+      {
+        ...club,
+        id: 2,
+        name: 'Arsenal',
+        shortName: 'ARS',
+        logoUrl: 'https://r2.example/logos/2.png',
+      },
+    ])
+    const res = await app.fetch(
+      new Request('http://localhost/api/squads/fc26-r10/leagues'),
+      env,
+      execCtx(),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      version: string
+      leagues: Array<{ id: number; name: string; logoUrl: string | null; clubCount: number }>
+    }
+    expect(body.version).toBe('fc26-r10')
+    expect(body.leagues).toEqual([
+      {
+        id: 13,
+        name: 'Premier League',
+        logoUrl: 'https://r2.example/leagues/13.png',
+        clubCount: 2,
+      },
+    ])
+  })
+
   it('GET /api/squads/:version/clubs returns 404 for unknown version', async () => {
     const { app } = buildTestApp()
     const res = await app.fetch(

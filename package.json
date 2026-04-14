@@ -14,7 +14,8 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "dev:web": "pnpm --filter @fc26/web dev",
-    "dev:worker": "pnpm --filter @fc26/worker dev"
+    "dev:worker": "pnpm --filter @fc26/worker dev",
+    "sync:squads": "pnpm --filter @fc26/squad-sync sync"
   },
   "devDependencies": {
     "typescript": "^5.6.3",
