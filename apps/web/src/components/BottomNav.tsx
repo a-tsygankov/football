@@ -2,18 +2,16 @@ import { useDebugConsole } from '../debug/console-store.js'
 import { useTripleTap } from '../debug/use-triple-tap.js'
 import { logger } from '../lib/logger.js'
 
-/**
- * Always-visible bottom navigation. Holds the four mode tabs and the logo
- * button in the centre. Triple-tapping the logo toggles the debug Console.
- *
- * Mode tabs are inert placeholders at Phase 0 — they render but do not
- * navigate anywhere yet. Phase 2 wires TanStack Router.
- */
 type Mode = 'game' | 'dashboard' | 'teams' | 'changes'
 
-const MODES: ReadonlyArray<{ id: Mode; label: string }> = [
-  { id: 'game', label: 'Game' },
-  { id: 'dashboard', label: 'Scoreboard' },
+const SECTION_TARGETS: Readonly<Partial<Record<Mode, string>>> = {
+  game: 'fc26-game-section',
+  dashboard: 'fc26-scoreboard-section',
+}
+
+const MODES: ReadonlyArray<{ id: Mode; label: string; targetId?: string }> = [
+  { id: 'game', label: 'Game', targetId: SECTION_TARGETS.game },
+  { id: 'dashboard', label: 'Scoreboard', targetId: SECTION_TARGETS.dashboard },
   { id: 'teams', label: 'Teams' },
   { id: 'changes', label: 'Changes' },
 ]
@@ -24,6 +22,13 @@ export function BottomNav() {
     logger.info('system', 'debug console toggled')
     toggleConsole()
   })
+
+  function scrollToSection(targetId?: string): void {
+    if (!targetId) return
+    const target = document.getElementById(targetId)
+    if (!target) return
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   return (
     <nav
@@ -44,8 +49,8 @@ export function BottomNav() {
         zIndex: 10,
       }}
     >
-      <ModeButton mode={MODES[0]!} />
-      <ModeButton mode={MODES[1]!} />
+      <ModeButton mode={MODES[0]!} onSelect={scrollToSection} />
+      <ModeButton mode={MODES[1]!} onSelect={scrollToSection} />
       <button
         type="button"
         aria-label="FC26 Team Picker"
@@ -64,24 +69,34 @@ export function BottomNav() {
       >
         FC26
       </button>
-      <ModeButton mode={MODES[2]!} />
-      <ModeButton mode={MODES[3]!} />
+      <ModeButton mode={MODES[2]!} onSelect={scrollToSection} />
+      <ModeButton mode={MODES[3]!} onSelect={scrollToSection} />
     </nav>
   )
 }
 
-function ModeButton({ mode }: { mode: { id: Mode; label: string } }) {
+function ModeButton({
+  mode,
+  onSelect,
+}: {
+  mode: { id: Mode; label: string; targetId?: string }
+  onSelect: (targetId?: string) => void
+}) {
+  const enabled = Boolean(mode.targetId)
   return (
     <button
       type="button"
+      disabled={!enabled}
+      aria-disabled={!enabled}
+      onClick={() => onSelect(mode.targetId)}
       style={{
         background: 'transparent',
         border: 'none',
         color: 'inherit',
         fontSize: 13,
         padding: '4px 0',
-        cursor: 'pointer',
-        opacity: 0.7,
+        cursor: enabled ? 'pointer' : 'default',
+        opacity: enabled ? 0.7 : 0.35,
       }}
     >
       {mode.label}

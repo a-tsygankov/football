@@ -936,6 +936,7 @@ function RoomScreen({
       </section>
 
       <section
+        id="fc26-game-section"
         style={{
           marginTop: 18,
           display: 'grid',
@@ -1354,7 +1355,7 @@ function RoomScreen({
         </section>
       ) : null}
 
-      <section style={{ marginTop: 18 }}>
+      <section id="fc26-scoreboard-section" style={{ marginTop: 18 }}>
         <Panel
           title="Scoreboard"
           subtitle="Best gamers and gamer teams. Pair standings only count results earned together."
