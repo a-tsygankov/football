@@ -891,11 +891,19 @@ describe('App shell', () => {
     expect(
       screen.getByText(/Best gamers and gamer teams\. Pair standings only count results earned together\./i),
     ).toBeInTheDocument()
-    expect(screen.getByText('9 pts', { exact: false })).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        (_content, node) => node?.tagName === 'ARTICLE' && node.textContent?.includes('9 pts') === true,
+      ),
+    ).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Ignore team games/i }))
     expect(screen.getByText(/Individual standings count only 1 vs 1 results\./i)).toBeInTheDocument()
-    expect(screen.getByText('6 pts', { exact: false })).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        (_content, node) => node?.tagName === 'ARTICLE' && node.textContent?.includes('6 pts') === true,
+      ),
+    ).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Gamer teams/i }))
     expect(screen.getByText(/Alice \+ Bob|Bob \+ Alice/)).toBeInTheDocument()
