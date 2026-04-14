@@ -6,6 +6,10 @@ import { SquadSyncService } from '../squad/sync-service.js'
 
 const SQUAD_SYNC_SECRET_HEADER = 'x-squad-sync-secret'
 
+function getFetchImpl(): typeof fetch {
+  return globalThis.fetch.bind(globalThis)
+}
+
 export const squadSyncRoutes = new Hono<AppContext>()
 
 squadSyncRoutes.post('/internal/squads/sync', async (c) => {
@@ -30,7 +34,7 @@ squadSyncRoutes.post('/internal/squads/sync', async (c) => {
 
   const service = new SquadSyncService({
     config,
-    fetchImpl: fetch,
+    fetchImpl: getFetchImpl(),
     logger: c.get('logger'),
     now: () => Date.now(),
     squadStorage: c.get('deps').squadStorage,

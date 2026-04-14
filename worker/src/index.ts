@@ -7,6 +7,10 @@ import { SquadSyncService } from './squad/sync-service.js'
 
 const app = buildApp()
 
+function getFetchImpl(): typeof fetch {
+  return globalThis.fetch.bind(globalThis)
+}
+
 export default {
   fetch(req: Request, env: Env, ctx: ExecutionContext) {
     return app.fetch(req, env, ctx)
@@ -21,7 +25,7 @@ async function runScheduledSquadSync(env: Env): Promise<void> {
   const deps = buildDependencies(env)
   const service = new SquadSyncService({
     config: resolveSquadSyncConfig(),
-    fetchImpl: fetch,
+    fetchImpl: getFetchImpl(),
     logger,
     now: () => Date.now(),
     squadStorage: deps.squadStorage,

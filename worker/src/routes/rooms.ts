@@ -69,6 +69,10 @@ import { SquadResetService } from '../squad/reset-service.js'
 const GAME_NIGHT_IDLE_TIMEOUT_MS = 12 * 60 * 60 * 1000
 type RouteContext = Context<AppContext>
 
+function getFetchImpl(): typeof fetch {
+  return globalThis.fetch.bind(globalThis)
+}
+
 const createRoomSchema = z.object({
   name: z.string().trim().min(1).max(80),
   pin: z.string().nullable().optional(),
@@ -286,7 +290,7 @@ roomRoutes.post('/rooms/:roomId/settings/squad-assets/refresh', async (c) => {
 
   const service = new SquadAssetRefreshService({
     config: resolveSquadAssetRefreshConfig(SQUAD_APP_CONFIG.assets),
-    fetchImpl: fetch,
+    fetchImpl: getFetchImpl(),
     logger: c.get('logger'),
     squadStorage: c.get('deps').squadStorage,
     squadVersions: c.get('deps').squadVersions,
@@ -314,7 +318,7 @@ roomRoutes.post('/rooms/:roomId/settings/squads/retrieve', async (c) => {
 
   const service = new SquadSyncService({
     config,
-    fetchImpl: fetch,
+    fetchImpl: getFetchImpl(),
     logger: c.get('logger'),
     now: () => Date.now(),
     squadStorage: c.get('deps').squadStorage,
