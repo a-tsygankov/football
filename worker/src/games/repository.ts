@@ -49,6 +49,8 @@ interface GameRow {
   format: '1v1' | '1v2' | '2v1' | '2v2'
   home_gamer_ids_json: string
   away_gamer_ids_json: string
+  home_club_id: number | null
+  away_club_id: number | null
   selection_strategy_id: string
   random_seed: number | null
   created_at: number
@@ -70,6 +72,8 @@ function rowToCurrentGame(row: GameRow): CurrentGame {
     format: row.format,
     homeGamerIds: parseGamerIds(row.home_gamer_ids_json),
     awayGamerIds: parseGamerIds(row.away_gamer_ids_json),
+    homeClubId: row.home_club_id,
+    awayClubId: row.away_club_id,
     selectionStrategyId: row.selection_strategy_id,
     randomSeed: row.random_seed,
     createdAt: row.created_at,
@@ -98,9 +102,9 @@ export class D1GameRepository implements IGameRepository {
       .prepare(
         `INSERT INTO games
            (id, room_id, game_night_id, status, allocation_mode, format,
-            home_gamer_ids_json, away_gamer_ids_json, selection_strategy_id,
+            home_gamer_ids_json, away_gamer_ids_json, home_club_id, away_club_id, selection_strategy_id,
             random_seed, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
       )
       .bind(
         game.id,
@@ -111,6 +115,8 @@ export class D1GameRepository implements IGameRepository {
         game.format,
         JSON.stringify(game.homeGamerIds),
         JSON.stringify(game.awayGamerIds),
+        game.homeClubId,
+        game.awayClubId,
         game.selectionStrategyId,
         game.randomSeed,
         game.createdAt,
@@ -124,7 +130,8 @@ export class D1GameRepository implements IGameRepository {
       .prepare(
         `UPDATE games
          SET status = ?, allocation_mode = ?, format = ?, home_gamer_ids_json = ?,
-             away_gamer_ids_json = ?, selection_strategy_id = ?, random_seed = ?, updated_at = ?
+             away_gamer_ids_json = ?, home_club_id = ?, away_club_id = ?,
+             selection_strategy_id = ?, random_seed = ?, updated_at = ?
          WHERE id = ? AND room_id = ? AND game_night_id = ?`,
       )
       .bind(
@@ -133,6 +140,8 @@ export class D1GameRepository implements IGameRepository {
         game.format,
         JSON.stringify(game.homeGamerIds),
         JSON.stringify(game.awayGamerIds),
+        game.homeClubId,
+        game.awayClubId,
         game.selectionStrategyId,
         game.randomSeed,
         game.updatedAt,

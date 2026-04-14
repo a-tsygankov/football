@@ -118,6 +118,8 @@ export interface CurrentGame {
   format: GameFormat
   homeGamerIds: readonly GamerId[]
   awayGamerIds: readonly GamerId[]
+  homeClubId: number | null
+  awayClubId: number | null
   selectionStrategyId: string
   randomSeed: number | null
   createdAt: number

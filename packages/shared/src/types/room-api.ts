@@ -89,12 +89,16 @@ export interface CreateCurrentGameManualRequest {
   allocationMode: 'manual'
   homeGamerIds: ReadonlyArray<string>
   awayGamerIds: ReadonlyArray<string>
+  homeClubId?: number | null
+  awayClubId?: number | null
 }
 
 export interface CreateCurrentGameRandomRequest {
   allocationMode: 'random'
   format: GameFormat
   selectionStrategyId?: string
+  homeClubId?: number | null
+  awayClubId?: number | null
 }
 
 export type CreateCurrentGameRequest =
