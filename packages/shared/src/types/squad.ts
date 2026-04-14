@@ -224,6 +224,22 @@ export interface EaSquadPreviewClub {
   readonly country: string | null
   readonly foundInSquad: boolean
   readonly matchTerm: string | null
+  readonly exactTeamName: string | null
+  readonly overallRating: number | null
+  readonly attackRating: number | null
+  readonly midfieldRating: number | null
+  readonly defenseRating: number | null
+  readonly matchdayOverallRating: number | null
+  readonly matchdayAttackRating: number | null
+  readonly matchdayMidfieldRating: number | null
+  readonly matchdayDefenseRating: number | null
+  readonly starRating: number | null
+  readonly ratingDelta: {
+    readonly overall: number | null
+    readonly attack: number | null
+    readonly midfield: number | null
+    readonly defense: number | null
+  }
 }
 
 export interface EaSquadPreviewResponse {

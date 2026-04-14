@@ -111,8 +111,8 @@ export function EaPremierLeagueLivePanel({
 
         <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, opacity: 0.82 }}>
           This preview uses the local no-storage EA tool, downloads the live squad binary directly,
-          unpacks it in memory, and matches Premier League clubs so we can validate retrieval before
-          moving the same path into the worker.
+          unpacks it in memory, and now reads the FC 26 team tables directly so the cards show exact
+          EA OVR, ATT, MID, and DEF values plus their latest movement.
         </p>
       </div>
 
@@ -163,6 +163,20 @@ export function EaPremierLeagueLivePanel({
             <PreviewStat label="Matched clubs" value={`${preview.matchedClubCount}/${preview.clubs.length}`} />
             <PreviewStat label="Raw bytes" value={preview.rawBytes.toLocaleString()} />
             <PreviewStat label="Unpacked bytes" value={preview.unpackedBytes.toLocaleString()} />
+          </div>
+
+          <div
+            style={{
+              borderRadius: 14,
+              padding: '10px 12px',
+              background: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              fontSize: 13,
+              lineHeight: 1.5,
+            }}
+          >
+            Stars are intentionally hidden here until we can read an exact FC 26 star source from the
+            EA roster. The values below are direct EA numeric ratings, not inferred approximations.
           </div>
 
           {missingClubNames.length > 0 ? (
@@ -231,7 +245,7 @@ export function EaPremierLeagueLivePanel({
                   <div style={{ textAlign: 'center' }}>
                     <strong style={{ display: 'block', fontSize: 26, lineHeight: 1.05 }}>{club.name}</strong>
                     <span style={{ display: 'block', marginTop: 6, fontSize: 13, opacity: 0.72 }}>
-                      {club.shortName}
+                      {club.exactTeamName ?? club.shortName}
                     </span>
                   </div>
                 </div>
@@ -246,9 +260,60 @@ export function EaPremierLeagueLivePanel({
                     padding: 12,
                   }}
                 >
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                      gap: 8,
+                    }}
+                  >
+                    <RatingBox
+                      label="OVR"
+                      value={club.overallRating}
+                      delta={club.ratingDelta.overall}
+                    />
+                    <RatingBox
+                      label="ATT"
+                      value={club.attackRating}
+                      delta={club.ratingDelta.attack}
+                    />
+                    <RatingBox
+                      label="MID"
+                      value={club.midfieldRating}
+                      delta={club.ratingDelta.midfield}
+                    />
+                    <RatingBox
+                      label="DEF"
+                      value={club.defenseRating}
+                      delta={club.ratingDelta.defense}
+                    />
+                  </div>
+
+                  {(club.matchdayOverallRating !== null ||
+                    club.matchdayAttackRating !== null ||
+                    club.matchdayMidfieldRating !== null ||
+                    club.matchdayDefenseRating !== null) ? (
+                    <div
+                      style={{
+                        display: 'grid',
+                        gap: 4,
+                        fontSize: 12,
+                        opacity: 0.76,
+                      }}
+                    >
+                      <span>Live form: OVR {formatNullableValue(club.matchdayOverallRating)} · ATT {formatNullableValue(club.matchdayAttackRating)} · MID {formatNullableValue(club.matchdayMidfieldRating)} · DEF {formatNullableValue(club.matchdayDefenseRating)}</span>
+                    </div>
+                  ) : null}
+
                   <ClubIdentity
                     club={club}
-                    subtitle={club.matchTerm ? `Matched as "${club.matchTerm}"` : 'No direct match term found yet'}
+                    subtitle={
+                      club.matchTerm
+                        ? `Matched as "${club.matchTerm}"`
+                        : club.exactTeamName
+                          ? 'Matched directly from the FC 26 team table'
+                          : 'No direct match term found yet'
+                    }
                     size={38}
                     nameStyle={{ fontSize: 16 }}
                   />
@@ -258,6 +323,55 @@ export function EaPremierLeagueLivePanel({
           </div>
         </>
       ) : null}
+    </div>
+  )
+}
+
+function RatingBox({
+  label,
+  value,
+  delta,
+}: {
+  label: string
+  value: number | null
+  delta: number | null
+}) {
+  const deltaTone = delta === null || delta === 0 ? '#e5e7eb' : delta > 0 ? '#22c55e' : '#f87171'
+  const deltaText = delta === null || delta === 0 ? '→' : delta > 0 ? `↑ ${delta}` : `↓ ${Math.abs(delta)}`
+
+  return (
+    <div
+      style={{
+        borderRadius: 16,
+        padding: '10px 8px',
+        background: 'rgba(255,255,255,0.08)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        textAlign: 'center',
+      }}
+    >
+      <div style={{ fontSize: 11, opacity: 0.68, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+        {label}
+      </div>
+      <strong style={{ display: 'block', marginTop: 8, fontSize: 24, lineHeight: 1 }}>
+        {formatNullableValue(value)}
+      </strong>
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginTop: 8,
+          minWidth: 42,
+          borderRadius: 999,
+          padding: '4px 8px',
+          fontSize: 11,
+          fontWeight: 700,
+          color: '#052e16',
+          background: deltaTone,
+        }}
+      >
+        {deltaText}
+      </span>
     </div>
   )
 }
@@ -278,6 +392,10 @@ function PreviewStat({ label, value }: { label: string; value: string }) {
       <strong style={{ display: 'block', marginTop: 8, fontSize: 18 }}>{value}</strong>
     </div>
   )
+}
+
+function formatNullableValue(value: number | null): string {
+  return value === null ? '—' : String(value)
 }
 
 function readStoredToolBaseUrl(): string {

@@ -23,6 +23,11 @@ export const PREMIER_LEAGUE_NAME_ALIASES: Readonly<Record<string, ReadonlyArray<
   'Wolverhampton Wanderers': ['Wolves'],
 }
 
+export const PREMIER_LEAGUE_LEAGUE_ALIASES: ReadonlyArray<string> = [
+  'English Premier League',
+  'England Premier League',
+]
+
 export const PREMIER_LEAGUE_TEAM_QUERIES: ReadonlyArray<{
   readonly query: string
   readonly displayName?: string

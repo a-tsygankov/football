@@ -2,6 +2,7 @@ import {
   buildEaContentUrl,
   decodeEaRosterText,
   extractRosterUpdatePlatformMetadata,
+  readEaSquadTables,
   unpackEaRosterBinary,
   type EaSquadPreviewClub,
   type EaSquadPreviewResponse,
@@ -9,6 +10,7 @@ import {
 } from '@fc26/shared'
 import {
   EA_SQUAD_TOOL_CONFIG,
+  PREMIER_LEAGUE_LEAGUE_ALIASES,
   PREMIER_LEAGUE_NAME_ALIASES,
   PREMIER_LEAGUE_TEAM_QUERIES,
 } from './config.js'
@@ -49,6 +51,16 @@ export async function fetchPremierLeaguePreview(
   const rawBytes = new Uint8Array(await squadResponse.arrayBuffer())
   const unpackedBytes = unpackEaRosterBinary(rawBytes)
   const rosterText = decodeEaRosterText(unpackedBytes)
+  const squadTables = readEaSquadTables(unpackedBytes)
+  const premierLeague = resolveLeague(squadTables.leagues)
+  const premierLeagueTeamIds = new Set(
+    squadTables.leagueTeamLinks
+      .filter((link) => link.leagueId === premierLeague?.leagueId)
+      .map((link) => link.teamId),
+  )
+  const teamsById = new Map(squadTables.teams.map((team) => [team.teamId, team]))
+  const teamsByNormalizedName = groupTeamsByNormalizedName(squadTables.teams)
+  const teamFormDiffById = new Map(squadTables.teamFormDiff.map((entry) => [entry.teamId, entry]))
 
   const sourceTeams = dedupeTeams(
     (
@@ -65,12 +77,14 @@ export async function fetchPremierLeaguePreview(
 
   const rosterSearchText = normalizeSearchText(rosterText)
   const clubs = sourceTeams
-    .map((team) => buildPreviewClub(team, rosterSearchText))
+    .map((team) =>
+      buildPreviewClub(team, rosterSearchText, premierLeagueTeamIds, teamsById, teamsByNormalizedName, teamFormDiffById),
+    )
     .sort((left, right) => left.name.localeCompare(right.name))
 
   return {
     platform,
-    leagueName: EA_SQUAD_TOOL_CONFIG.leagueName,
+    leagueName: premierLeague?.leagueName ?? EA_SQUAD_TOOL_CONFIG.leagueName,
     squadVersion: metadata.squadVersion,
     discoveryUrl: EA_SQUAD_TOOL_CONFIG.discoveryUrl,
     squadUrl,
@@ -99,9 +113,18 @@ async function fetchSportsDbTeam(
   )
 }
 
-function buildPreviewClub(team: SportsDbTeam, rosterSearchText: string): EaSquadPreviewClub {
+function buildPreviewClub(
+  team: SportsDbTeam,
+  rosterSearchText: string,
+  premierLeagueTeamIds: ReadonlySet<number>,
+  teamsById: ReadonlyMap<number, ReturnType<typeof readEaSquadTables>['teams'][number]>,
+  teamsByNormalizedName: ReadonlyMap<string, ReadonlyArray<ReturnType<typeof readEaSquadTables>['teams'][number]>>,
+  teamFormDiffById: ReadonlyMap<number, ReturnType<typeof readEaSquadTables>['teamFormDiff'][number]>,
+): EaSquadPreviewClub {
   const aliases = collectTeamAliases(team)
   const matchTerm = aliases.find((alias) => rosterSearchText.includes(normalizeSearchText(alias))) ?? null
+  const exactTeam = resolveExactTeam(aliases, premierLeagueTeamIds, teamsById, teamsByNormalizedName)
+  const exactDiff = exactTeam ? teamFormDiffById.get(exactTeam.teamId) ?? null : null
 
   return {
     id: Number.parseInt(team.idTeam, 10),
@@ -111,9 +134,57 @@ function buildPreviewClub(team: SportsDbTeam, rosterSearchText: string): EaSquad
     logoUrl: team.strBadge?.trim() || '',
     avatarUrl: null,
     country: team.strCountry?.trim() || null,
-    foundInSquad: matchTerm !== null,
+    foundInSquad: matchTerm !== null || exactTeam !== null,
     matchTerm,
+    exactTeamName: exactTeam?.teamName ?? null,
+    overallRating: exactTeam?.overallRating ?? null,
+    attackRating: exactTeam?.attackRating ?? null,
+    midfieldRating: exactTeam?.midfieldRating ?? null,
+    defenseRating: exactTeam?.defenseRating ?? null,
+    matchdayOverallRating: exactTeam?.matchdayOverallRating ?? null,
+    matchdayAttackRating: exactTeam?.matchdayAttackRating ?? null,
+    matchdayMidfieldRating: exactTeam?.matchdayMidfieldRating ?? null,
+    matchdayDefenseRating: exactTeam?.matchdayDefenseRating ?? null,
+    starRating: null,
+    ratingDelta: {
+      overall: exactDiff?.overallRatingDiff ?? diffOrNull(exactDiff?.oldOverallRating, exactDiff?.newOverallRating),
+      attack: diffOrNull(exactDiff?.oldAttackRating, exactDiff?.newAttackRating),
+      midfield: diffOrNull(exactDiff?.oldMidfieldRating, exactDiff?.newMidfieldRating),
+      defense: diffOrNull(exactDiff?.oldDefenseRating, exactDiff?.newDefenseRating),
+    },
   }
+}
+
+function resolveLeague(leagues: ReturnType<typeof readEaSquadTables>['leagues']) {
+  const aliases = [...PREMIER_LEAGUE_LEAGUE_ALIASES, EA_SQUAD_TOOL_CONFIG.leagueName]
+  const normalizedAliases = aliases.map((alias) => normalizeSearchText(alias))
+
+  return leagues.find((league) => {
+    const normalizedLeagueName = normalizeSearchText(league.leagueName)
+    return normalizedAliases.some((normalizedAlias) => normalizedLeagueName.includes(normalizedAlias))
+  }) ?? null
+}
+
+function resolveExactTeam(
+  aliases: ReadonlyArray<string>,
+  premierLeagueTeamIds: ReadonlySet<number>,
+  teamsById: ReadonlyMap<number, ReturnType<typeof readEaSquadTables>['teams'][number]>,
+  teamsByNormalizedName: ReadonlyMap<string, ReadonlyArray<ReturnType<typeof readEaSquadTables>['teams'][number]>>,
+) {
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeSearchText(alias)
+    const matchedTeams = teamsByNormalizedName.get(normalizedAlias) ?? []
+    const leagueTeam = matchedTeams.find((team) => premierLeagueTeamIds.has(team.teamId))
+    if (leagueTeam) {
+      return teamsById.get(leagueTeam.teamId) ?? leagueTeam
+    }
+  }
+  return null
+}
+
+function diffOrNull(from: number | undefined, to: number | undefined): number | null {
+  if (typeof from !== 'number' || typeof to !== 'number') return null
+  return to - from
 }
 
 function collectTeamAliases(team: SportsDbTeam): ReadonlyArray<string> {
@@ -150,4 +221,17 @@ function dedupeTeams(teams: ReadonlyArray<SportsDbTeam>): ReadonlyArray<SportsDb
     unique.set(team.idTeam, team)
   }
   return [...unique.values()]
+}
+
+function groupTeamsByNormalizedName(
+  teams: ReadonlyArray<ReturnType<typeof readEaSquadTables>['teams'][number]>,
+): ReadonlyMap<string, ReadonlyArray<ReturnType<typeof readEaSquadTables>['teams'][number]>> {
+  const grouped = new Map<string, Array<ReturnType<typeof readEaSquadTables>['teams'][number]>>()
+  for (const team of teams) {
+    const normalizedName = normalizeSearchText(team.teamName)
+    const current = grouped.get(normalizedName) ?? []
+    current.push(team)
+    grouped.set(normalizedName, current)
+  }
+  return grouped
 }
