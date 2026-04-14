@@ -191,7 +191,8 @@ describe('App shell', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /Sunday Ladder/i })).toBeInTheDocument(),
     )
-    expect(screen.getByText(/1 gamers in the live pool/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/Active game night/i).length).toBeGreaterThan(0)
+    expect(screen.getByText(/1 ready/i)).toBeInTheDocument()
     expect(screen.getAllByText(/Alice/i).length).toBeGreaterThan(0)
   })
 
