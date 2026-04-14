@@ -1,0 +1,16 @@
+export type BusyState =
+  | 'creating-room'
+  | 'joining-room'
+  | 'refreshing-room'
+  | 'creating-gamer'
+  | 'updating-gamer'
+  | 'saving-active-gamers'
+  | 'starting-game-night'
+  | 'creating-game'
+  | 'recording-game'
+  | 'interrupting-game'
+  | 'saving-room-settings'
+  | 'refreshing-squad-assets'
+  | 'retrieving-squad-data'
+  | 'resetting-squad-data'
+  | null

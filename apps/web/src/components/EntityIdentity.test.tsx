@@ -1,12 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { afterEach } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
-import {
-  ClubIdentity,
-  FcPlayerIdentity,
-  GamerIdentity,
-  GamerTeamIdentity,
-} from './EntityIdentity.jsx'
+import { ClubIdentity } from './FcClubPanel.jsx'
+import { GamerIdentity } from './GamerPanel.jsx'
+import { GamerTeamIdentity } from './GamerTeamPanel.jsx'
+import { FcPlayerIdentity } from './EntityIdentity.jsx'
 
 afterEach(() => {
   cleanup()

@@ -4,7 +4,7 @@ import {
   type EaSquadPreviewResponse,
   type SquadPlatform,
 } from '@fc26/shared'
-import { ClubAvatar, ClubIdentity } from './EntityIdentity.jsx'
+import { ClubAvatar, ClubIdentity } from './FcClubPanel.jsx'
 
 const LOCAL_TOOL_URL_KEY = 'fc26:ea-preview-base-url'
 
