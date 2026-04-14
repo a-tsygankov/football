@@ -344,6 +344,51 @@ describe('room routes', () => {
     }
   })
 
+  it('surfaces manual squad retrieval failures as a 502 with the upstream message', async () => {
+    const app = buildTestApp()
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Broken Sync Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const created = (await createRes.json()) as RoomBootstrapResponse
+
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () => {
+      throw new Error('github latest release fetch failed with status 404')
+    }) as typeof fetch
+
+    try {
+      const syncEnv: Env = {
+        ...env,
+        SQUAD_SYNC_SOURCE_KIND: 'github-release-json',
+        SQUAD_SYNC_GITHUB_REPOSITORY: 'example/fc26-snapshots',
+        SQUAD_SYNC_GITHUB_ASSET_NAME: 'fc26-latest.json',
+      }
+      const retrieveRes = await app.fetch(
+        new Request(`http://localhost/api/rooms/${created.room.id}/settings/squads/retrieve`, {
+          method: 'POST',
+          headers: {
+            [ROOM_SESSION_HEADER]: created.session.token!,
+          },
+        }),
+        syncEnv,
+        execCtx(),
+      )
+      expect(retrieveRes.status).toBe(502)
+      expect(await retrieveRes.json()).toEqual({
+        error: 'squad_sync_failed',
+        message: 'github latest release fetch failed with status 404',
+      })
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   it('fully resets stored squad data from settings', async () => {
     const app = buildTestApp()
     const createRes = await app.fetch(

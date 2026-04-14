@@ -276,7 +276,23 @@ roomRoutes.post('/rooms/:roomId/settings/squads/retrieve', async (c) => {
     squadStorage: c.get('deps').squadStorage,
     squadVersions: c.get('deps').squadVersions,
   })
-  const result = await service.syncLatest()
+  let result: RetrieveRoomSquadsResponse['result']
+  try {
+    result = await service.syncLatest()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    c.get('logger').error('squad-sync', 'manual squad retrieval failed', {
+      roomId,
+      error: message,
+    })
+    return c.json(
+      {
+        error: 'squad_sync_failed',
+        message,
+      },
+      502,
+    )
+  }
   return c.json({ result } satisfies RetrieveRoomSquadsResponse)
 })
 

@@ -30,7 +30,22 @@ squadSyncRoutes.post('/internal/squads/sync', async (c) => {
     squadVersions: c.get('deps').squadVersions,
   })
 
-  const result: SquadSyncResult = await service.syncLatest()
+  let result: SquadSyncResult
+  try {
+    result = await service.syncLatest()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    c.get('logger').error('squad-sync', 'internal squad sync failed', {
+      error: message,
+    })
+    return c.json(
+      {
+        error: 'squad_sync_failed',
+        message,
+      },
+      502,
+    )
+  }
   return c.json(result)
 })
 
