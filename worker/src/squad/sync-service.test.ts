@@ -101,12 +101,22 @@ describe('SquadSyncService', () => {
     expect(first.status).toBe('ingested')
     expect(await squadStorage.getLatestVersion()).toBe('fc26-r11')
     expect(await squadVersions.get('fc26-r11')).not.toBeNull()
+    expect(await squadStorage.getVersionMetadata('fc26-r11')).toMatchObject({
+      version: 'fc26-r11',
+      clubCount: 1,
+      playerCount: 1,
+    })
 
     payload = snapshotV12
     const second = await service.syncLatest()
     expect(second.status).toBe('ingested')
     expect(second.previousVersion).toBe('fc26-r11')
     expect(await squadStorage.getLatestVersion()).toBe('fc26-r12')
+    expect(await squadStorage.getVersionMetadata('fc26-r12')).toMatchObject({
+      version: 'fc26-r12',
+      clubCount: 1,
+      playerCount: 1,
+    })
 
     const diff = await squadStorage.getDiff('fc26-r11', 'fc26-r12')
     expect(diff).not.toBeNull()

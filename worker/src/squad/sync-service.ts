@@ -86,7 +86,18 @@ export class SquadSyncService {
     previousVersion: string | null,
   ): Promise<void> {
     const { logger, now, squadStorage, squadVersions } = this.options
+    const ingestedAt = now()
     const playersByClub = groupPlayersByClub(snapshot.players)
+    const versionRecord = {
+      version: snapshot.version,
+      releasedAt: snapshot.releasedAt,
+      ingestedAt,
+      clubsBytes: encoder.encode(JSON.stringify(snapshot.clubs)).length,
+      clubCount: snapshot.clubs.length,
+      playerCount: snapshot.players.length,
+      sourceUrl: snapshot.sourceUrl,
+      notes: snapshot.notes,
+    } as const
 
     await squadStorage.putClubs(snapshot.version, snapshot.clubs)
     for (const club of snapshot.clubs) {
@@ -119,17 +130,9 @@ export class SquadSyncService {
       })
     }
 
+    await squadStorage.putVersionMetadata(versionRecord)
     await squadStorage.setLatestVersion(snapshot.version)
-    await squadVersions.insert({
-      version: snapshot.version,
-      releasedAt: snapshot.releasedAt,
-      ingestedAt: now(),
-      clubsBytes: encoder.encode(JSON.stringify(snapshot.clubs)).length,
-      clubCount: snapshot.clubs.length,
-      playerCount: snapshot.players.length,
-      sourceUrl: snapshot.sourceUrl,
-      notes: snapshot.notes,
-    })
+    await squadVersions.insert(versionRecord)
 
     logger.info('squad-sync', 'snapshot stored', {
       version: snapshot.version,

@@ -36,7 +36,6 @@ SQUAD_SYNC_RETENTION_COUNT = "12"
 # SQUAD_SYNC_SOURCE_KIND = "github-release-json"
 # SQUAD_SYNC_GITHUB_REPOSITORY = "owner/repo"
 # SQUAD_SYNC_GITHUB_ASSET_NAME = "fc26-latest.json"
-# SQUAD_SYNC_GITHUB_TOKEN = "" # optional; useful for private repos or higher rate limits
 # On-demand club + league logo refresh (triggered from the app Settings panel):
 # SQUAD_ASSET_PROVIDER_BASE_URL = "https://www.thesportsdb.com/api/v1/json/123"
 # Optional exact-name overrides when EA and provider league names differ.
@@ -60,9 +59,9 @@ database_id = "b0e1922f-6b23-4a37-b125-a71aee4ee8b2"
 preview_database_id = "fc26-local-phase-2"
 migrations_dir = "src/db/migrations"
 
-# [[r2_buckets]]
-# binding = "SQUADS"
-# bucket_name = "fc26-squads"
+[[r2_buckets]]
+binding = "SQUADS"
+bucket_name = "fc26"
 #
 # Daily squad sync cron — wired up in Phase 1 once the squad-sync tool lands.
 # [triggers]

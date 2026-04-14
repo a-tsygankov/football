@@ -1,4 +1,4 @@
-import type { Club, FcPlayer, SquadDiff } from '@fc26/shared'
+import type { Club, FcPlayer, SquadDiff, SquadVersion } from '@fc26/shared'
 import { type ISquadStorage, squadKeys } from './storage.js'
 
 /**
@@ -32,6 +32,20 @@ export class R2SquadStorage implements ISquadStorage {
 
   async clearLatestVersion(): Promise<void> {
     await this.bucket.delete(squadKeys('').latestPointer)
+  }
+
+  async getVersionMetadata(version: string): Promise<SquadVersion | null> {
+    const obj = await this.bucket.get(squadKeys(version).metadata)
+    if (!obj) return null
+    return (await obj.json()) as SquadVersion
+  }
+
+  async putVersionMetadata(version: SquadVersion): Promise<void> {
+    await this.bucket.put(
+      squadKeys(version.version).metadata,
+      JSON.stringify(version),
+      { httpMetadata: { contentType: 'application/json' } },
+    )
   }
 
   async getClubs(version: string): Promise<ReadonlyArray<Club> | null> {

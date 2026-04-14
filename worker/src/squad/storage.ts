@@ -1,4 +1,4 @@
-import type { Club, FcPlayer, SquadDiff } from '@fc26/shared'
+import type { Club, FcPlayer, SquadDiff, SquadVersion } from '@fc26/shared'
 
 /**
  * Storage abstraction for the versioned squad data that lives in R2.
@@ -10,6 +10,7 @@ import type { Club, FcPlayer, SquadDiff } from '@fc26/shared'
  *
  * R2 keys mirror the layout in §10 of the handoff doc:
  *   squads/latest.json                          -> { version }
+ *   squads/{version}/metadata.json              -> SquadVersion
  *   squads/{version}/clubs.json                 -> Club[]
  *   squads/{version}/players/{clubId}.json      -> FcPlayer[]
  *   squads/{version}/diff-from-{prev}.json      -> SquadDiff
@@ -21,6 +22,11 @@ export interface ISquadStorage {
   setLatestVersion(version: string): Promise<void>
   /** Clears the latest version pointer after a full reset. */
   clearLatestVersion(): Promise<void>
+
+  /** Reads the canonical metadata manifest for a version, if present. */
+  getVersionMetadata(version: string): Promise<SquadVersion | null>
+  /** Writes the canonical metadata manifest for a version. */
+  putVersionMetadata(version: SquadVersion): Promise<void>
 
   /** Reads the clubs shard for a specific version. */
   getClubs(version: string): Promise<ReadonlyArray<Club> | null>
@@ -54,6 +60,7 @@ export interface ISquadStorage {
 export function squadKeys(version: string) {
   return {
     latestPointer: 'squads/latest.json',
+    metadata: `squads/${version}/metadata.json`,
     clubs: `squads/${version}/clubs.json`,
     playersFor: (clubId: number) => `squads/${version}/players/${clubId}.json`,
     diffFrom: (fromVersion: string) =>

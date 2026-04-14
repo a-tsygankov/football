@@ -95,7 +95,6 @@ describe('squad sync source', () => {
         sourceKind: 'github-release-json',
         repository: 'example/fc26-snapshots',
         assetName: 'fc26-latest.json',
-        token: null,
         retentionCount: 12,
       },
       async (input, init) => {

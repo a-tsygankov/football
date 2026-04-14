@@ -182,7 +182,7 @@ class GitHubReleaseJsonSnapshotSource implements ISquadSnapshotSource {
     const snapshotResponse = await this.fetchAsset(asset)
     if (!snapshotResponse.ok) {
       throw new Error(
-        `github release asset fetch failed with status ${snapshotResponse.status}`,
+      `github release asset fetch failed with status ${snapshotResponse.status}`,
       )
     }
     const payload = squadSnapshotPayloadSchema.parse(await snapshotResponse.json())
@@ -199,7 +199,7 @@ class GitHubReleaseJsonSnapshotSource implements ISquadSnapshotSource {
     const response = await this.fetchImpl(
       `https://api.github.com/repos/${this.config.repository}/releases/latest`,
       {
-        headers: buildGitHubHeaders(this.config.token),
+        headers: buildGitHubHeaders(),
       },
     )
     if (!response.ok) {
@@ -213,14 +213,6 @@ class GitHubReleaseJsonSnapshotSource implements ISquadSnapshotSource {
   private fetchAsset(
     asset: z.infer<typeof gitHubReleaseAssetSchema>,
   ): Promise<Response> {
-    if (this.config.token) {
-      return this.fetchImpl(asset.url, {
-        headers: {
-          ...buildGitHubHeaders(this.config.token),
-          Accept: 'application/octet-stream',
-        },
-      })
-    }
     return this.fetchImpl(asset.browser_download_url)
   }
 }
@@ -301,10 +293,9 @@ function applyTemplate(
   )
 }
 
-function buildGitHubHeaders(token: string | null | undefined): HeadersInit {
+function buildGitHubHeaders(): HeadersInit {
   return {
     Accept: 'application/vnd.github+json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     'X-GitHub-Api-Version': '2022-11-28',
   }
 }

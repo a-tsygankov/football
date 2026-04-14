@@ -27,7 +27,6 @@ export interface GitHubReleaseJsonSquadSyncConfig {
   readonly sourceKind: 'github-release-json'
   readonly repository: string
   readonly assetName: string
-  readonly token: string | null
   readonly retentionCount: number
 }
 
@@ -73,7 +72,6 @@ export function resolveSquadSyncConfig(env: Env): SquadSyncConfig | null {
       sourceKind,
       repository,
       assetName,
-      token: env.SQUAD_SYNC_GITHUB_TOKEN?.trim() || null,
       retentionCount,
     }
   }

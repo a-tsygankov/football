@@ -1,4 +1,4 @@
-import type { Club, FcPlayer, SquadDiff } from '@fc26/shared'
+import type { Club, FcPlayer, SquadDiff, SquadVersion } from '@fc26/shared'
 import { type ISquadStorage, squadKeys } from './storage.js'
 
 /**
@@ -23,6 +23,17 @@ export class InMemorySquadStorage implements ISquadStorage {
 
   async clearLatestVersion(): Promise<void> {
     this.entries.delete(squadKeys('').latestPointer)
+  }
+
+  async getVersionMetadata(version: string): Promise<SquadVersion | null> {
+    const value = this.entries.get(squadKeys(version).metadata) as
+      | SquadVersion
+      | undefined
+    return value ?? null
+  }
+
+  async putVersionMetadata(version: SquadVersion): Promise<void> {
+    this.entries.set(squadKeys(version.version).metadata, version)
   }
 
   async getClubs(version: string): Promise<ReadonlyArray<Club> | null> {

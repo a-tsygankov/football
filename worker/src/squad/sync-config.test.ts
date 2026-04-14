@@ -17,14 +17,12 @@ describe('resolveSquadSyncConfig', () => {
         SQUAD_SYNC_SOURCE_KIND: 'github-release-json',
         SQUAD_SYNC_GITHUB_REPOSITORY: 'example/fc26-snapshots',
         SQUAD_SYNC_GITHUB_ASSET_NAME: 'fc26-latest.json',
-        SQUAD_SYNC_GITHUB_TOKEN: 'secret-token',
         SQUAD_SYNC_RETENTION_COUNT: '6',
       }),
     ).toEqual({
       sourceKind: 'github-release-json',
       repository: 'example/fc26-snapshots',
       assetName: 'fc26-latest.json',
-      token: 'secret-token',
       retentionCount: 6,
     })
   })
@@ -40,7 +38,6 @@ describe('resolveSquadSyncConfig', () => {
       sourceKind: 'github-release-json',
       repository: 'example/fc26-snapshots',
       assetName: 'fc26-latest.json',
-      token: null,
       retentionCount: 12,
     })
   })
