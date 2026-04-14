@@ -35,7 +35,7 @@ import {
   type UpdateRoomSettingsRequest,
   type UpdateRoomSettingsResponse,
 } from '@fc26/shared'
-import { apiJson, persistRoomSession } from './lib/api.js'
+import { apiJson, clearPersistedRoomSession, persistRoomSession } from './lib/api.js'
 import { logger } from './lib/logger.js'
 import { APP_VERSION, type WorkerVersionInfo } from './lib/version.js'
 import { BottomNav } from './components/BottomNav.jsx'
@@ -583,6 +583,22 @@ export function App() {
     localStorage.setItem(LAST_ROOM_ID_KEY, next.room.id)
   }
 
+  function leaveRoom(): void {
+    clearPersistedRoomSession()
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(LAST_ROOM_ID_KEY)
+    }
+    startTransition(() => {
+      setBootstrap(null)
+      setScoreboard(null)
+      setJoinRoomId('')
+    })
+    setJoinPin('')
+    setError(null)
+    setNotice('Left the room. Create a new one or join a different room.')
+    logger.info('system', 'left room')
+  }
+
   return (
     <div
       style={{
@@ -698,6 +714,7 @@ export function App() {
             onCreateGame={createGame}
             onInterruptGame={interruptGame}
             onRecordGameResult={recordGameResult}
+            onLeaveRoom={leaveRoom}
             onRefresh={() => refreshRoom(bootstrap.room.id)}
             onResetSquadData={() => resetSquadData(bootstrap.room.id)}
             onRetrieveSquadData={() => retrieveSquadData(bootstrap.room.id)}
@@ -860,6 +877,7 @@ function RoomScreen({
   onCreateGamer,
   onCreateGame,
   onInterruptGame,
+  onLeaveRoom,
   onRecordGameResult,
   onRefresh,
   onResetSquadData,
@@ -892,6 +910,7 @@ function RoomScreen({
     gameId: string,
     request: InterruptCurrentGameRequest,
   ) => Promise<void>
+  onLeaveRoom: () => void
   onRecordGameResult: (
     gameNightId: string,
     gameId: string,
@@ -1283,20 +1302,34 @@ function RoomScreen({
               {bootstrap.room.hasPin ? ' • PIN protected' : ' • Open room'}
             </p>
           </div>
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={() => void onRefresh()}
-            style={{
-              ...secondaryButtonStyle,
-              alignSelf: 'flex-start',
-              background: 'rgba(236,253,245,0.12)',
-              color: '#ecfdf5',
-              borderColor: 'rgba(236,253,245,0.2)',
-            }}
-          >
-            {busy === 'refreshing-room' ? 'Refreshing...' : 'Refresh'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignSelf: 'flex-start' }}>
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void onRefresh()}
+              style={{
+                ...secondaryButtonStyle,
+                background: 'rgba(236,253,245,0.12)',
+                color: '#ecfdf5',
+                borderColor: 'rgba(236,253,245,0.2)',
+              }}
+            >
+              {busy === 'refreshing-room' ? 'Refreshing...' : 'Refresh'}
+            </button>
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => onLeaveRoom()}
+              style={{
+                ...secondaryButtonStyle,
+                background: 'rgba(254,226,226,0.12)',
+                color: '#fecaca',
+                borderColor: 'rgba(254,202,202,0.3)',
+              }}
+            >
+              Leave room
+            </button>
+          </div>
         </div>
 
         <div
