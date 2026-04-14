@@ -542,6 +542,98 @@ describe('App shell', () => {
     expect(screen.getByLabelText('Dylan is inactive')).toBeInTheDocument()
   })
 
+  it('does not show green play-state dots when there is no active game', async () => {
+    localStorage.setItem('fc26:last-room-id', 'room-6')
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/version')) {
+        return new Response(
+          JSON.stringify({
+            workerVersion: '0.1.0',
+            schemaVersion: 1,
+            minClientVersion: '0.1.0',
+            gitSha: null,
+            builtAt: new Date().toISOString(),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/rooms/room-6/bootstrap')) {
+        return new Response(
+          JSON.stringify({
+            room: {
+              id: 'room-6',
+              name: 'Pool Only',
+              avatarUrl: null,
+              hasPin: false,
+              defaultSelectionStrategy: 'uniform-random',
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            gamers: [
+              {
+                id: 'g1',
+                roomId: 'room-6',
+                name: 'Alice',
+                rating: 5,
+                active: true,
+                hasPin: false,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                id: 'g2',
+                roomId: 'room-6',
+                name: 'Bob',
+                rating: 4,
+                active: false,
+                hasPin: false,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+            ],
+            activeGameNight: {
+              id: 'gn6',
+              roomId: 'room-6',
+              status: 'active',
+              startedAt: Date.now() - 60_000,
+              endedAt: null,
+              lastGameAt: null,
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            activeGameNightGamers: [
+              {
+                gameNightId: 'gn6',
+                roomId: 'room-6',
+                gamerId: 'g1',
+                joinedAt: 1000,
+                updatedAt: 1000,
+              },
+            ],
+            currentGame: null,
+            session: {
+              roomId: 'room-6',
+              expiresAt: Date.now() + 10_000,
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    }))
+
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Pool Only/i })).toBeInTheDocument(),
+    )
+    expect(screen.getByLabelText('Alice is active in the live pool')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Alice is playing in the current game')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Bob is inactive')).toBeInTheDocument()
+  })
+
   it('records the active game result and returns to game creation', async () => {
     localStorage.setItem('fc26:last-room-id', 'room-3')
     vi.stubGlobal('fetch', vi.fn(async (input, init) => {

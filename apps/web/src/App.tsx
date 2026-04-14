@@ -1953,10 +1953,10 @@ function getRosterStatusDot({
 
   if (activeGameNightGamerIds.has(gamer.id)) {
     return {
-      ariaLabel: `${gamer.name} is active in the current game night`,
-      background: '#22c55e',
-      border: '1px solid #16a34a',
-      boxShadow: '0 0 0 4px rgba(34,197,94,0.14)',
+      ariaLabel: `${gamer.name} is active in the live pool`,
+      background: '#cbd5e1',
+      border: '1px solid #94a3b8',
+      boxShadow: '0 0 0 4px rgba(148,163,184,0.16)',
     }
   }
 
