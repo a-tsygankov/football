@@ -2,6 +2,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { App } from './App.jsx'
 
+function roomIdFromScoreboardUrl(url: string): string | null {
+  const matched = /\/api\/rooms\/([^/]+)\/scoreboard$/.exec(url)
+  return matched?.[1] ?? null
+}
+
+function emptyScoreboardResponse(roomId: string): Response {
+  return new Response(
+    JSON.stringify({
+      roomId,
+      gamerRows: [],
+      gamerRowsWithoutTeamGames: [],
+      gamerTeamRows: [],
+      updatedAt: null,
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  )
+}
+
 describe('App shell', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -42,6 +60,8 @@ describe('App shell', () => {
   it('creates a room and renders the roster screen', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input, init) => {
       const url = String(input)
+      const scoreboardRoomId = roomIdFromScoreboardUrl(url)
+      if (scoreboardRoomId) return emptyScoreboardResponse(scoreboardRoomId)
       if (url.endsWith('/api/version')) {
         return new Response(
           JSON.stringify({
@@ -98,6 +118,8 @@ describe('App shell', () => {
     localStorage.setItem('fc26:last-room-id', 'room-9')
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input)
+      const scoreboardRoomId = roomIdFromScoreboardUrl(url)
+      if (scoreboardRoomId) return emptyScoreboardResponse(scoreboardRoomId)
       if (url.endsWith('/api/version')) {
         return new Response(
           JSON.stringify({
@@ -176,6 +198,8 @@ describe('App shell', () => {
   it('reveals only relevant random formats for a two-gamer live pool', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input, init) => {
       const url = String(input)
+      const scoreboardRoomId = roomIdFromScoreboardUrl(url)
+      if (scoreboardRoomId) return emptyScoreboardResponse(scoreboardRoomId)
       if (url.endsWith('/api/version')) {
         return new Response(
           JSON.stringify({
@@ -281,6 +305,8 @@ describe('App shell', () => {
   it('hides 2 vs 2 random allocation until four active gamers are available', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input, init) => {
       const url = String(input)
+      const scoreboardRoomId = roomIdFromScoreboardUrl(url)
+      if (scoreboardRoomId) return emptyScoreboardResponse(scoreboardRoomId)
       if (url.endsWith('/api/version')) {
         return new Response(
           JSON.stringify({
@@ -402,6 +428,8 @@ describe('App shell', () => {
     localStorage.setItem('fc26:last-room-id', 'room-5')
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input)
+      const scoreboardRoomId = roomIdFromScoreboardUrl(url)
+      if (scoreboardRoomId) return emptyScoreboardResponse(scoreboardRoomId)
       if (url.endsWith('/api/version')) {
         return new Response(
           JSON.stringify({
@@ -546,6 +574,8 @@ describe('App shell', () => {
     localStorage.setItem('fc26:last-room-id', 'room-6')
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input)
+      const scoreboardRoomId = roomIdFromScoreboardUrl(url)
+      if (scoreboardRoomId) return emptyScoreboardResponse(scoreboardRoomId)
       if (url.endsWith('/api/version')) {
         return new Response(
           JSON.stringify({
@@ -634,10 +664,319 @@ describe('App shell', () => {
     expect(screen.getByLabelText('Bob is inactive')).toBeInTheDocument()
   })
 
+  it('renders the scoreboard for gamers and paired gamer teams', async () => {
+    localStorage.setItem('fc26:last-room-id', 'room-7')
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/version')) {
+        return new Response(
+          JSON.stringify({
+            workerVersion: '0.1.0',
+            schemaVersion: 1,
+            minClientVersion: '0.1.0',
+            gitSha: null,
+            builtAt: new Date().toISOString(),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/rooms/room-7/bootstrap')) {
+        return new Response(
+          JSON.stringify({
+            room: {
+              id: 'room-7',
+              name: 'Scoreboard View',
+              avatarUrl: null,
+              hasPin: false,
+              defaultSelectionStrategy: 'uniform-random',
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            gamers: [
+              {
+                id: 'g1',
+                roomId: 'room-7',
+                name: 'Alice',
+                rating: 5,
+                active: true,
+                hasPin: false,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                id: 'g2',
+                roomId: 'room-7',
+                name: 'Bob',
+                rating: 4,
+                active: true,
+                hasPin: false,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                id: 'g3',
+                roomId: 'room-7',
+                name: 'Cara',
+                rating: 3,
+                active: true,
+                hasPin: false,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+            ],
+            activeGameNight: null,
+            activeGameNightGamers: [],
+            currentGame: null,
+            session: {
+              roomId: 'room-7',
+              expiresAt: Date.now() + 10_000,
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/rooms/room-7/scoreboard')) {
+        return new Response(
+          JSON.stringify({
+            roomId: 'room-7',
+            gamerRows: [
+              {
+                gamer: {
+                  id: 'g1',
+                  roomId: 'room-7',
+                  name: 'Alice',
+                  rating: 5,
+                  active: true,
+                  hasPin: false,
+                  avatarUrl: null,
+                  createdAt: 1000,
+                  updatedAt: 1000,
+                },
+                stats: {
+                  gamerId: 'g1',
+                  roomId: 'room-7',
+                  gamesPlayed: 4,
+                  wins: 3,
+                  draws: 0,
+                  losses: 1,
+                  goalsFor: 9,
+                  goalsAgainst: 4,
+                  lastEventId: 'ev-1',
+                  updatedAt: 1100,
+                },
+                points: 9,
+                winRate: 0.75,
+                goalDiff: 5,
+              },
+              {
+                gamer: {
+                  id: 'g2',
+                  roomId: 'room-7',
+                  name: 'Bob',
+                  rating: 4,
+                  active: true,
+                  hasPin: false,
+                  avatarUrl: null,
+                  createdAt: 1000,
+                  updatedAt: 1000,
+                },
+                stats: {
+                  gamerId: 'g2',
+                  roomId: 'room-7',
+                  gamesPlayed: 4,
+                  wins: 2,
+                  draws: 1,
+                  losses: 1,
+                  goalsFor: 7,
+                  goalsAgainst: 5,
+                  lastEventId: 'ev-2',
+                  updatedAt: 1100,
+                },
+                points: 7,
+                winRate: 0.5,
+                goalDiff: 2,
+              },
+            ],
+            gamerRowsWithoutTeamGames: [
+              {
+                gamer: {
+                  id: 'g1',
+                  roomId: 'room-7',
+                  name: 'Alice',
+                  rating: 5,
+                  active: true,
+                  hasPin: false,
+                  avatarUrl: null,
+                  createdAt: 1000,
+                  updatedAt: 1000,
+                },
+                stats: {
+                  gamerId: 'g1',
+                  roomId: 'room-7',
+                  gamesPlayed: 2,
+                  wins: 2,
+                  draws: 0,
+                  losses: 0,
+                  goalsFor: 4,
+                  goalsAgainst: 1,
+                  lastEventId: 'ev-4',
+                  updatedAt: 1200,
+                },
+                points: 6,
+                winRate: 1,
+                goalDiff: 3,
+              },
+            ],
+            gamerTeamRows: [
+              {
+                gamerTeamKey: 'g1:g2',
+                members: [
+                  {
+                    id: 'g1',
+                    roomId: 'room-7',
+                    name: 'Alice',
+                    rating: 5,
+                    active: true,
+                    hasPin: false,
+                    avatarUrl: null,
+                    createdAt: 1000,
+                    updatedAt: 1000,
+                  },
+                  {
+                    id: 'g2',
+                    roomId: 'room-7',
+                    name: 'Bob',
+                    rating: 4,
+                    active: true,
+                    hasPin: false,
+                    avatarUrl: null,
+                    createdAt: 1000,
+                    updatedAt: 1000,
+                  },
+                ],
+                stats: {
+                  gamerTeamKey: 'g1:g2',
+                  roomId: 'room-7',
+                  members: ['g1', 'g2'],
+                  gamesPlayed: 3,
+                  wins: 2,
+                  draws: 0,
+                  losses: 1,
+                  goalsFor: 6,
+                  goalsAgainst: 3,
+                  lastEventId: 'ev-3',
+                  updatedAt: 1100,
+                },
+                points: 6,
+                winRate: 2 / 3,
+                goalDiff: 3,
+              },
+            ],
+            updatedAt: 1100,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    }))
+
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Scoreboard View/i })).toBeInTheDocument(),
+    )
+    expect(screen.getByRole('heading', { name: 'Scoreboard' })).toBeInTheDocument()
+    expect(
+      screen.getByText(/Best gamers and gamer teams\. Pair standings only count results earned together\./i),
+    ).toBeInTheDocument()
+    expect(screen.getByText('9 pts', { exact: false })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Ignore team games/i }))
+    expect(screen.getByText(/Individual standings count only 1 vs 1 results\./i)).toBeInTheDocument()
+    expect(screen.getByText('6 pts', { exact: false })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Gamer teams/i }))
+    expect(screen.getByText(/Alice \+ Bob|Bob \+ Alice/)).toBeInTheDocument()
+    expect(screen.getByText(/Win rate 67%/i)).toBeInTheDocument()
+  })
+
   it('records the active game result and returns to game creation', async () => {
     localStorage.setItem('fc26:last-room-id', 'room-3')
     vi.stubGlobal('fetch', vi.fn(async (input, init) => {
       const url = String(input)
+      const scoreboardRoomId = roomIdFromScoreboardUrl(url)
+      if (scoreboardRoomId) {
+        return new Response(
+          JSON.stringify({
+            roomId: scoreboardRoomId,
+            gamerRows: [
+              {
+                gamer: {
+                  id: 'g1',
+                  roomId: scoreboardRoomId,
+                  name: 'Alice',
+                  rating: 5,
+                  active: true,
+                  hasPin: false,
+                  avatarUrl: null,
+                  createdAt: 1000,
+                  updatedAt: 1000,
+                },
+                stats: {
+                  gamerId: 'g1',
+                  roomId: scoreboardRoomId,
+                  gamesPlayed: 1,
+                  wins: 1,
+                  draws: 0,
+                  losses: 0,
+                  goalsFor: 2,
+                  goalsAgainst: 0,
+                  lastEventId: 'ev-1',
+                  updatedAt: 1000,
+                },
+                points: 3,
+                winRate: 1,
+                goalDiff: 2,
+              },
+            ],
+            gamerRowsWithoutTeamGames: [
+              {
+                gamer: {
+                  id: 'g1',
+                  roomId: scoreboardRoomId,
+                  name: 'Alice',
+                  rating: 5,
+                  active: true,
+                  hasPin: false,
+                  avatarUrl: null,
+                  createdAt: 1000,
+                  updatedAt: 1000,
+                },
+                stats: {
+                  gamerId: 'g1',
+                  roomId: scoreboardRoomId,
+                  gamesPlayed: 1,
+                  wins: 1,
+                  draws: 0,
+                  losses: 0,
+                  goalsFor: 2,
+                  goalsAgainst: 0,
+                  lastEventId: 'ev-1',
+                  updatedAt: 1000,
+                },
+                points: 3,
+                winRate: 1,
+                goalDiff: 2,
+              },
+            ],
+            gamerTeamRows: [],
+            updatedAt: 1000,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
       if (url.endsWith('/api/version')) {
         return new Response(
           JSON.stringify({

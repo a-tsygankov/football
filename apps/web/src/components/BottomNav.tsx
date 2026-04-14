@@ -13,7 +13,7 @@ type Mode = 'game' | 'dashboard' | 'teams' | 'changes'
 
 const MODES: ReadonlyArray<{ id: Mode; label: string }> = [
   { id: 'game', label: 'Game' },
-  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'dashboard', label: 'Scoreboard' },
   { id: 'teams', label: 'Teams' },
   { id: 'changes', label: 'Changes' },
 ]

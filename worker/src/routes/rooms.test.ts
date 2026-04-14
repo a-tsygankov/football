@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { ROOM_SESSION_HEADER, type RoomBootstrapResponse } from '@fc26/shared'
+import {
+  ROOM_SESSION_HEADER,
+  type RoomBootstrapResponse,
+  type RoomScoreboardResponse,
+} from '@fc26/shared'
 import { buildApp } from '../app.js'
 import {
   InMemoryPinAttemptRepository,
@@ -761,5 +765,112 @@ describe('room routes', () => {
     const bootstrap = (await bootstrapRes.json()) as RoomBootstrapResponse
     expect(bootstrap.currentGame).toBeNull()
     expect(bootstrap.activeGameNight).toBeTruthy()
+  })
+
+  it('returns gamer and gamer-team scoreboards for recorded games', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Scoreboard Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const gamerIds: string[] = []
+    for (const name of ['Alice', 'Bob', 'Cara', 'Dylan']) {
+      const res = await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Cookie: cookie,
+          },
+          body: JSON.stringify({ name }),
+        }),
+        env,
+        execCtx(),
+      )
+      expect(res.status).toBe(201)
+      const body = (await res.json()) as { gamer: { id: string } }
+      gamerIds.push(body.gamer.id)
+    }
+
+    const gameNightRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/game-nights`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Cookie: cookie,
+        },
+        body: JSON.stringify({ activeGamerIds: gamerIds }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(gameNightRes.status).toBe(201)
+    const gameNightBody = (await gameNightRes.json()) as { gameNight: { id: string } }
+
+    const currentGameRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Cookie: cookie,
+          },
+          body: JSON.stringify({
+            allocationMode: 'manual',
+            homeGamerIds: gamerIds.slice(0, 2),
+            awayGamerIds: gamerIds.slice(2, 4),
+          }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(currentGameRes.status).toBe(201)
+    const currentGameBody = (await currentGameRes.json()) as { currentGame: { id: string } }
+
+    const recordRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games/${currentGameBody.currentGame.id}/result`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Cookie: cookie,
+          },
+          body: JSON.stringify({ result: 'home', homeScore: 3, awayScore: 1 }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(recordRes.status).toBe(200)
+
+    const scoreboardRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/scoreboard`, {
+        headers: { Cookie: cookie },
+      }),
+      env,
+      execCtx(),
+    )
+    expect(scoreboardRes.status).toBe(200)
+    const scoreboard = (await scoreboardRes.json()) as RoomScoreboardResponse
+    expect(scoreboard.gamerRows).toHaveLength(4)
+    expect(scoreboard.gamerTeamRows).toHaveLength(2)
+    expect(scoreboard.gamerRows.find((row) => row.gamer.name === 'Alice')?.points).toBe(3)
+    const aliceBobTeam = scoreboard.gamerTeamRows.find((row) => {
+      const memberNames = new Set(row.members.map((member) => member.name))
+      return memberNames.has('Alice') && memberNames.has('Bob')
+    })
+    expect(aliceBobTeam?.points).toBe(3)
   })
 })

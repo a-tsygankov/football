@@ -4,6 +4,8 @@ import type {
   GameNight,
   GameNightActiveGamer,
   Gamer,
+  GamerPoints,
+  GamerTeamPoints,
   RoomSummary,
 } from './domain.js'
 import type { GameResult } from './events.js'
@@ -109,4 +111,29 @@ export interface ResolveCurrentGameResponse {
   activeGameNight: GameNight
   eventId: string
   eventType: 'game_recorded' | 'game_interrupted'
+}
+
+export interface GamerScoreboardRow {
+  gamer: Gamer
+  stats: GamerPoints
+  points: number
+  winRate: number
+  goalDiff: number
+}
+
+export interface GamerTeamScoreboardRow {
+  gamerTeamKey: string
+  members: ReadonlyArray<Gamer>
+  stats: GamerTeamPoints
+  points: number
+  winRate: number
+  goalDiff: number
+}
+
+export interface RoomScoreboardResponse {
+  roomId: RoomId
+  gamerRows: ReadonlyArray<GamerScoreboardRow>
+  gamerRowsWithoutTeamGames: ReadonlyArray<GamerScoreboardRow>
+  gamerTeamRows: ReadonlyArray<GamerTeamScoreboardRow>
+  updatedAt: number | null
 }

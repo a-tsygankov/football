@@ -15,6 +15,7 @@ import {
   type RecordCurrentGameResultRequest,
   type ResolveCurrentGameResponse,
   type RoomBootstrapResponse,
+  type RoomScoreboardResponse,
   type UpdateGamerRequest,
 } from '@fc26/shared'
 import { apiJson, persistRoomSession } from './lib/api.js'
@@ -43,6 +44,7 @@ export function App() {
   const [worker, setWorker] = useState<WorkerVersionInfo | null>(null)
   const [workerError, setWorkerError] = useState<string | null>(null)
   const [bootstrap, setBootstrap] = useState<RoomBootstrapResponse | null>(null)
+  const [scoreboard, setScoreboard] = useState<RoomScoreboardResponse | null>(null)
   const [busy, setBusy] = useState<BusyState>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -77,6 +79,14 @@ export function App() {
     void refreshRoom(joinRoomId, { silentUnauthorized: true })
   }, [])
 
+  useEffect(() => {
+    if (!bootstrap) {
+      setScoreboard(null)
+      return
+    }
+    void refreshScoreboard(bootstrap.room.id)
+  }, [bootstrap?.room.id])
+
   async function refreshRoom(
     roomId: string,
     options: { silentUnauthorized?: boolean } = {},
@@ -92,9 +102,23 @@ export function App() {
         setError(message)
       }
       startTransition(() => setBootstrap(null))
+      setScoreboard(null)
       logger.warn('system', 'room bootstrap failed', { roomId, error: message })
     } finally {
       setBusy(null)
+    }
+  }
+
+  async function refreshScoreboard(roomId: string): Promise<void> {
+    try {
+      const next = await apiJson<RoomScoreboardResponse>(`/api/rooms/${roomId}/scoreboard`)
+      startTransition(() => setScoreboard(next))
+    } catch (err) {
+      startTransition(() => setScoreboard(null))
+      logger.warn('system', 'scoreboard fetch failed', {
+        roomId,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 
@@ -366,6 +390,7 @@ export function App() {
             : current,
         )
       })
+      await refreshScoreboard(bootstrap.room.id)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -506,6 +531,7 @@ export function App() {
             onInterruptGame={interruptGame}
             onRecordGameResult={recordGameResult}
             onRefresh={() => refreshRoom(bootstrap.room.id)}
+            scoreboard={scoreboard}
             onSaveActiveGameNightGamers={saveActiveGameNightGamers}
             onStartGameNight={startGameNight}
             onToggleGamer={toggleGamer}
@@ -647,6 +673,7 @@ function LandingScreen({
 function RoomScreen({
   bootstrap,
   busy,
+  scoreboard,
   gamerName,
   gamerRating,
   gamerPin,
@@ -667,6 +694,7 @@ function RoomScreen({
 }: {
   bootstrap: RoomBootstrapResponse
   busy: BusyState
+  scoreboard: RoomScoreboardResponse | null
   gamerName: string
   gamerRating: string
   gamerPin: string
@@ -721,6 +749,8 @@ function RoomScreen({
   const [editingRating, setEditingRating] = useState('3')
   const [editingCurrentPin, setEditingCurrentPin] = useState('')
   const [editingNextPin, setEditingNextPin] = useState('')
+  const [scoreboardView, setScoreboardView] = useState<'gamers' | 'teams'>('gamers')
+  const [includeTeamGamesInGamerBoard, setIncludeTeamGamesInGamerBoard] = useState(true)
   const activeRoomGamers = bootstrap.gamers.filter((gamer) => gamer.active)
   const activeGameNightGamers = bootstrap.activeGameNightGamers
     .map((item) => bootstrap.gamers.find((gamer) => gamer.id === item.gamerId))
@@ -770,6 +800,17 @@ function RoomScreen({
     isValidNameStem(gamerName) &&
     !gamerNameTakenLocally &&
     (gamerPin.trim().length === 0 || /^\d{4}$/.test(gamerPin.trim()))
+  const selectedGamerRows = includeTeamGamesInGamerBoard
+    ? (scoreboard?.gamerRows ?? [])
+    : (scoreboard?.gamerRowsWithoutTeamGames ?? [])
+  const sortedGamerRows = useMemo(
+    () => sortGamerScoreboardRows(selectedGamerRows),
+    [selectedGamerRows],
+  )
+  const sortedGamerTeamRows = useMemo(
+    () => sortTeamScoreboardRows(scoreboard?.gamerTeamRows ?? []),
+    [scoreboard?.gamerTeamRows],
+  )
 
   function toggleActiveGamerDraft(gamerId: string): void {
     if (currentGameGamerIds.has(gamerId)) return
@@ -1312,6 +1353,164 @@ function RoomScreen({
           </Panel>
         </section>
       ) : null}
+
+      <section style={{ marginTop: 18 }}>
+        <Panel
+          title="Scoreboard"
+          subtitle="Best gamers and gamer teams. Pair standings only count results earned together."
+        >
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 10,
+              marginBottom: 14,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setScoreboardView('gamers')}
+              style={scoreboardView === 'gamers' ? primaryButtonStyle : secondaryButtonStyle}
+            >
+              Gamers
+            </button>
+            <button
+              type="button"
+              onClick={() => setScoreboardView('teams')}
+              style={scoreboardView === 'teams' ? primaryButtonStyle : secondaryButtonStyle}
+            >
+              Gamer teams
+            </button>
+          </div>
+
+          {scoreboardView === 'gamers' ? (
+            <>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 8,
+                  marginBottom: 14,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setIncludeTeamGamesInGamerBoard(true)}
+                  style={includeTeamGamesInGamerBoard ? primaryButtonStyle : compactButtonStyle}
+                >
+                  Use team games
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIncludeTeamGamesInGamerBoard(false)}
+                  style={!includeTeamGamesInGamerBoard ? primaryButtonStyle : compactButtonStyle}
+                >
+                  Ignore team games
+                </button>
+              </div>
+              <p style={{ margin: '0 0 14px', fontSize: 13, opacity: 0.72 }}>
+                {includeTeamGamesInGamerBoard
+                  ? 'Individual standings include both solo and team games.'
+                  : 'Individual standings count only 1 vs 1 results.'}
+              </p>
+              {sortedGamerRows.length === 0 ? (
+                <InlineNotice
+                  tone="info"
+                  message={
+                    includeTeamGamesInGamerBoard
+                      ? 'Record the first finished game to populate the gamer scoreboard.'
+                      : 'No solo-only results yet. Finish a 1 vs 1 game to populate this board.'
+                  }
+                />
+              ) : (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {sortedGamerRows.map((row, index) => (
+                    <article
+                      key={row.gamer.id}
+                      style={{
+                        borderRadius: 18,
+                        padding: 14,
+                        background: '#ffffff',
+                        border: '1px solid #d1fae5',
+                        display: 'grid',
+                        gap: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 12,
+                        }}
+                        >
+                        <div>
+                          <div style={{ fontSize: 12, opacity: 0.62 }}>#{index + 1}</div>
+                          <strong style={{ display: 'block', fontSize: 18 }}>{row.gamer.name}</strong>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 12, opacity: 0.62 }}>Points</div>
+                          <strong style={{ fontSize: 18 }}>{row.points}</strong>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 14, opacity: 0.76 }}>
+                        {row.points} pts • {row.stats.wins}-{row.stats.draws}-{row.stats.losses} •{' '}
+                        {row.stats.gamesPlayed} games • Win rate {formatPercent(row.winRate)} • GD{' '}
+                        {formatSignedNumber(row.goalDiff)}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : sortedGamerTeamRows.length === 0 ? (
+            <InlineNotice
+              tone="info"
+              message="No two-gamer team results yet. Team standings appear once pairs finish games together."
+            />
+          ) : (
+            <div style={{ display: 'grid', gap: 10 }}>
+              {sortedGamerTeamRows.map((row, index) => (
+                <article
+                  key={row.gamerTeamKey}
+                  style={{
+                    borderRadius: 18,
+                    padding: 14,
+                    background: '#ffffff',
+                    border: '1px solid #d1fae5',
+                    display: 'grid',
+                    gap: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 12, opacity: 0.62 }}>#{index + 1}</div>
+                      <strong style={{ display: 'block', fontSize: 18 }}>
+                        {row.members.map((member) => member.name).join(' + ')}
+                      </strong>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 12, opacity: 0.62 }}>Points</div>
+                      <strong style={{ fontSize: 18 }}>{row.points}</strong>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 14, opacity: 0.76 }}>
+                    {row.stats.wins}-{row.stats.draws}-{row.stats.losses} • {row.stats.gamesPlayed}{' '}
+                    games • Win rate {formatPercent(row.winRate)} • GD {formatSignedNumber(row.goalDiff)}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </section>
 
       <section style={{ marginTop: 18 }}>
         <Panel
@@ -1966,6 +2165,38 @@ function getRosterStatusDot({
     border: '1px solid #cbd5e1',
     boxShadow: '0 0 0 4px rgba(203,213,225,0.16)',
   }
+}
+
+function sortGamerScoreboardRows(
+  rows: ReadonlyArray<RoomScoreboardResponse['gamerRows'][number]>,
+): ReadonlyArray<RoomScoreboardResponse['gamerRows'][number]> {
+  return [...rows].sort(
+    (left, right) =>
+      right.points - left.points ||
+      right.winRate - left.winRate ||
+      right.goalDiff - left.goalDiff ||
+      right.stats.gamesPlayed - left.stats.gamesPlayed,
+  )
+}
+
+function sortTeamScoreboardRows(
+  rows: ReadonlyArray<RoomScoreboardResponse['gamerTeamRows'][number]>,
+): ReadonlyArray<RoomScoreboardResponse['gamerTeamRows'][number]> {
+  return [...rows].sort(
+    (left, right) =>
+      right.points - left.points ||
+      right.winRate - left.winRate ||
+      right.goalDiff - left.goalDiff ||
+      right.stats.gamesPlayed - left.stats.gamesPlayed,
+  )
+}
+
+function formatPercent(value: number): string {
+  return `${Math.round(value * 100)}%`
+}
+
+function formatSignedNumber(value: number): string {
+  return value > 0 ? `+${value}` : `${value}`
 }
 
 function sameIds(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {

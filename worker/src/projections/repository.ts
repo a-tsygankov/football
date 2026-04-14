@@ -10,6 +10,8 @@ type RecordedGameEnvelope = PersistedGameEvent & { payload: GameRecordedEvent }
 
 export interface IGameProjectionRepository {
   applyRecordedEvent(event: RecordedGameEnvelope): Promise<void>
+  listGamerPointsByRoom(roomId: string): Promise<ReadonlyArray<GamerPoints>>
+  listGamerTeamPointsByRoom(roomId: string): Promise<ReadonlyArray<GamerTeamPoints>>
 }
 
 interface GamerPointDelta {
@@ -76,6 +78,14 @@ export class InMemoryGameProjectionRepository implements IGameProjectionReposito
         updatedAt: delta.updatedAt,
       })
     }
+  }
+
+  async listGamerPointsByRoom(roomId: string): Promise<ReadonlyArray<GamerPoints>> {
+    return [...this.gamerPoints.values()].filter((row) => row.roomId === roomId)
+  }
+
+  async listGamerTeamPointsByRoom(roomId: string): Promise<ReadonlyArray<GamerTeamPoints>> {
+    return [...this.gamerTeamPoints.values()].filter((row) => row.roomId === roomId)
   }
 }
 
@@ -151,6 +161,80 @@ export class D1GameProjectionRepository implements IGameProjectionRepository {
     if (statements.length > 0) {
       await this.db.batch(statements)
     }
+  }
+
+  async listGamerPointsByRoom(roomId: string): Promise<ReadonlyArray<GamerPoints>> {
+    const result = await this.db
+      .prepare(
+        `SELECT gamer_id, room_id, games_played, wins, draws, losses, goals_for, goals_against, last_event_id, updated_at
+         FROM gamer_points
+         WHERE room_id = ?
+         ORDER BY wins DESC, draws DESC, goals_for DESC, updated_at DESC`,
+      )
+      .bind(roomId)
+      .all<{
+        gamer_id: string
+        room_id: string
+        games_played: number
+        wins: number
+        draws: number
+        losses: number
+        goals_for: number
+        goals_against: number
+        last_event_id: string
+        updated_at: number
+      }>()
+
+    return (result.results ?? []).map((row) => ({
+      gamerId: row.gamer_id as GamerPoints['gamerId'],
+      roomId: row.room_id as GamerPoints['roomId'],
+      gamesPlayed: row.games_played,
+      wins: row.wins,
+      draws: row.draws,
+      losses: row.losses,
+      goalsFor: row.goals_for,
+      goalsAgainst: row.goals_against,
+      lastEventId: row.last_event_id,
+      updatedAt: row.updated_at,
+    }))
+  }
+
+  async listGamerTeamPointsByRoom(roomId: string): Promise<ReadonlyArray<GamerTeamPoints>> {
+    const result = await this.db
+      .prepare(
+        `SELECT gamer_team_key, room_id, members_json, games_played, wins, draws, losses, goals_for, goals_against, last_event_id, updated_at
+         FROM gamer_team_points
+         WHERE room_id = ?
+         ORDER BY wins DESC, draws DESC, goals_for DESC, updated_at DESC`,
+      )
+      .bind(roomId)
+      .all<{
+        gamer_team_key: string
+        room_id: string
+        members_json: string
+        games_played: number
+        wins: number
+        draws: number
+        losses: number
+        goals_for: number
+        goals_against: number
+        last_event_id: string
+        updated_at: number
+      }>()
+
+    return (result.results ?? []).map((row) => ({
+      gamerTeamKey: row.gamer_team_key as GamerTeamPoints['gamerTeamKey'],
+      roomId: row.room_id as GamerTeamPoints['roomId'],
+      members: JSON.parse(row.members_json) as GamerTeamPoints['members'],
+      gamesPlayed: row.games_played,
+      wins: row.wins,
+      draws: row.draws,
+      losses: row.losses,
+      goalsFor: row.goals_for,
+      goalsAgainst: row.goals_against,
+      lastEventId: row.last_event_id,
+      updatedAt: row.updated_at,
+    }))
   }
 }
 

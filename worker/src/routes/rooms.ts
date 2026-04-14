@@ -11,8 +11,12 @@ import {
   GameNightId,
   type GameNightActiveGamer,
   GAME_FORMATS,
+  type Gamer,
   GamerId,
+  type GamerPoints,
   gamerTeamKey,
+  type GamerScoreboardRow,
+  type GamerTeamScoreboardRow,
   type GameInterruptedEvent,
   GameId,
   type GameRecordedEvent,
@@ -27,6 +31,7 @@ import {
   type RecordCurrentGameResultRequest,
   type Room,
   type RoomBootstrapResponse,
+  type RoomScoreboardResponse,
   RoomId,
   type RoomId as RoomIdType,
   seedFromCrypto,
@@ -225,6 +230,13 @@ roomRoutes.get('/rooms/:roomId/bootstrap', async (c) => {
   const session = await requireRoomSession(c, roomId)
   if (!session) return c.json({ error: 'unauthorized' }, 401)
   return c.json(await buildBootstrap(c, roomId, session, Date.now()))
+})
+
+roomRoutes.get('/rooms/:roomId/scoreboard', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+  return c.json(await buildScoreboard(c, roomId))
 })
 
 roomRoutes.post('/rooms/:roomId/gamers', async (c) => {
@@ -747,6 +759,129 @@ async function buildBootstrap(
   }
 }
 
+async function buildScoreboard(
+  c: RouteContext,
+  roomId: RoomIdType,
+): Promise<RoomScoreboardResponse> {
+  const gamers = await c.get('deps').gamers.listByRoom(roomId)
+  const gamersById = new Map(gamers.map((gamer) => [gamer.id, toPublicGamer(gamer)]))
+  const recordedEvents = (await c.get('deps').events.listByRoom(roomId))
+    .filter((event): event is typeof event & { payload: GameRecordedEvent } => event.payload.type === 'game_recorded')
+  const gamerRows = (await c.get('deps').projections.listGamerPointsByRoom(roomId))
+    .map((stats) => {
+      const gamer = gamersById.get(stats.gamerId)
+      return gamer ? buildGamerScoreboardRow(gamer, stats) : null
+    })
+    .filter((row): row is GamerScoreboardRow => row !== null)
+  const gamerRowsWithoutTeamGames = buildSoloOnlyGamerRows(gamersById, recordedEvents)
+
+  const gamerTeamRows = (await c.get('deps').projections.listGamerTeamPointsByRoom(roomId))
+    .filter((stats) => stats.members.length === 2)
+    .map((stats) => {
+      const members = stats.members
+        .map((gamerId) => gamersById.get(gamerId))
+        .filter((gamer): gamer is Gamer => gamer !== undefined)
+      if (members.length !== 2) return null
+      return buildGamerTeamScoreboardRow(members, stats)
+    })
+    .filter((row): row is GamerTeamScoreboardRow => row !== null)
+
+  const updatedAtCandidates = [
+    ...gamerRows.map((row) => row.stats.updatedAt),
+    ...gamerRowsWithoutTeamGames.map((row) => row.stats.updatedAt),
+    ...gamerTeamRows.map((row) => row.stats.updatedAt),
+  ]
+
+  return {
+    roomId,
+    gamerRows,
+    gamerRowsWithoutTeamGames,
+    gamerTeamRows,
+    updatedAt:
+      updatedAtCandidates.length > 0 ? Math.max(...updatedAtCandidates) : null,
+  }
+}
+
+function buildSoloOnlyGamerRows(
+  gamersById: ReadonlyMap<string, Gamer>,
+  recordedEvents: ReadonlyArray<{ id: string; payload: GameRecordedEvent }>,
+): GamerScoreboardRow[] {
+  const statsByGamerId = new Map<string, GamerPoints>()
+
+  for (const event of recordedEvents) {
+    if (event.payload.home.gamerIds.length !== 1 || event.payload.away.gamerIds.length !== 1) continue
+
+    applyRecordedEventToGamerStats(statsByGamerId, event.payload.home.gamerIds, {
+      roomId: event.payload.roomId,
+      eventId: event.id,
+      updatedAt: event.payload.occurredAt,
+      won: event.payload.result === 'home',
+      drew: event.payload.result === 'draw',
+      lost: event.payload.result === 'away',
+      goalsFor: event.payload.home.score ?? 0,
+      goalsAgainst: event.payload.away.score ?? 0,
+    })
+
+    applyRecordedEventToGamerStats(statsByGamerId, event.payload.away.gamerIds, {
+      roomId: event.payload.roomId,
+      eventId: event.id,
+      updatedAt: event.payload.occurredAt,
+      won: event.payload.result === 'away',
+      drew: event.payload.result === 'draw',
+      lost: event.payload.result === 'home',
+      goalsFor: event.payload.away.score ?? 0,
+      goalsAgainst: event.payload.home.score ?? 0,
+    })
+  }
+
+  return [...statsByGamerId.values()]
+    .map((stats) => {
+      const gamer = gamersById.get(stats.gamerId)
+      return gamer ? buildGamerScoreboardRow(gamer, stats) : null
+    })
+    .filter((row): row is GamerScoreboardRow => row !== null)
+}
+
+function applyRecordedEventToGamerStats(
+  statsByGamerId: Map<string, GamerPoints>,
+  gamerIds: ReadonlyArray<GamerId>,
+  summary: {
+    roomId: RoomIdType
+    eventId: string
+    updatedAt: number
+    won: boolean
+    drew: boolean
+    lost: boolean
+    goalsFor: number
+    goalsAgainst: number
+  },
+): void {
+  for (const gamerId of gamerIds) {
+    const next = statsByGamerId.get(gamerId) ?? {
+      gamerId,
+      roomId: summary.roomId,
+      gamesPlayed: 0,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      lastEventId: summary.eventId,
+      updatedAt: summary.updatedAt,
+    }
+
+    next.gamesPlayed += 1
+    next.wins += summary.won ? 1 : 0
+    next.draws += summary.drew ? 1 : 0
+    next.losses += summary.lost ? 1 : 0
+    next.goalsFor += summary.goalsFor
+    next.goalsAgainst += summary.goalsAgainst
+    next.lastEventId = summary.eventId
+    next.updatedAt = summary.updatedAt
+    statsByGamerId.set(gamerId, next)
+  }
+}
+
 async function getFreshActiveGameNight(
   c: RouteContext,
   roomId: RoomIdType,
@@ -919,6 +1054,33 @@ function validateRecordedScores(
 
 function buildSideTeamKey(gamerIds: readonly GamerId[]) {
   return gamerTeamKey(gamerIds)
+}
+
+function buildGamerScoreboardRow(
+  gamer: Gamer,
+  stats: GamerScoreboardRow['stats'],
+): GamerScoreboardRow {
+  return {
+    gamer,
+    stats,
+    points: stats.wins * 3 + stats.draws,
+    winRate: stats.gamesPlayed > 0 ? stats.wins / stats.gamesPlayed : 0,
+    goalDiff: stats.goalsFor - stats.goalsAgainst,
+  }
+}
+
+function buildGamerTeamScoreboardRow(
+  members: ReadonlyArray<Gamer>,
+  stats: GamerTeamScoreboardRow['stats'],
+): GamerTeamScoreboardRow {
+  return {
+    gamerTeamKey: stats.gamerTeamKey,
+    members,
+    stats,
+    points: stats.wins * 3 + stats.draws,
+    winRate: stats.gamesPlayed > 0 ? stats.wins / stats.gamesPlayed : 0,
+    goalDiff: stats.goalsFor - stats.goalsAgainst,
+  }
 }
 
 async function parseJson(c: RouteContext): Promise<unknown> {
