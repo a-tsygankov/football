@@ -1316,7 +1316,7 @@ function RoomScreen({
       <section style={{ marginTop: 18 }}>
         <Panel
           title="Roster"
-          subtitle="Green dots mark gamers currently active in the game night."
+          subtitle="Dots show who is playing now, who is active but sitting out, and who is inactive."
         >
           <div style={{ display: 'grid', gap: 10 }}>
             {bootstrap.gamers.length === 0 ? (
@@ -1331,21 +1331,27 @@ function RoomScreen({
                 No gamers yet. Add the first one above.
               </div>
             ) : (
-              bootstrap.gamers.map((gamer) => (
-                <article
-                  key={gamer.id}
-                  style={{
-                    position: 'relative',
-                    borderRadius: 22,
-                    padding: 16,
-                    background: gamer.active ? '#ffffff' : '#f8fafc',
-                    border: `1px solid ${gamer.active ? '#bbf7d0' : '#cbd5e1'}`,
-                    boxShadow: '0 8px 24px rgba(5,46,22,0.06)',
-                  }}
-                >
-                  {activeGameNightGamerIds.has(gamer.id) ? (
+              bootstrap.gamers.map((gamer) => {
+                const statusDot = getRosterStatusDot({
+                  gamer,
+                  activeGameNightGamerIds,
+                  currentGameGamerIds,
+                  hasCurrentGame: bootstrap.currentGame !== null,
+                })
+                return (
+                  <article
+                    key={gamer.id}
+                    style={{
+                      position: 'relative',
+                      borderRadius: 22,
+                      padding: 16,
+                      background: gamer.active ? '#ffffff' : '#f8fafc',
+                      border: `1px solid ${gamer.active ? '#bbf7d0' : '#cbd5e1'}`,
+                      boxShadow: '0 8px 24px rgba(5,46,22,0.06)',
+                    }}
+                  >
                     <span
-                      aria-label={`${gamer.name} is active in the current game night`}
+                      aria-label={statusDot.ariaLabel}
                       style={{
                         position: 'absolute',
                         top: 12,
@@ -1353,138 +1359,139 @@ function RoomScreen({
                         width: 12,
                         height: 12,
                         borderRadius: '50%',
-                        background: '#22c55e',
-                        boxShadow: '0 0 0 4px rgba(34,197,94,0.14)',
+                        background: statusDot.background,
+                        border: statusDot.border,
+                        boxShadow: statusDot.boxShadow,
                       }}
                     />
-                  ) : null}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <div>
-                      <strong style={{ display: 'block', fontSize: 20 }}>{gamer.name}</strong>
-                      <span style={{ fontSize: 14, opacity: 0.72 }}>
-                        Rating {gamer.rating} • {gamer.active ? 'Available' : 'Benched'}
-                        {gamer.hasPin ? ' • PIN protected' : ' • No PIN'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      <button
-                        type="button"
-                        disabled={busy !== null}
-                        onClick={() => void onToggleGamer(gamer)}
-                        style={gamer.active ? secondaryButtonStyle : primaryButtonStyle}
-                      >
-                        {busy === 'updating-gamer'
-                          ? 'Saving...'
-                          : gamer.active
-                            ? 'Set inactive'
-                            : 'Reactivate'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy !== null}
-                        onClick={() =>
-                          editingGamerId === gamer.id
-                            ? setEditingGamerId(null)
-                            : startEditingGamer(gamer)
-                        }
-                        style={compactButtonStyle}
-                      >
-                        {editingGamerId === gamer.id ? 'Close edit' : 'Edit details'}
-                      </button>
-                    </div>
-                  </div>
-                  {editingGamerId === gamer.id ? (
-                    <div
-                      style={{
-                        marginTop: 14,
-                        paddingTop: 14,
-                        borderTop: '1px solid #dcfce7',
-                        display: 'grid',
-                        gap: 10,
-                      }}
-                    >
-                      <Field label="Name">
-                        <input
-                          value={editingName}
-                          onChange={(event) => setEditingName(event.target.value)}
-                          style={inputStyle}
-                        />
-                      </Field>
-                      <Field label="Rating">
-                        <select
-                          value={editingRating}
-                          onChange={(event) => setEditingRating(event.target.value)}
-                          style={inputStyle}
-                        >
-                          {[1, 2, 3, 4, 5].map((value) => (
-                            <option key={value} value={value}>
-                              {value}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      {gamer.hasPin ? (
-                        <Field label="Current PIN">
-                          <input
-                            value={editingCurrentPin}
-                            onChange={(event) => setEditingCurrentPin(event.target.value)}
-                            inputMode="numeric"
-                            maxLength={4}
-                            placeholder="Current 4-digit PIN"
-                            style={inputStyle}
-                          />
-                        </Field>
-                      ) : null}
-                      <Field label={gamer.hasPin ? 'New PIN (leave blank to clear)' : 'Set PIN'}>
-                        <input
-                          value={editingNextPin}
-                          onChange={(event) => setEditingNextPin(event.target.value)}
-                          inputMode="numeric"
-                          maxLength={4}
-                          placeholder={gamer.hasPin ? 'Blank clears PIN' : 'Optional 4-digit PIN'}
-                          style={inputStyle}
-                        />
-                      </Field>
-                      {!isValidNameStem(editingName) && editingName.trim().length > 0 ? (
-                        <InlineNotice tone="warn" message="Enter at least one letter or digit in the gamer name." />
-                      ) : null}
-                      {bootstrap.gamers.some(
-                        (item) =>
-                          item.id !== gamer.id &&
-                          normalizeNameStem(item.name) === normalizeNameStem(editingName),
-                      ) ? (
-                        <InlineNotice tone="warn" message="That gamer name stem is already taken." />
-                      ) : null}
-                      {editingCurrentPin.trim().length > 0 &&
-                      !/^\d{4}$/.test(editingCurrentPin.trim()) ? (
-                        <InlineNotice tone="warn" message="Current PIN must be exactly 4 digits." />
-                      ) : null}
-                      {editingNextPin.trim().length > 0 &&
-                      !/^\d{4}$/.test(editingNextPin.trim()) ? (
-                        <InlineNotice tone="warn" message="New PIN must be exactly 4 digits." />
-                      ) : null}
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <div>
+                        <strong style={{ display: 'block', fontSize: 20 }}>{gamer.name}</strong>
+                        <span style={{ fontSize: 14, opacity: 0.72 }}>
+                          Rating {gamer.rating} • {gamer.active ? 'Available' : 'Inactive'}
+                          {gamer.hasPin ? ' • PIN protected' : ' • No PIN'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'grid', gap: 8 }}>
                         <button
                           type="button"
                           disabled={busy !== null}
-                          onClick={() => void saveGamerDetails()}
-                          style={primaryButtonStyle}
+                          onClick={() => void onToggleGamer(gamer)}
+                          style={gamer.active ? secondaryButtonStyle : primaryButtonStyle}
                         >
-                          {busy === 'updating-gamer' ? 'Saving...' : 'Save gamer'}
+                          {busy === 'updating-gamer'
+                            ? 'Saving...'
+                            : gamer.active
+                              ? 'Set inactive'
+                              : 'Reactivate'}
                         </button>
                         <button
                           type="button"
                           disabled={busy !== null}
-                          onClick={() => setEditingGamerId(null)}
-                          style={secondaryButtonStyle}
+                          onClick={() =>
+                            editingGamerId === gamer.id
+                              ? setEditingGamerId(null)
+                              : startEditingGamer(gamer)
+                          }
+                          style={compactButtonStyle}
                         >
-                          Cancel
+                          {editingGamerId === gamer.id ? 'Close edit' : 'Edit details'}
                         </button>
                       </div>
                     </div>
-                  ) : null}
-                </article>
-              ))
+                    {editingGamerId === gamer.id ? (
+                      <div
+                        style={{
+                          marginTop: 14,
+                          paddingTop: 14,
+                          borderTop: '1px solid #dcfce7',
+                          display: 'grid',
+                          gap: 10,
+                        }}
+                      >
+                        <Field label="Name">
+                          <input
+                            value={editingName}
+                            onChange={(event) => setEditingName(event.target.value)}
+                            style={inputStyle}
+                          />
+                        </Field>
+                        <Field label="Rating">
+                          <select
+                            value={editingRating}
+                            onChange={(event) => setEditingRating(event.target.value)}
+                            style={inputStyle}
+                          >
+                            {[1, 2, 3, 4, 5].map((value) => (
+                              <option key={value} value={value}>
+                                {value}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                        {gamer.hasPin ? (
+                          <Field label="Current PIN">
+                            <input
+                              value={editingCurrentPin}
+                              onChange={(event) => setEditingCurrentPin(event.target.value)}
+                              inputMode="numeric"
+                              maxLength={4}
+                              placeholder="Current 4-digit PIN"
+                              style={inputStyle}
+                            />
+                          </Field>
+                        ) : null}
+                        <Field label={gamer.hasPin ? 'New PIN (leave blank to clear)' : 'Set PIN'}>
+                          <input
+                            value={editingNextPin}
+                            onChange={(event) => setEditingNextPin(event.target.value)}
+                            inputMode="numeric"
+                            maxLength={4}
+                            placeholder={gamer.hasPin ? 'Blank clears PIN' : 'Optional 4-digit PIN'}
+                            style={inputStyle}
+                          />
+                        </Field>
+                        {!isValidNameStem(editingName) && editingName.trim().length > 0 ? (
+                          <InlineNotice tone="warn" message="Enter at least one letter or digit in the gamer name." />
+                        ) : null}
+                        {bootstrap.gamers.some(
+                          (item) =>
+                            item.id !== gamer.id &&
+                            normalizeNameStem(item.name) === normalizeNameStem(editingName),
+                        ) ? (
+                          <InlineNotice tone="warn" message="That gamer name stem is already taken." />
+                        ) : null}
+                        {editingCurrentPin.trim().length > 0 &&
+                        !/^\d{4}$/.test(editingCurrentPin.trim()) ? (
+                          <InlineNotice tone="warn" message="Current PIN must be exactly 4 digits." />
+                        ) : null}
+                        {editingNextPin.trim().length > 0 &&
+                        !/^\d{4}$/.test(editingNextPin.trim()) ? (
+                          <InlineNotice tone="warn" message="New PIN must be exactly 4 digits." />
+                        ) : null}
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => void saveGamerDetails()}
+                            style={primaryButtonStyle}
+                          >
+                            {busy === 'updating-gamer' ? 'Saving...' : 'Save gamer'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => setEditingGamerId(null)}
+                            style={secondaryButtonStyle}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </article>
+                )
+              })
             )}
           </div>
         </Panel>
@@ -1901,6 +1908,64 @@ function buildManualAssignments(
   for (const gamerId of currentGame.homeGamerIds) next[gamerId] = 'home'
   for (const gamerId of currentGame.awayGamerIds) next[gamerId] = 'away'
   return next
+}
+
+function getRosterStatusDot({
+  gamer,
+  activeGameNightGamerIds,
+  currentGameGamerIds,
+  hasCurrentGame,
+}: {
+  gamer: Gamer
+  activeGameNightGamerIds: ReadonlySet<string>
+  currentGameGamerIds: ReadonlySet<string>
+  hasCurrentGame: boolean
+}): {
+  ariaLabel: string
+  background: string
+  border: string
+  boxShadow: string
+} {
+  if (hasCurrentGame) {
+    if (currentGameGamerIds.has(gamer.id)) {
+      return {
+        ariaLabel: `${gamer.name} is playing in the current game`,
+        background: '#22c55e',
+        border: '1px solid #16a34a',
+        boxShadow: '0 0 0 4px rgba(34,197,94,0.14)',
+      }
+    }
+    if (gamer.active) {
+      return {
+        ariaLabel: `${gamer.name} is active but sitting out the current game`,
+        background: '#cbd5e1',
+        border: '1px solid #94a3b8',
+        boxShadow: '0 0 0 4px rgba(148,163,184,0.16)',
+      }
+    }
+    return {
+      ariaLabel: `${gamer.name} is inactive`,
+      background: '#ffffff',
+      border: '1px solid #cbd5e1',
+      boxShadow: '0 0 0 4px rgba(203,213,225,0.16)',
+    }
+  }
+
+  if (activeGameNightGamerIds.has(gamer.id)) {
+    return {
+      ariaLabel: `${gamer.name} is active in the current game night`,
+      background: '#22c55e',
+      border: '1px solid #16a34a',
+      boxShadow: '0 0 0 4px rgba(34,197,94,0.14)',
+    }
+  }
+
+  return {
+    ariaLabel: gamer.active ? `${gamer.name} is active` : `${gamer.name} is inactive`,
+    background: '#ffffff',
+    border: '1px solid #cbd5e1',
+    boxShadow: '0 0 0 4px rgba(203,213,225,0.16)',
+  }
 }
 
 function sameIds(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {

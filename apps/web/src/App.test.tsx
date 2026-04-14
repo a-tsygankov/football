@@ -398,6 +398,150 @@ describe('App shell', () => {
     expect(screen.queryByRole('option', { name: '2 vs 2' })).not.toBeInTheDocument()
   })
 
+  it('shows roster dots for playing, sitting-out, and inactive gamers during a live game', async () => {
+    localStorage.setItem('fc26:last-room-id', 'room-5')
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/version')) {
+        return new Response(
+          JSON.stringify({
+            workerVersion: '0.1.0',
+            schemaVersion: 1,
+            minClientVersion: '0.1.0',
+            gitSha: null,
+            builtAt: new Date().toISOString(),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/rooms/room-5/bootstrap')) {
+        return new Response(
+          JSON.stringify({
+            room: {
+              id: 'room-5',
+              name: 'Roster States',
+              avatarUrl: null,
+              hasPin: false,
+              defaultSelectionStrategy: 'uniform-random',
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            gamers: [
+              {
+                id: 'g1',
+                roomId: 'room-5',
+                name: 'Alice',
+                rating: 5,
+                active: true,
+                hasPin: false,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                id: 'g2',
+                roomId: 'room-5',
+                name: 'Bob',
+                rating: 4,
+                active: true,
+                hasPin: false,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                id: 'g3',
+                roomId: 'room-5',
+                name: 'Cara',
+                rating: 3,
+                active: true,
+                hasPin: false,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                id: 'g4',
+                roomId: 'room-5',
+                name: 'Dylan',
+                rating: 2,
+                active: false,
+                hasPin: false,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+            ],
+            activeGameNight: {
+              id: 'gn5',
+              roomId: 'room-5',
+              status: 'active',
+              startedAt: Date.now() - 60_000,
+              endedAt: null,
+              lastGameAt: null,
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            activeGameNightGamers: [
+              {
+                gameNightId: 'gn5',
+                roomId: 'room-5',
+                gamerId: 'g1',
+                joinedAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                gameNightId: 'gn5',
+                roomId: 'room-5',
+                gamerId: 'g2',
+                joinedAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                gameNightId: 'gn5',
+                roomId: 'room-5',
+                gamerId: 'g3',
+                joinedAt: 1000,
+                updatedAt: 1000,
+              },
+            ],
+            currentGame: {
+              id: 'game-5',
+              roomId: 'room-5',
+              gameNightId: 'gn5',
+              status: 'active',
+              allocationMode: 'manual',
+              format: '1v1',
+              homeGamerIds: ['g1'],
+              awayGamerIds: ['g2'],
+              selectionStrategyId: 'manual',
+              randomSeed: null,
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            session: {
+              roomId: 'room-5',
+              expiresAt: Date.now() + 10_000,
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    }))
+
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Roster States/i })).toBeInTheDocument(),
+    )
+    expect(screen.getByLabelText('Alice is playing in the current game')).toBeInTheDocument()
+    expect(screen.getByLabelText('Bob is playing in the current game')).toBeInTheDocument()
+    expect(
+      screen.getByLabelText('Cara is active but sitting out the current game'),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Dylan is inactive')).toBeInTheDocument()
+  })
+
   it('records the active game result and returns to game creation', async () => {
     localStorage.setItem('fc26:last-room-id', 'room-3')
     vi.stubGlobal('fetch', vi.fn(async (input, init) => {
