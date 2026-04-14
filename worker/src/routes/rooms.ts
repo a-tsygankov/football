@@ -5,18 +5,25 @@ import {
   type CreateRoomRequest,
   type CurrentGame,
   DEFAULT_STRATEGY_ID,
+  EVENT_SCHEMA_VERSION,
+  EventId,
   type GameNight,
   GameNightId,
   type GameNightActiveGamer,
   GAME_FORMATS,
   GamerId,
+  gamerTeamKey,
+  type GameInterruptedEvent,
   GameId,
+  type GameRecordedEvent,
   getStrategy,
   inferGameFormat,
   isValidNameStem,
+  type InterruptCurrentGameRequest,
   type JoinRoomRequest,
   mulberry32,
   normalizeNameStem,
+  type RecordCurrentGameResultRequest,
   type Room,
   type RoomBootstrapResponse,
   RoomId,
@@ -94,6 +101,18 @@ const createCurrentGameSchema = z.discriminatedUnion('allocationMode', [
     selectionStrategyId: z.string().trim().min(1).max(64).optional(),
   }),
 ])
+
+const recordCurrentGameSchema = z.object({
+  result: z.enum(['home', 'away', 'draw']),
+  homeScore: z.number().int().min(0).nullable().optional(),
+  awayScore: z.number().int().min(0).nullable().optional(),
+  occurredAt: z.number().int().positive().optional(),
+})
+
+const interruptCurrentGameSchema = z.object({
+  comment: z.string().trim().max(280).nullable().optional(),
+  occurredAt: z.number().int().positive().optional(),
+})
 
 export const roomRoutes = new Hono<AppContext>()
 
@@ -569,6 +588,132 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games', async (c) => {
   return c.json({ currentGame }, 201)
 })
 
+roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/result', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const gameNight = await requireActiveGameNight(c, roomId, GameNightId(c.req.param('gameNightId')))
+  if (!gameNight) {
+    return c.json({ error: 'active_game_night_not_found' }, 404)
+  }
+
+  const activeGame = await c.get('deps').games.getActive(gameNight.id)
+  if (!activeGame || activeGame.id !== GameId(c.req.param('gameId'))) {
+    return c.json({ error: 'active_game_not_found' }, 404)
+  }
+
+  const parsed = recordCurrentGameSchema.safeParse(await parseJson(c))
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.flatten() }, 400)
+  }
+
+  const body = parsed.data satisfies RecordCurrentGameResultRequest
+  const scores = validateRecordedScores(body.result, body.homeScore, body.awayScore)
+  if (!scores.ok) {
+    return c.json({ error: scores.error }, 400)
+  }
+
+  const now = Date.now()
+  const occurredAt = body.occurredAt ?? now
+  const latestSquadVersion = await c.get('deps').squadVersions.latest()
+  const recordedEvent: GameRecordedEvent = {
+    type: 'game_recorded',
+    schemaVersion: EVENT_SCHEMA_VERSION,
+    gameId: activeGame.id,
+    gameNightId: activeGame.gameNightId,
+    roomId,
+    format: activeGame.format,
+    size: GAME_FORMATS[activeGame.format].size,
+    occurredAt,
+    home: {
+      gamerIds: activeGame.homeGamerIds,
+      gamerTeamKey: buildSideTeamKey(activeGame.homeGamerIds),
+      clubId: 0,
+      score: scores.homeScore,
+    },
+    away: {
+      gamerIds: activeGame.awayGamerIds,
+      gamerTeamKey: buildSideTeamKey(activeGame.awayGamerIds),
+      clubId: 0,
+      score: scores.awayScore,
+    },
+    result: body.result,
+    squadVersion: latestSquadVersion?.version ?? 'unknown',
+    selectionStrategyId: activeGame.selectionStrategyId,
+    entryMethod: 'manual',
+  }
+  const persistedEvent = buildPersistedEvent(c, recordedEvent, roomId, occurredAt, now)
+
+  await c.get('deps').events.insert(persistedEvent)
+  await c.get('deps').projections.applyRecordedEvent(persistedEvent)
+  await c.get('deps').games.update({
+    ...activeGame,
+    status: 'recorded',
+    updatedAt: now,
+  })
+  await c.get('deps').gameNights.touchLastGameAt(gameNight.id, occurredAt)
+
+  return c.json({
+    currentGame: null,
+    activeGameNight: { ...gameNight, lastGameAt: occurredAt, updatedAt: occurredAt },
+    eventId: persistedEvent.id,
+    eventType: persistedEvent.eventType,
+  })
+})
+
+roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/interrupt', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const gameNight = await requireActiveGameNight(c, roomId, GameNightId(c.req.param('gameNightId')))
+  if (!gameNight) {
+    return c.json({ error: 'active_game_night_not_found' }, 404)
+  }
+
+  const activeGame = await c.get('deps').games.getActive(gameNight.id)
+  if (!activeGame || activeGame.id !== GameId(c.req.param('gameId'))) {
+    return c.json({ error: 'active_game_not_found' }, 404)
+  }
+
+  const parsed = interruptCurrentGameSchema.safeParse(await parseJson(c))
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.flatten() }, 400)
+  }
+
+  const body = parsed.data satisfies InterruptCurrentGameRequest
+  const now = Date.now()
+  const occurredAt = body.occurredAt ?? now
+  const interruptedEvent: GameInterruptedEvent = {
+    type: 'game_interrupted',
+    schemaVersion: EVENT_SCHEMA_VERSION,
+    gameId: activeGame.id,
+    gameNightId: activeGame.gameNightId,
+    roomId,
+    format: activeGame.format,
+    size: GAME_FORMATS[activeGame.format].size,
+    occurredAt,
+    comment: body.comment?.trim() || null,
+  }
+  const persistedEvent = buildPersistedEvent(c, interruptedEvent, roomId, occurredAt, now)
+
+  await c.get('deps').events.insert(persistedEvent)
+  await c.get('deps').games.update({
+    ...activeGame,
+    status: 'interrupted',
+    updatedAt: now,
+  })
+  await c.get('deps').gameNights.touchLastGameAt(gameNight.id, occurredAt)
+
+  return c.json({
+    currentGame: null,
+    activeGameNight: { ...gameNight, lastGameAt: occurredAt, updatedAt: occurredAt },
+    eventId: persistedEvent.id,
+    eventType: persistedEvent.eventType,
+  })
+})
+
 async function buildBootstrap(
   c: RouteContext,
   roomId: RoomIdType,
@@ -690,6 +835,57 @@ function nextPinAttempt(
     attempts,
     lockedUntil: attempts >= 5 ? now + 60_000 * 2 ** (attempts - 5) : null,
   }
+}
+
+function buildPersistedEvent<TPayload extends GameRecordedEvent | GameInterruptedEvent>(
+  c: RouteContext,
+  payload: TPayload,
+  roomId: RoomIdType,
+  occurredAt: number,
+  recordedAt: number,
+) {
+  return {
+    id: EventId(nanoid(12)),
+    roomId,
+    eventType: payload.type,
+    payload,
+    schemaVersion: payload.schemaVersion,
+    correlationId: c.get('correlationId'),
+    occurredAt,
+    recordedAt,
+  }
+}
+
+function validateRecordedScores(
+  result: GameRecordedEvent['result'],
+  rawHomeScore: number | null | undefined,
+  rawAwayScore: number | null | undefined,
+):
+  | { ok: true; homeScore: number | null; awayScore: number | null }
+  | { ok: false; error: string } {
+  const homeScore = rawHomeScore ?? null
+  const awayScore = rawAwayScore ?? null
+  const oneMissing = (homeScore === null) !== (awayScore === null)
+  if (oneMissing) return { ok: false, error: 'score_pair_required' }
+  if (homeScore === null && awayScore === null) {
+    return { ok: true, homeScore: null, awayScore: null }
+  }
+
+  if (result === 'draw' && homeScore !== awayScore) {
+    return { ok: false, error: 'draw_score_mismatch' }
+  }
+  if (result === 'home' && !(homeScore! > awayScore!)) {
+    return { ok: false, error: 'winner_score_mismatch' }
+  }
+  if (result === 'away' && !(awayScore! > homeScore!)) {
+    return { ok: false, error: 'winner_score_mismatch' }
+  }
+
+  return { ok: true, homeScore, awayScore }
+}
+
+function buildSideTeamKey(gamerIds: readonly GamerId[]) {
+  return gamerTeamKey(gamerIds)
 }
 
 async function parseJson(c: RouteContext): Promise<unknown> {

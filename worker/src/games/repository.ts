@@ -10,6 +10,7 @@ import {
 export interface IGameRepository {
   getActive(gameNightId: GameNightIdType): Promise<CurrentGame | null>
   create(game: CurrentGame): Promise<void>
+  update(game: CurrentGame): Promise<void>
 }
 
 export class InMemoryGameRepository implements IGameRepository {
@@ -27,6 +28,13 @@ export class InMemoryGameRepository implements IGameRepository {
     const existing = await this.getActive(game.gameNightId)
     if (existing) {
       throw new Error(`game night ${game.gameNightId} already has an active game`)
+    }
+    this.games.set(game.id, game)
+  }
+
+  async update(game: CurrentGame): Promise<void> {
+    if (!this.games.has(game.id)) {
+      throw new Error(`game ${game.id} not found`)
     }
     this.games.set(game.id, game)
   }
@@ -107,6 +115,30 @@ export class D1GameRepository implements IGameRepository {
         game.randomSeed,
         game.createdAt,
         game.updatedAt,
+      )
+      .run()
+  }
+
+  async update(game: CurrentGame): Promise<void> {
+    await this.db
+      .prepare(
+        `UPDATE games
+         SET status = ?, allocation_mode = ?, format = ?, home_gamer_ids_json = ?,
+             away_gamer_ids_json = ?, selection_strategy_id = ?, random_seed = ?, updated_at = ?
+         WHERE id = ? AND room_id = ? AND game_night_id = ?`,
+      )
+      .bind(
+        game.status,
+        game.allocationMode,
+        game.format,
+        JSON.stringify(game.homeGamerIds),
+        JSON.stringify(game.awayGamerIds),
+        game.selectionStrategyId,
+        game.randomSeed,
+        game.updatedAt,
+        game.id,
+        game.roomId,
+        game.gameNightId,
       )
       .run()
   }

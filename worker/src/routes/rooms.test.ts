@@ -5,9 +5,11 @@ import {
   InMemoryPinAttemptRepository,
 } from '../auth/pin-attempt-repository.js'
 import type { Env } from '../env.js'
+import { InMemoryGameEventRepository } from '../events/repository.js'
 import { InMemoryGamerRepository } from '../gamers/repository.js'
 import { InMemoryGameRepository } from '../games/repository.js'
 import { InMemoryGameNightRepository } from '../game-nights/repository.js'
+import { InMemoryGameProjectionRepository } from '../projections/repository.js'
 import { InMemoryRoomRepository } from '../rooms/repository.js'
 import { InMemorySquadStorage } from '../squad/in-memory-storage.js'
 import { InMemorySquadVersionRepository } from '../squad/version-repository.js'
@@ -31,6 +33,8 @@ function buildTestApp() {
   const rooms = new InMemoryRoomRepository()
   const gamers = new InMemoryGamerRepository()
   const games = new InMemoryGameRepository()
+  const events = new InMemoryGameEventRepository()
+  const projections = new InMemoryGameProjectionRepository()
   const gameNights = new InMemoryGameNightRepository()
   const pinAttempts = new InMemoryPinAttemptRepository()
   const squadStorage = new InMemorySquadStorage()
@@ -40,6 +44,8 @@ function buildTestApp() {
       rooms,
       gamers,
       games,
+      events,
+      projections,
       gameNights,
       pinAttempts,
       squadStorage,
@@ -557,5 +563,157 @@ describe('room routes', () => {
     expect(currentGameBody.currentGame.format).toBe('2v2')
     expect(currentGameBody.currentGame.homeGamerIds).toHaveLength(2)
     expect(currentGameBody.currentGame.awayGamerIds).toHaveLength(2)
+  })
+
+  it('records and interrupts active games so the next game can be created', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Result Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const gamerIds: string[] = []
+    for (const name of ['Alice', 'Bob', 'Cara', 'Dylan']) {
+      const res = await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Cookie: cookie,
+          },
+          body: JSON.stringify({ name }),
+        }),
+        env,
+        execCtx(),
+      )
+      expect(res.status).toBe(201)
+      const body = (await res.json()) as { gamer: { id: string } }
+      gamerIds.push(body.gamer.id)
+    }
+
+    const gameNightRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/game-nights`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Cookie: cookie,
+        },
+        body: JSON.stringify({ activeGamerIds: gamerIds }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(gameNightRes.status).toBe(201)
+    const gameNightBody = (await gameNightRes.json()) as { gameNight: { id: string } }
+
+    const firstGameRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Cookie: cookie,
+          },
+          body: JSON.stringify({
+            allocationMode: 'manual',
+            homeGamerIds: gamerIds.slice(0, 2),
+            awayGamerIds: gamerIds.slice(2, 4),
+          }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(firstGameRes.status).toBe(201)
+    const firstGameBody = (await firstGameRes.json()) as { currentGame: { id: string } }
+
+    const recordRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games/${firstGameBody.currentGame.id}/result`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Cookie: cookie,
+          },
+          body: JSON.stringify({ result: 'home', homeScore: 2, awayScore: 1 }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(recordRes.status).toBe(200)
+    const recorded = (await recordRes.json()) as {
+      currentGame: null
+      eventType: string
+      activeGameNight: { lastGameAt: number | null }
+    }
+    expect(recorded.currentGame).toBeNull()
+    expect(recorded.eventType).toBe('game_recorded')
+    expect(recorded.activeGameNight.lastGameAt).toBeTruthy()
+
+    const secondGameRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Cookie: cookie,
+          },
+          body: JSON.stringify({
+            allocationMode: 'random',
+            format: '2v2',
+          }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(secondGameRes.status).toBe(201)
+    const secondGameBody = (await secondGameRes.json()) as { currentGame: { id: string } }
+
+    const interruptRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games/${secondGameBody.currentGame.id}/interrupt`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            Cookie: cookie,
+          },
+          body: JSON.stringify({ comment: 'Controller battery died' }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(interruptRes.status).toBe(200)
+    const interrupted = (await interruptRes.json()) as {
+      currentGame: null
+      eventType: string
+    }
+    expect(interrupted.currentGame).toBeNull()
+    expect(interrupted.eventType).toBe('game_interrupted')
+
+    const bootstrapRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/bootstrap`, {
+        headers: { Cookie: cookie },
+      }),
+      env,
+      execCtx(),
+    )
+    const bootstrap = (await bootstrapRes.json()) as RoomBootstrapResponse
+    expect(bootstrap.currentGame).toBeNull()
+    expect(bootstrap.activeGameNight).toBeTruthy()
   })
 })

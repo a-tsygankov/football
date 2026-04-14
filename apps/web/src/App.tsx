@@ -6,11 +6,14 @@ import {
   formatLocal,
   formatRelative,
   GAME_FORMATS,
+  type InterruptCurrentGameRequest,
   isValidNameStem,
   type Gamer,
   inferGameFormat,
   listStrategies,
   normalizeNameStem,
+  type RecordCurrentGameResultRequest,
+  type ResolveCurrentGameResponse,
   type RoomBootstrapResponse,
   type UpdateGamerRequest,
 } from '@fc26/shared'
@@ -32,6 +35,8 @@ type BusyState =
   | 'saving-active-gamers'
   | 'starting-game-night'
   | 'creating-game'
+  | 'recording-game'
+  | 'interrupting-game'
   | null
 
 export function App() {
@@ -333,6 +338,76 @@ export function App() {
     }
   }
 
+  async function recordGameResult(
+    gameNightId: string,
+    gameId: string,
+    request: RecordCurrentGameResultRequest,
+  ): Promise<void> {
+    if (!bootstrap) return
+    setBusy('recording-game')
+    setError(null)
+    try {
+      const response = await apiJson<ResolveCurrentGameResponse>(
+        `/api/rooms/${bootstrap.room.id}/game-nights/${gameNightId}/games/${gameId}/result`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(request),
+        },
+      )
+      startTransition(() => {
+        setBootstrap((current) =>
+          current
+            ? {
+                ...current,
+                currentGame: response.currentGame,
+                activeGameNight: response.activeGameNight,
+              }
+            : current,
+        )
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function interruptGame(
+    gameNightId: string,
+    gameId: string,
+    request: InterruptCurrentGameRequest,
+  ): Promise<void> {
+    if (!bootstrap) return
+    setBusy('interrupting-game')
+    setError(null)
+    try {
+      const response = await apiJson<ResolveCurrentGameResponse>(
+        `/api/rooms/${bootstrap.room.id}/game-nights/${gameNightId}/games/${gameId}/interrupt`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(request),
+        },
+      )
+      startTransition(() => {
+        setBootstrap((current) =>
+          current
+            ? {
+                ...current,
+                currentGame: response.currentGame,
+                activeGameNight: response.activeGameNight,
+              }
+            : current,
+        )
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   function applyBootstrap(next: RoomBootstrapResponse): void {
     startTransition(() => {
       setBootstrap(next)
@@ -427,6 +502,8 @@ export function App() {
             onChangeGamerAvatar={setGamerAvatarUrl}
             onCreateGamer={createGamer}
             onCreateGame={createGame}
+            onInterruptGame={interruptGame}
+            onRecordGameResult={recordGameResult}
             onRefresh={() => refreshRoom(bootstrap.room.id)}
             onSaveActiveGameNightGamers={saveActiveGameNightGamers}
             onStartGameNight={startGameNight}
@@ -579,6 +656,8 @@ function RoomScreen({
   onChangeGamerAvatar,
   onCreateGamer,
   onCreateGame,
+  onInterruptGame,
+  onRecordGameResult,
   onRefresh,
   onSaveActiveGameNightGamers,
   onStartGameNight,
@@ -597,6 +676,16 @@ function RoomScreen({
   onChangeGamerAvatar: (value: string | null) => void
   onCreateGamer: () => Promise<void>
   onCreateGame: (gameNightId: string, request: CreateCurrentGameRequest) => Promise<void>
+  onInterruptGame: (
+    gameNightId: string,
+    gameId: string,
+    request: InterruptCurrentGameRequest,
+  ) => Promise<void>
+  onRecordGameResult: (
+    gameNightId: string,
+    gameId: string,
+    request: RecordCurrentGameResultRequest,
+  ) => Promise<void>
   onRefresh: () => Promise<void>
   onSaveActiveGameNightGamers: (
     gameNightId: string,
@@ -974,8 +1063,27 @@ function RoomScreen({
           >
             {bootstrap.currentGame ? (
               <CurrentGameCard
+                busy={busy}
                 currentGame={bootstrap.currentGame}
                 gamers={bootstrap.gamers}
+                onInterruptGame={(request) =>
+                  bootstrap.activeGameNight
+                    ? onInterruptGame(
+                        bootstrap.activeGameNight.id,
+                        bootstrap.currentGame!.id,
+                        request,
+                      )
+                    : Promise.resolve()
+                }
+                onRecordGameResult={(request) =>
+                  bootstrap.activeGameNight
+                    ? onRecordGameResult(
+                        bootstrap.activeGameNight.id,
+                        bootstrap.currentGame!.id,
+                        request,
+                      )
+                    : Promise.resolve()
+                }
               />
             ) : (
               <>
@@ -1369,12 +1477,51 @@ function RoomScreen({
 }
 
 function CurrentGameCard({
+  busy,
   currentGame,
   gamers,
+  onInterruptGame,
+  onRecordGameResult,
 }: {
+  busy: BusyState
   currentGame: CurrentGame
   gamers: ReadonlyArray<Gamer>
+  onInterruptGame: (request: InterruptCurrentGameRequest) => Promise<void>
+  onRecordGameResult: (request: RecordCurrentGameResultRequest) => Promise<void>
 }) {
+  const [homeScore, setHomeScore] = useState('')
+  const [awayScore, setAwayScore] = useState('')
+  const [interruptComment, setInterruptComment] = useState('')
+  const trimmedHomeScore = homeScore.trim()
+  const trimmedAwayScore = awayScore.trim()
+  const hasScoreEntry = trimmedHomeScore.length > 0 || trimmedAwayScore.length > 0
+  const validHomeScore = trimmedHomeScore.length === 0 || /^\d+$/.test(trimmedHomeScore)
+  const validAwayScore = trimmedAwayScore.length === 0 || /^\d+$/.test(trimmedAwayScore)
+  const scorePairReady =
+    validHomeScore &&
+    validAwayScore &&
+    ((trimmedHomeScore.length === 0 && trimmedAwayScore.length === 0) ||
+      (trimmedHomeScore.length > 0 && trimmedAwayScore.length > 0))
+
+  async function submitResult(result: 'home' | 'away' | 'draw'): Promise<void> {
+    if (!scorePairReady) return
+    const nextHomeScore = trimmedHomeScore.length > 0 ? Number.parseInt(trimmedHomeScore, 10) : null
+    const nextAwayScore = trimmedAwayScore.length > 0 ? Number.parseInt(trimmedAwayScore, 10) : null
+    await onRecordGameResult({
+      result,
+      homeScore: nextHomeScore,
+      awayScore: nextAwayScore,
+    })
+    setHomeScore('')
+    setAwayScore('')
+    setInterruptComment('')
+  }
+
+  async function submitInterrupt(): Promise<void> {
+    await onInterruptGame({ comment: interruptComment.trim() || null })
+    setInterruptComment('')
+  }
+
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       <div
@@ -1406,10 +1553,99 @@ function CurrentGameCard({
           gamers={gamers}
         />
       </div>
-      <p style={{ margin: 0, fontSize: 14, opacity: 0.72 }}>
-        Result and interruption controls are the next workflow slice. For now this
-        locks in the live matchup and the active roster around it.
-      </p>
+      <div
+        style={{
+          padding: 14,
+          borderRadius: 18,
+          background: '#ffffff',
+          border: '1px solid #d1fae5',
+          display: 'grid',
+          gap: 12,
+        }}
+      >
+        <strong style={{ fontSize: 16 }}>Finish game</strong>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <Field label="Home score">
+            <input
+              value={homeScore}
+              onChange={(event) => setHomeScore(event.target.value)}
+              inputMode="numeric"
+              placeholder="Optional"
+              style={inputStyle}
+            />
+          </Field>
+          <Field label="Away score">
+            <input
+              value={awayScore}
+              onChange={(event) => setAwayScore(event.target.value)}
+              inputMode="numeric"
+              placeholder="Optional"
+              style={inputStyle}
+            />
+          </Field>
+        </div>
+        {!scorePairReady && hasScoreEntry ? (
+          <InlineNotice tone="warn" message="Enter both scores or leave both blank." />
+        ) : null}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <button
+            type="button"
+            disabled={busy !== null || !scorePairReady}
+            onClick={() => void submitResult('home')}
+            style={primaryButtonStyle}
+          >
+            {busy === 'recording-game' ? 'Saving...' : 'Home win'}
+          </button>
+          <button
+            type="button"
+            disabled={busy !== null || !scorePairReady}
+            onClick={() => void submitResult('draw')}
+            style={secondaryButtonStyle}
+          >
+            {busy === 'recording-game' ? 'Saving...' : 'Draw'}
+          </button>
+          <button
+            type="button"
+            disabled={busy !== null || !scorePairReady}
+            onClick={() => void submitResult('away')}
+            style={primaryButtonStyle}
+          >
+            {busy === 'recording-game' ? 'Saving...' : 'Away win'}
+          </button>
+        </div>
+        <p style={{ margin: 0, fontSize: 13, opacity: 0.72 }}>
+          Scores are optional, but if you enter them they must match the winner you pick.
+        </p>
+      </div>
+      <div
+        style={{
+          padding: 14,
+          borderRadius: 18,
+          background: '#fffbeb',
+          border: '1px solid #fcd34d',
+          display: 'grid',
+          gap: 12,
+        }}
+      >
+        <strong style={{ fontSize: 16 }}>Interrupt game</strong>
+        <Field label="Comment">
+          <input
+            value={interruptComment}
+            onChange={(event) => setInterruptComment(event.target.value)}
+            placeholder="Optional note"
+            maxLength={280}
+            style={inputStyle}
+          />
+        </Field>
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => void submitInterrupt()}
+          style={secondaryButtonStyle}
+        >
+          {busy === 'interrupting-game' ? 'Interrupting...' : 'Interrupt game'}
+        </button>
+      </div>
     </div>
   )
 }

@@ -6,6 +6,7 @@ import type {
   Gamer,
   RoomSummary,
 } from './domain.js'
+import type { GameResult } from './events.js'
 import type { RoomId } from './ids.js'
 
 export interface RoomSessionInfo {
@@ -86,4 +87,23 @@ export type CreateCurrentGameRequest =
 
 export interface CurrentGameResponse {
   currentGame: CurrentGame
+}
+
+export interface RecordCurrentGameResultRequest {
+  result: GameResult
+  homeScore?: number | null
+  awayScore?: number | null
+  occurredAt?: number
+}
+
+export interface InterruptCurrentGameRequest {
+  comment?: string | null
+  occurredAt?: number
+}
+
+export interface ResolveCurrentGameResponse {
+  currentGame: CurrentGame | null
+  activeGameNight: GameNight
+  eventId: string
+  eventType: 'game_recorded' | 'game_interrupted'
 }

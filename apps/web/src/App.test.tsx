@@ -270,4 +270,139 @@ describe('App shell', () => {
     expect(screen.getByLabelText(/Format/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/Random strategy/i)).toBeInTheDocument()
   })
+
+  it('records the active game result and returns to game creation', async () => {
+    localStorage.setItem('fc26:last-room-id', 'room-3')
+    vi.stubGlobal('fetch', vi.fn(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/api/version')) {
+        return new Response(
+          JSON.stringify({
+            workerVersion: '0.1.0',
+            schemaVersion: 1,
+            minClientVersion: '0.1.0',
+            gitSha: null,
+            builtAt: new Date().toISOString(),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/rooms') && init?.method === 'POST') {
+        throw new Error(`unexpected create room ${url}`)
+      }
+      if (url.endsWith('/api/rooms/room-3/bootstrap')) {
+        return new Response(
+          JSON.stringify({
+            room: {
+              id: 'room-3',
+              name: 'Live Room',
+              avatarUrl: null,
+              hasPin: false,
+              defaultSelectionStrategy: 'uniform-random',
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            gamers: [
+              {
+                id: 'g1',
+                roomId: 'room-3',
+                name: 'Alice',
+                rating: 5,
+                active: true,
+                hasPin: false,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                id: 'g2',
+                roomId: 'room-3',
+                name: 'Bob',
+                rating: 4,
+                active: true,
+                hasPin: false,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+            ],
+            activeGameNight: {
+              id: 'gn3',
+              roomId: 'room-3',
+              status: 'active',
+              startedAt: Date.now() - 60_000,
+              endedAt: null,
+              lastGameAt: null,
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            activeGameNightGamers: [
+              {
+                gameNightId: 'gn3',
+                roomId: 'room-3',
+                gamerId: 'g1',
+                joinedAt: 1000,
+                updatedAt: 1000,
+              },
+              {
+                gameNightId: 'gn3',
+                roomId: 'room-3',
+                gamerId: 'g2',
+                joinedAt: 1000,
+                updatedAt: 1000,
+              },
+            ],
+            currentGame: {
+              id: 'game-3',
+              roomId: 'room-3',
+              gameNightId: 'gn3',
+              status: 'active',
+              allocationMode: 'manual',
+              format: '1v1',
+              homeGamerIds: ['g1'],
+              awayGamerIds: ['g2'],
+              selectionStrategyId: 'manual',
+              randomSeed: null,
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            session: {
+              roomId: 'room-3',
+              expiresAt: Date.now() + 10_000,
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/rooms/room-3/game-nights/gn3/games/game-3/result')) {
+        return new Response(
+          JSON.stringify({
+            currentGame: null,
+            activeGameNight: {
+              id: 'gn3',
+              roomId: 'room-3',
+              status: 'active',
+              startedAt: Date.now() - 60_000,
+              endedAt: null,
+              lastGameAt: Date.now(),
+              createdAt: 1000,
+              updatedAt: Date.now(),
+            },
+            eventId: 'ev-1',
+            eventType: 'game_recorded',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    }))
+
+    render(<App />)
+    await waitFor(() => expect(screen.getByText(/Finish game/i)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /Home win/i }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Create manual game/i })).toBeInTheDocument(),
+    )
+  })
 })

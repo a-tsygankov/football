@@ -5,6 +5,11 @@ import {
   type IGamerRepository,
 } from './gamers/repository.js'
 import {
+  D1GameEventRepository,
+  InMemoryGameEventRepository,
+  type IGameEventRepository,
+} from './events/repository.js'
+import {
   D1GameRepository,
   InMemoryGameRepository,
   type IGameRepository,
@@ -14,6 +19,11 @@ import {
   InMemoryGameNightRepository,
   type IGameNightRepository,
 } from './game-nights/repository.js'
+import {
+  D1GameProjectionRepository,
+  InMemoryGameProjectionRepository,
+  type IGameProjectionRepository,
+} from './projections/repository.js'
 import {
   D1PinAttemptRepository,
   InMemoryPinAttemptRepository,
@@ -44,6 +54,8 @@ export interface AppDependencies {
   readonly rooms: IRoomRepository
   readonly gamers: IGamerRepository
   readonly games: IGameRepository
+  readonly events: IGameEventRepository
+  readonly projections: IGameProjectionRepository
   readonly gameNights: IGameNightRepository
   readonly pinAttempts: IPinAttemptRepository
   readonly squadStorage: ISquadStorage
@@ -63,6 +75,10 @@ export function buildDependencies(env: Env): AppDependencies {
     rooms: env.DB ? new D1RoomRepository(env.DB) : new InMemoryRoomRepository(),
     gamers: env.DB ? new D1GamerRepository(env.DB) : new InMemoryGamerRepository(),
     games: env.DB ? new D1GameRepository(env.DB) : new InMemoryGameRepository(),
+    events: env.DB ? new D1GameEventRepository(env.DB) : new InMemoryGameEventRepository(),
+    projections: env.DB
+      ? new D1GameProjectionRepository(env.DB)
+      : new InMemoryGameProjectionRepository(),
     gameNights: env.DB
       ? new D1GameNightRepository(env.DB)
       : new InMemoryGameNightRepository(),
