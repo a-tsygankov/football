@@ -1,5 +1,5 @@
 import { DEFAULT_SQUAD_PLATFORM, type SquadPlatform } from '@fc26/shared'
-import type { Env } from '../env.js'
+import { SQUAD_APP_CONFIG } from '../config/squad.js'
 
 export const DEFAULT_SQUAD_RETENTION_COUNT = 12
 export const DEFAULT_EA_ROSTERUPDATE_URL =
@@ -28,19 +28,16 @@ export type SquadSyncConfig =
   | EaRosterupdateJsonSquadSyncConfig
 
 export function resolveSquadSyncConfig(
-  env: Env,
   overrides: {
     platform?: SquadPlatform
   } = {},
 ): SquadSyncConfig | null {
-  const retentionCount = resolveRetentionCount(env.SQUAD_SYNC_RETENTION_COUNT)
-  const explicitKind = env.SQUAD_SYNC_SOURCE_KIND
-  const inferredKind = inferSourceKind(env)
-  const sourceKind = explicitKind ?? inferredKind
+  const retentionCount = resolveRetentionCount(SQUAD_APP_CONFIG.sync.retentionCount)
+  const sourceKind = SQUAD_APP_CONFIG.sync.sourceKind
   if (!sourceKind) return null
 
   if (sourceKind === 'json-snapshot') {
-    const sourceUrl = env.SQUAD_SYNC_SOURCE_URL?.trim()
+    const sourceUrl = SQUAD_APP_CONFIG.sync.sourceUrl.trim()
     if (!sourceUrl) return null
     return {
       sourceKind,
@@ -50,13 +47,14 @@ export function resolveSquadSyncConfig(
   }
 
   if (sourceKind === 'ea-rosterupdate-json') {
-    const snapshotUrlTemplate = env.SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE?.trim()
+    const snapshotUrlTemplate = SQUAD_APP_CONFIG.sync.snapshotUrlTemplate.trim()
     if (!snapshotUrlTemplate) return null
     return {
       sourceKind,
-      discoveryUrl: env.SQUAD_SYNC_DISCOVERY_URL?.trim() || DEFAULT_EA_ROSTERUPDATE_URL,
+      discoveryUrl:
+        SQUAD_APP_CONFIG.sync.discoveryUrl.trim() || DEFAULT_EA_ROSTERUPDATE_URL,
       snapshotUrlTemplate,
-      platform: overrides.platform ?? resolvePlatform(env.SQUAD_SYNC_PLATFORM),
+      platform: overrides.platform ?? resolvePlatform(SQUAD_APP_CONFIG.sync.defaultPlatform),
       retentionCount,
     }
   }
@@ -64,16 +62,11 @@ export function resolveSquadSyncConfig(
   return null
 }
 
-function resolveRetentionCount(raw: string | undefined): number {
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN
+function resolveRetentionCount(raw: string | number | undefined): number {
+  const normalized = typeof raw === 'number' ? String(raw) : raw
+  const parsed = normalized ? Number.parseInt(normalized, 10) : Number.NaN
   if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_SQUAD_RETENTION_COUNT
   return parsed
-}
-
-function inferSourceKind(env: Env): SquadSyncSourceKind | null {
-  if (env.SQUAD_SYNC_SOURCE_URL?.trim()) return 'json-snapshot'
-  if (env.SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE?.trim()) return 'ea-rosterupdate-json'
-  return null
 }
 
 function resolvePlatform(raw: string | undefined): SquadPlatform {

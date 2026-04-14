@@ -20,7 +20,7 @@ async function runScheduledSquadSync(env: Env): Promise<void> {
   const logger = new WorkerLogger(`cron-squad-sync-${Date.now()}`)
   const deps = buildDependencies(env)
   const service = new SquadSyncService({
-    config: resolveSquadSyncConfig(env),
+    config: resolveSquadSyncConfig(),
     fetchImpl: fetch,
     logger,
     now: () => Date.now(),

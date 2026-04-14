@@ -57,6 +57,7 @@ import {
   type RoomSessionPayload,
   verifyRoomSession,
 } from '../auth/session.js'
+import { SQUAD_APP_CONFIG } from '../config/squad.js'
 import { toRoomSummary } from '../rooms/repository.js'
 import { toPublicGamer } from '../gamers/repository.js'
 import { resolveSquadAssetRefreshConfig } from '../squad/asset-config.js'
@@ -284,7 +285,7 @@ roomRoutes.post('/rooms/:roomId/settings/squad-assets/refresh', async (c) => {
   if (!session) return c.json({ error: 'unauthorized' }, 401)
 
   const service = new SquadAssetRefreshService({
-    config: resolveSquadAssetRefreshConfig(c.env),
+    config: resolveSquadAssetRefreshConfig(SQUAD_APP_CONFIG.assets),
     fetchImpl: fetch,
     logger: c.get('logger'),
     squadStorage: c.get('deps').squadStorage,
@@ -302,7 +303,7 @@ roomRoutes.post('/rooms/:roomId/settings/squads/retrieve', async (c) => {
   const room = await c.get('deps').rooms.get(roomId)
   if (!room) return c.json({ error: 'not_found', roomId }, 404)
 
-  const config = resolveSquadSyncConfig(c.env, { platform: room.squadPlatform })
+  const config = resolveSquadSyncConfig({ platform: room.squadPlatform })
   c.get('logger').info('squad-sync', 'manual squad retrieval requested', {
     roomId,
     squadPlatform: room.squadPlatform,

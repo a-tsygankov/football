@@ -323,7 +323,18 @@ describe('room routes', () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = (async (input) => {
       const url = String(input)
-      if (url === 'https://snapshots.example/latest.json') {
+      if (
+        url ===
+        'https://eafc26.content.easports.com/fc/fltOnlineAssets/26E4D4D6-8DBB-4A9A-BD99-9C47D3AA341D/2026/fc/fclive/genxtitle/rosterupdate.xml'
+      ) {
+        return new Response(
+          '<root><squadInfo platform="PS5"><dbMajor>fc26-r12</dbMajor></squadInfo></root>',
+          {
+            headers: { 'content-type': 'application/xml' },
+          },
+        )
+      }
+      if (url === 'https://YOUR-SNAPSHOT-HOST/PS5/fc26-r12.json') {
         return Response.json({
           version: 'fc26-r12',
           releasedAt: 1_710_000_000_000,
@@ -369,11 +380,6 @@ describe('room routes', () => {
     }) as typeof fetch
 
     try {
-      const syncEnv: Env = {
-        ...env,
-        SQUAD_SYNC_SOURCE_KIND: 'json-snapshot',
-        SQUAD_SYNC_SOURCE_URL: 'https://snapshots.example/latest.json',
-      }
       const retrieveRes = await app.fetch(
         new Request(`http://localhost/api/rooms/${created.room.id}/settings/squads/retrieve`, {
           method: 'POST',
@@ -381,7 +387,7 @@ describe('room routes', () => {
             [ROOM_SESSION_HEADER]: created.session.token!,
           },
         }),
-        syncEnv,
+        env,
         execCtx(),
       )
       expect(retrieveRes.status).toBe(200)
@@ -413,11 +419,6 @@ describe('room routes', () => {
     }) as typeof fetch
 
     try {
-      const syncEnv: Env = {
-        ...env,
-        SQUAD_SYNC_SOURCE_KIND: 'json-snapshot',
-        SQUAD_SYNC_SOURCE_URL: 'https://snapshots.example/latest.json',
-      }
       const retrieveRes = await app.fetch(
         new Request(`http://localhost/api/rooms/${created.room.id}/settings/squads/retrieve`, {
           method: 'POST',
@@ -425,7 +426,7 @@ describe('room routes', () => {
             [ROOM_SESSION_HEADER]: created.session.token!,
           },
         }),
-        syncEnv,
+        env,
         execCtx(),
       )
       expect(retrieveRes.status).toBe(502)

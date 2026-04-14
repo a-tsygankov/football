@@ -154,33 +154,7 @@ jobs:
         # cross-check build identity. WORKER_VERSION stays as the semver in
         # wrangler.toml so the three-axis version check (§20) has a stable
         # floor to compare MIN_CLIENT_VERSION against.
-        run: |
-          cmd=(pnpm exec wrangler deploy --var "GIT_SHA:${{ github.sha }}")
-          if [ -n "$SQUAD_SYNC_SOURCE_KIND" ]; then
-            cmd+=(--var "SQUAD_SYNC_SOURCE_KIND:$SQUAD_SYNC_SOURCE_KIND")
-          fi
-          if [ -n "$SQUAD_SYNC_SOURCE_URL" ]; then
-            cmd+=(--var "SQUAD_SYNC_SOURCE_URL:$SQUAD_SYNC_SOURCE_URL")
-          fi
-          if [ -n "$SQUAD_SYNC_DISCOVERY_URL" ]; then
-            cmd+=(--var "SQUAD_SYNC_DISCOVERY_URL:$SQUAD_SYNC_DISCOVERY_URL")
-          fi
-          if [ -n "$SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE" ]; then
-            cmd+=(--var "SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE:$SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE")
-          fi
-          if [ -n "$SQUAD_SYNC_PLATFORM" ]; then
-            cmd+=(--var "SQUAD_SYNC_PLATFORM:$SQUAD_SYNC_PLATFORM")
-          fi
-          if [ -n "$SQUAD_SYNC_RETENTION_COUNT" ]; then
-            cmd+=(--var "SQUAD_SYNC_RETENTION_COUNT:$SQUAD_SYNC_RETENTION_COUNT")
-          fi
-          "${cmd[@]}"
+        run: pnpm exec wrangler deploy --var "GIT_SHA:${{ github.sha }}"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          SQUAD_SYNC_SOURCE_KIND: ${{ vars.SQUAD_SYNC_SOURCE_KIND }}
-          SQUAD_SYNC_SOURCE_URL: ${{ vars.SQUAD_SYNC_SOURCE_URL }}
-          SQUAD_SYNC_DISCOVERY_URL: ${{ vars.SQUAD_SYNC_DISCOVERY_URL }}
-          SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE: ${{ vars.SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE }}
-          SQUAD_SYNC_PLATFORM: ${{ vars.SQUAD_SYNC_PLATFORM }}
-          SQUAD_SYNC_RETENTION_COUNT: ${{ vars.SQUAD_SYNC_RETENTION_COUNT }}

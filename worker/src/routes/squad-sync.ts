@@ -21,7 +21,7 @@ squadSyncRoutes.post('/internal/squads/sync', async (c) => {
     return c.json({ error: 'unauthorized' }, 401)
   }
 
-  const config = resolveSquadSyncConfig(c.env)
+  const config = resolveSquadSyncConfig()
   c.get('logger').info('squad-sync', 'internal squad sync requested', {
     hasDbBinding: Boolean(c.env.DB),
     hasSquadsBinding: Boolean(c.env.SQUADS),
