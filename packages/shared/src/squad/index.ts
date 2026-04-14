@@ -4,6 +4,7 @@ export {
   deriveTeamStarRating10FromOverall,
   resolveEaTeamStarRating10,
 } from './stars.js'
+export { compareLeagueNames, getLeagueSortPriority } from './league-order.js'
 export {
   buildEaContentUrl,
   decodeEaRosterText,

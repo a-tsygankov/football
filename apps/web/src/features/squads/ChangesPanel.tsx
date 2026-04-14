@@ -9,6 +9,7 @@ import {
   formatClubChangeField,
   formatPlayerChangeField,
 } from '../../utils/squads.js'
+import { HistoricalRatingsChart } from './HistoricalRatingsChart.jsx'
 import type { SquadBrowserState } from './useSquadBrowser.js'
 
 export function ChangesPanel({
@@ -41,6 +42,73 @@ export function ChangesPanel({
         ) : (
           <div style={{ display: 'grid', gap: 14 }}>
             {squadPanelError ? <InlineNotice tone="warn" message={squadPanelError} /> : null}
+            <div
+              style={{
+                display: 'grid',
+                gap: 10,
+                borderRadius: 18,
+                padding: 14,
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+              }}
+            >
+              <strong style={{ fontSize: 16 }}>Historical club ratings</strong>
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 10,
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                }}
+              >
+                <Field label="League">
+                  <select
+                    value={String(changes.selectedHistoryLeagueId)}
+                    onChange={(event) =>
+                      changes.setSelectedHistoryLeagueId(
+                        event.target.value === 'all'
+                          ? 'all'
+                          : Number.parseInt(event.target.value, 10),
+                      )
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="all">All leagues</option>
+                    {changes.historyLeagues.map((league) => (
+                      <option key={league.id} value={league.id}>
+                        {league.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Team">
+                  <select
+                    value={changes.selectedHistoryClubId ?? ''}
+                    onChange={(event) =>
+                      changes.setSelectedHistoryClubId(
+                        event.target.value ? Number.parseInt(event.target.value, 10) : null,
+                      )
+                    }
+                    style={inputStyle}
+                  >
+                    {changes.historyClubOptions.map((club) => (
+                      <option key={club.id} value={club.id}>
+                        {club.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              {changes.historyLoading ? (
+                <InlineNotice tone="info" message="Loading stored club history..." />
+              ) : changes.historySeries.length === 0 ? (
+                <InlineNotice
+                  tone="info"
+                  message="Stored versions do not yet have enough club history for the selected team."
+                />
+              ) : (
+                <HistoricalRatingsChart points={changes.historySeries} />
+              )}
+            </div>
             <div
               style={{
                 display: 'grid',

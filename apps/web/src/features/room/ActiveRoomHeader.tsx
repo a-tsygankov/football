@@ -11,11 +11,15 @@ export function ActiveRoomHeader({
   bootstrap,
   busy,
   onLeaveRoom,
+  onOpenGamePanel,
+  onOpenRoster,
   onRefresh,
 }: {
   bootstrap: RoomBootstrapResponse
   busy: BusyState
   onLeaveRoom: () => void
+  onOpenGamePanel: () => void
+  onOpenRoster: () => void
   onRefresh: () => Promise<void>
 }) {
   return (
@@ -78,7 +82,7 @@ export function ActiveRoomHeader({
           gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
         }}
       >
-        <MiniStat label="Gamers" value={String(bootstrap.gamers.length)} />
+        <MiniStat label="Gamers" value={String(bootstrap.gamers.length)} onClick={onOpenRoster} />
         <MiniStat
           label="Active game night"
           value={
@@ -88,6 +92,7 @@ export function ActiveRoomHeader({
                 : `${bootstrap.activeGameNightGamers.length} ready`
               : 'Not started'
           }
+          onClick={onOpenGamePanel}
         />
         <MiniStat
           label="Session"

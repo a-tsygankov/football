@@ -129,12 +129,20 @@ export function RoomScreen({
     )
   }
 
+  function scrollToSection(sectionId: string): void {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   return (
     <>
       <ActiveRoomHeader
         bootstrap={bootstrap}
         busy={busy}
         onLeaveRoom={onLeaveRoom}
+        onOpenGamePanel={() =>
+          scrollToSection(bootstrap.activeGameNight ? 'fc26-game-live-section' : 'fc26-game-section')
+        }
+        onOpenRoster={() => scrollToSection('fc26-roster-section')}
         onRefresh={onRefresh}
       />
 
@@ -169,6 +177,7 @@ export function RoomScreen({
 
       {bootstrap.activeGameNight ? (
         <section
+          id="fc26-game-live-section"
           style={{
             marginTop: 18,
             display: 'grid',
@@ -232,14 +241,16 @@ export function RoomScreen({
         onSaveRoomSettings={onSaveRoomSettings}
       />
 
-      <RosterPanel
-        bootstrap={bootstrap}
-        busy={busy}
-        activeGameNightGamerIds={activeGameNightGamerIds}
-        currentGameGamerIds={currentGameGamerIds}
-        onToggleGamer={onToggleGamer}
-        onUpdateGamerDetails={onUpdateGamerDetails}
-      />
+      <section id="fc26-roster-section">
+        <RosterPanel
+          bootstrap={bootstrap}
+          busy={busy}
+          activeGameNightGamerIds={activeGameNightGamerIds}
+          currentGameGamerIds={currentGameGamerIds}
+          onToggleGamer={onToggleGamer}
+          onUpdateGamerDetails={onUpdateGamerDetails}
+        />
+      </section>
     </>
   )
 }

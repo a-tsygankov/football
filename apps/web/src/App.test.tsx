@@ -1013,6 +1013,32 @@ describe('App shell', () => {
           { status: 200, headers: { 'content-type': 'application/json' } },
         )
       }
+      if (url.endsWith('/api/squads/v1/clubs')) {
+        return new Response(
+          JSON.stringify({
+            version: 'v1',
+            clubs: [
+              {
+                id: 1,
+                name: 'Arsenal',
+                shortName: 'ARS',
+                leagueId: 100,
+                leagueName: 'Premier League',
+                leagueLogoUrl: 'https://example.com/premier.png',
+                nationId: 14,
+                overallRating: 84,
+                attackRating: 83,
+                midfieldRating: 84,
+                defenseRating: 82,
+                avatarUrl: null,
+                logoUrl: 'https://example.com/arsenal.png',
+                starRating: 4,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
       if (url.endsWith('/api/squads/v2/leagues')) {
         return new Response(
           JSON.stringify({
@@ -1093,7 +1119,10 @@ describe('App shell', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /Squad Browser/i })).toBeInTheDocument(),
     )
-    await waitFor(() => expect(screen.getByText('Arsenal')).toBeInTheDocument())
+    const teamsSection = screen.getByRole('heading', { name: 'Teams' }).closest('section')
+    expect(teamsSection).not.toBeNull()
+    const teams = within(teamsSection!)
+    await waitFor(() => expect(teams.getAllByText('Arsenal').length).toBeGreaterThan(0))
     await waitFor(() =>
       expect(screen.getByRole('img', { name: 'Bukayo Saka player avatar' })).toBeInTheDocument(),
     )

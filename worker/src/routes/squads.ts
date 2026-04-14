@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import type { SquadLeague } from '@fc26/shared'
+import { compareLeagueNames, type SquadLeague } from '@fc26/shared'
 import type { AppContext } from '../app.js'
 
 /**
@@ -114,5 +114,5 @@ function deriveLeagues(clubs: ReadonlyArray<{
       clubCount: 1,
     })
   }
-  return [...grouped.values()].sort((left, right) => left.name.localeCompare(right.name))
+  return [...grouped.values()].sort((left, right) => compareLeagueNames(left.name, right.name))
 }

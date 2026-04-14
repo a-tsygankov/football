@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
+  type Club,
   type CurrentGame,
   type Gamer,
   GAME_FORMATS,
@@ -20,18 +21,22 @@ export function CurrentGameCard({
   busy,
   currentGame,
   gamers,
+  squadClubs,
   onInterruptGame,
   onRecordGameResult,
 }: {
   busy: BusyState
   currentGame: CurrentGame
   gamers: ReadonlyArray<Gamer>
+  squadClubs: ReadonlyArray<Club>
   onInterruptGame: (request: InterruptCurrentGameRequest) => Promise<void>
   onRecordGameResult: (request: RecordCurrentGameResultRequest) => Promise<void>
 }) {
   const [homeScore, setHomeScore] = useState('')
   const [awayScore, setAwayScore] = useState('')
   const [interruptComment, setInterruptComment] = useState('')
+  const [scorePhoto, setScorePhoto] = useState<File | null>(null)
+  const [scorePhotoUrl, setScorePhotoUrl] = useState<string | null>(null)
   const trimmedHomeScore = homeScore.trim()
   const trimmedAwayScore = awayScore.trim()
   const hasScoreEntry = trimmedHomeScore.length > 0 || trimmedAwayScore.length > 0
@@ -42,6 +47,33 @@ export function CurrentGameCard({
     validAwayScore &&
     ((trimmedHomeScore.length === 0 && trimmedAwayScore.length === 0) ||
       (trimmedHomeScore.length > 0 && trimmedAwayScore.length > 0))
+  const homeClub = useMemo(
+    () =>
+      currentGame.homeClubId != null
+        ? squadClubs.find((club) => club.id === currentGame.homeClubId) ?? null
+        : null,
+    [currentGame.homeClubId, squadClubs],
+  )
+  const awayClub = useMemo(
+    () =>
+      currentGame.awayClubId != null
+        ? squadClubs.find((club) => club.id === currentGame.awayClubId) ?? null
+        : null,
+    [currentGame.awayClubId, squadClubs],
+  )
+
+  useEffect(() => {
+    if (!scorePhoto) {
+      setScorePhotoUrl(null)
+      return
+    }
+
+    const nextUrl = URL.createObjectURL(scorePhoto)
+    setScorePhotoUrl(nextUrl)
+    return () => {
+      URL.revokeObjectURL(nextUrl)
+    }
+  }, [scorePhoto])
 
   async function submitResult(result: 'home' | 'away' | 'draw'): Promise<void> {
     if (!scorePairReady) return
@@ -55,11 +87,13 @@ export function CurrentGameCard({
     setHomeScore('')
     setAwayScore('')
     setInterruptComment('')
+    setScorePhoto(null)
   }
 
   async function submitInterrupt(): Promise<void> {
     await onInterruptGame({ comment: interruptComment.trim() || null })
     setInterruptComment('')
+    setScorePhoto(null)
   }
 
   return (
@@ -73,22 +107,25 @@ export function CurrentGameCard({
         }}
       >
         <strong style={{ display: 'block', fontSize: 18 }}>
-          {GAME_FORMATS[currentGame.format].label} active now
+          Game night live
         </strong>
         <span style={{ fontSize: 14, opacity: 0.72 }}>
+          {GAME_FORMATS[currentGame.format].label} •{' '}
           {currentGame.allocationMode === 'manual'
-            ? 'Hand-picked teams'
+            ? 'Manual matchup'
             : `Random via ${currentGame.selectionStrategyId}`}
         </span>
       </div>
       <div style={{ display: 'grid', gap: 10, gridTemplateColumns: '1fr 1fr' }}>
         <TeamColumn
           title="Home"
+          club={homeClub}
           gamerIds={currentGame.homeGamerIds}
           gamers={gamers}
         />
         <TeamColumn
           title="Away"
+          club={awayClub}
           gamerIds={currentGame.awayGamerIds}
           gamers={gamers}
         />
@@ -127,6 +164,48 @@ export function CurrentGameCard({
         {!scorePairReady && hasScoreEntry ? (
           <InlineNotice tone="warn" message="Enter both scores or leave both blank." />
         ) : null}
+        <Field label="TV photo">
+          <div style={{ display: 'grid', gap: 10 }}>
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(event) => setScorePhoto(event.target.files?.[0] ?? null)}
+              style={inputStyle}
+            />
+            {scorePhotoUrl ? (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <img
+                  src={scorePhotoUrl}
+                  alt="Captured TV score"
+                  style={{
+                    width: '100%',
+                    maxHeight: 220,
+                    objectFit: 'cover',
+                    borderRadius: 16,
+                    border: '1px solid #d1fae5',
+                  }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, opacity: 0.72 }}>
+                    {scorePhoto?.name ?? 'TV photo ready'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setScorePhoto(null)}
+                    style={secondaryButtonStyle}
+                  >
+                    Remove photo
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <span style={{ fontSize: 13, opacity: 0.72 }}>
+                Optional. Take a picture of the TV score before saving the result.
+              </span>
+            )}
+          </div>
+        </Field>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           <button
             type="button"

@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import type {
+import {
   Club,
-  FcPlayer,
-  SquadClubsResponse,
-  SquadDiff,
-  SquadLeague,
-  SquadLeaguesResponse,
-  SquadPlayersResponse,
-  SquadVersion,
-  SquadVersionsResponse,
+  compareLeagueNames,
+  type FcPlayer,
+  type SquadClubsResponse,
+  type SquadDiff,
+  type SquadLeague,
+  type SquadLeaguesResponse,
+  type SquadPlayersResponse,
+  type SquadVersion,
+  type SquadVersionsResponse,
 } from '@fc26/shared'
 import { apiJson } from '../../lib/api.js'
 
@@ -40,6 +41,22 @@ export interface SquadBrowserState {
     clubById: ReadonlyMap<number, Club>
     versions: ReadonlyArray<string>
     loading: boolean
+    historyLoading: boolean
+    historyLeagues: ReadonlyArray<SquadLeague>
+    selectedHistoryLeagueId: number | 'all'
+    setSelectedHistoryLeagueId: (value: number | 'all') => void
+    selectedHistoryClubId: number | null
+    setSelectedHistoryClubId: (value: number | null) => void
+    historyClubOptions: ReadonlyArray<Club>
+    historySeries: ReadonlyArray<{
+      version: string
+      label: string
+      releasedAt: number | null
+      overallRating: number
+      attackRating: number
+      midfieldRating: number
+      defenseRating: number
+    }>
   }
 }
 
@@ -63,6 +80,12 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
   const [squadDiff, setSquadDiff] = useState<SquadDiff | null>(null)
   const [changesClubs, setChangesClubs] = useState<ReadonlyArray<Club>>([])
   const [changesLoading, setChangesLoading] = useState(false)
+  const [historyVersionClubs, setHistoryVersionClubs] = useState<ReadonlyMap<string, ReadonlyArray<Club>>>(
+    new Map(),
+  )
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [selectedHistoryLeagueId, setSelectedHistoryLeagueId] = useState<number | 'all'>('all')
+  const [selectedHistoryClubId, setSelectedHistoryClubId] = useState<number | null>(null)
 
   useEffect(() => {
     setTeamsVersion((current) =>
@@ -85,6 +108,9 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
       setSelectedClubId(null)
       setChangesClubs([])
       setSquadDiff(null)
+      setHistoryVersionClubs(new Map())
+      setSelectedHistoryLeagueId('all')
+      setSelectedHistoryClubId(null)
       return
     }
 
@@ -104,6 +130,41 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
       cancelled = true
     }
   }, [latestSquadVersion])
+
+  useEffect(() => {
+    if (squadVersions.length === 0) {
+      setHistoryVersionClubs(new Map())
+      setSelectedHistoryLeagueId('all')
+      setSelectedHistoryClubId(null)
+      return
+    }
+
+    let cancelled = false
+    setHistoryLoading(true)
+    setSquadPanelError(null)
+    void (async () => {
+      try {
+        const entries = await Promise.all(
+          squadVersions.map(async (version) => {
+            const response = await apiJson<SquadClubsResponse>(`/api/squads/${version.version}/clubs`)
+            return [version.version, response.clubs] as const
+          }),
+        )
+        if (cancelled) return
+        setHistoryVersionClubs(new Map(entries))
+      } catch (err) {
+        if (cancelled) return
+        setSquadPanelError(err instanceof Error ? err.message : String(err))
+        setHistoryVersionClubs(new Map())
+      } finally {
+        if (!cancelled) setHistoryLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [squadVersions])
 
   useEffect(() => {
     if (!teamsVersion) {
@@ -149,9 +210,11 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
 
   const filteredTeamsClubs = useMemo(
     () =>
-      teamsClubs.filter((club) =>
-        selectedLeagueId === 'all' ? true : club.leagueId === selectedLeagueId,
-      ),
+      [...teamsClubs]
+        .filter((club) =>
+          selectedLeagueId === 'all' ? true : club.leagueId === selectedLeagueId,
+        )
+        .sort((left, right) => left.name.localeCompare(right.name)),
     [selectedLeagueId, teamsClubs],
   )
 
@@ -260,6 +323,93 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
     [changesClubs],
   )
   const versionsForChanges = squadVersions.map((version) => version.version)
+  const historyTimeline = useMemo(
+    () =>
+      [...squadVersions].sort(
+        (left, right) =>
+          (left.releasedAt ?? left.ingestedAt) - (right.releasedAt ?? right.ingestedAt),
+      ),
+    [squadVersions],
+  )
+  const historyReferenceVersion = changesToVersion ?? latestSquadVersion ?? squadVersions[0]?.version ?? null
+  const historyReferenceClubs = historyReferenceVersion
+    ? historyVersionClubs.get(historyReferenceVersion) ?? []
+    : []
+  const historyLeagues = useMemo(() => {
+    const grouped = new Map<number, SquadLeague>()
+    for (const clubs of historyVersionClubs.values()) {
+      for (const club of clubs) {
+        const existing = grouped.get(club.leagueId)
+        if (existing) {
+          grouped.set(club.leagueId, {
+            ...existing,
+            clubCount: Math.max(existing.clubCount, 1),
+            logoUrl: existing.logoUrl ?? club.leagueLogoUrl ?? null,
+          })
+          continue
+        }
+        grouped.set(club.leagueId, {
+          id: club.leagueId,
+          name: club.leagueName,
+          logoUrl: club.leagueLogoUrl ?? null,
+          clubCount: 1,
+        })
+      }
+    }
+
+    return [...grouped.values()].sort((left, right) => compareLeagueNames(left.name, right.name))
+  }, [historyVersionClubs])
+  const historyClubOptions = useMemo(
+    () =>
+      [...historyReferenceClubs]
+        .filter((club) =>
+          selectedHistoryLeagueId === 'all' ? true : club.leagueId === selectedHistoryLeagueId,
+        )
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [historyReferenceClubs, selectedHistoryLeagueId],
+  )
+
+  useEffect(() => {
+    if (selectedHistoryLeagueId === 'all') return
+    if (historyLeagues.some((league) => league.id === selectedHistoryLeagueId)) return
+    setSelectedHistoryLeagueId('all')
+  }, [historyLeagues, selectedHistoryLeagueId])
+
+  useEffect(() => {
+    if (historyClubOptions.length === 0) {
+      setSelectedHistoryClubId(null)
+      return
+    }
+    if (
+      selectedHistoryClubId &&
+      historyClubOptions.some((club) => club.id === selectedHistoryClubId)
+    ) {
+      return
+    }
+    setSelectedHistoryClubId(historyClubOptions[0]!.id)
+  }, [historyClubOptions, selectedHistoryClubId])
+
+  const historySeries = useMemo(() => {
+    if (!selectedHistoryClubId) return []
+
+    return historyTimeline
+      .map((version) => {
+        const club = historyVersionClubs
+          .get(version.version)
+          ?.find((candidate) => candidate.id === selectedHistoryClubId)
+        if (!club) return null
+        return {
+          version: version.version,
+          label: version.version,
+          releasedAt: version.releasedAt,
+          overallRating: club.overallRating,
+          attackRating: club.attackRating,
+          midfieldRating: club.midfieldRating,
+          defenseRating: club.defenseRating,
+        }
+      })
+      .filter((point): point is NonNullable<typeof point> => point !== null)
+  }, [historyTimeline, historyVersionClubs, selectedHistoryClubId])
 
   return {
     squadVersions,
@@ -289,6 +439,14 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
       clubById: changesClubById,
       versions: versionsForChanges,
       loading: changesLoading,
+      historyLoading,
+      historyLeagues,
+      selectedHistoryLeagueId,
+      setSelectedHistoryLeagueId,
+      selectedHistoryClubId,
+      setSelectedHistoryClubId,
+      historyClubOptions,
+      historySeries,
     },
   }
 }

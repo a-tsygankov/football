@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  compareLeagueNames,
   resolveEaTeamStarRating10,
   type Club,
   type CreateCurrentGameRequest,
@@ -64,7 +65,7 @@ export function GameCreationPanel({
 }) {
   const strategyOptions = useMemo(() => listStrategies(), [])
   const leagueOptions = useMemo(
-    () => [...squadLeagues].sort((left, right) => left.name.localeCompare(right.name)),
+    () => [...squadLeagues].sort((left, right) => compareLeagueNames(left.name, right.name)),
     [squadLeagues],
   )
   const [allocationMode, setAllocationMode] = useState<'manual' | 'random'>('manual')
@@ -156,14 +157,19 @@ export function GameCreationPanel({
 
   return (
     <Panel
-      title="Game creation"
-      subtitle="Manual teams infer the format automatically. Random reveals the extra setup."
+      title={bootstrap.currentGame ? 'Game night live' : 'Game creation'}
+      subtitle={
+        bootstrap.currentGame
+          ? 'Track the current matchup, assigned FC teams, result, and optional TV photo.'
+          : 'Manual teams infer the format automatically. Random reveals the extra setup.'
+      }
     >
       {bootstrap.currentGame ? (
         <CurrentGameCard
           busy={busy}
           currentGame={bootstrap.currentGame}
           gamers={bootstrap.gamers}
+          squadClubs={squadClubs}
           onInterruptGame={(request) =>
             bootstrap.activeGameNight
               ? onInterruptGame(
