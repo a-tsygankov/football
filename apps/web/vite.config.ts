@@ -10,6 +10,9 @@ const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8')
 }
 
 export default defineConfig({
+  // GitHub Pages project sites are served from /<repo>/, not /.
+  // Keep this in sync with the repository name.
+  base: '/football/',
   plugins: [react()],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
