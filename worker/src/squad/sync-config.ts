@@ -1,3 +1,4 @@
+import { DEFAULT_SQUAD_PLATFORM, type SquadPlatform } from '@fc26/shared'
 import type { Env } from '../env.js'
 
 export const DEFAULT_SQUAD_RETENTION_COUNT = 12
@@ -7,7 +8,6 @@ export const DEFAULT_EA_ROSTERUPDATE_URL =
 export type SquadSyncSourceKind =
   | 'json-snapshot'
   | 'ea-rosterupdate-json'
-  | 'github-release-json'
 
 export interface JsonSnapshotSquadSyncConfig {
   readonly sourceKind: 'json-snapshot'
@@ -19,23 +19,20 @@ export interface EaRosterupdateJsonSquadSyncConfig {
   readonly sourceKind: 'ea-rosterupdate-json'
   readonly discoveryUrl: string
   readonly snapshotUrlTemplate: string
-  readonly platform: string
-  readonly retentionCount: number
-}
-
-export interface GitHubReleaseJsonSquadSyncConfig {
-  readonly sourceKind: 'github-release-json'
-  readonly repository: string
-  readonly assetName: string
+  readonly platform: SquadPlatform
   readonly retentionCount: number
 }
 
 export type SquadSyncConfig =
   | JsonSnapshotSquadSyncConfig
   | EaRosterupdateJsonSquadSyncConfig
-  | GitHubReleaseJsonSquadSyncConfig
 
-export function resolveSquadSyncConfig(env: Env): SquadSyncConfig | null {
+export function resolveSquadSyncConfig(
+  env: Env,
+  overrides: {
+    platform?: SquadPlatform
+  } = {},
+): SquadSyncConfig | null {
   const retentionCount = resolveRetentionCount(env.SQUAD_SYNC_RETENTION_COUNT)
   const explicitKind = env.SQUAD_SYNC_SOURCE_KIND
   const inferredKind = inferSourceKind(env)
@@ -59,19 +56,7 @@ export function resolveSquadSyncConfig(env: Env): SquadSyncConfig | null {
       sourceKind,
       discoveryUrl: env.SQUAD_SYNC_DISCOVERY_URL?.trim() || DEFAULT_EA_ROSTERUPDATE_URL,
       snapshotUrlTemplate,
-      platform: env.SQUAD_SYNC_PLATFORM?.trim() || 'PC64',
-      retentionCount,
-    }
-  }
-
-  if (sourceKind === 'github-release-json') {
-    const repository = env.SQUAD_SYNC_GITHUB_REPOSITORY?.trim()
-    const assetName = env.SQUAD_SYNC_GITHUB_ASSET_NAME?.trim()
-    if (!repository || !assetName) return null
-    return {
-      sourceKind,
-      repository,
-      assetName,
+      platform: overrides.platform ?? resolvePlatform(env.SQUAD_SYNC_PLATFORM),
       retentionCount,
     }
   }
@@ -88,6 +73,13 @@ function resolveRetentionCount(raw: string | undefined): number {
 function inferSourceKind(env: Env): SquadSyncSourceKind | null {
   if (env.SQUAD_SYNC_SOURCE_URL?.trim()) return 'json-snapshot'
   if (env.SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE?.trim()) return 'ea-rosterupdate-json'
-  if (env.SQUAD_SYNC_GITHUB_REPOSITORY?.trim()) return 'github-release-json'
   return null
+}
+
+function resolvePlatform(raw: string | undefined): SquadPlatform {
+  const value = raw?.trim().toUpperCase()
+  if (value === 'PC64' || value === 'XBSX' || value === 'PS5') {
+    return value
+  }
+  return DEFAULT_SQUAD_PLATFORM
 }

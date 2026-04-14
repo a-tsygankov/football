@@ -4,6 +4,7 @@ import {
   type CreateGamerRequest,
   type CreateRoomRequest,
   type CurrentGame,
+  DEFAULT_SQUAD_PLATFORM,
   DEFAULT_STRATEGY_ID,
   EVENT_SCHEMA_VERSION,
   EventId,
@@ -35,6 +36,7 @@ import {
   type Room,
   type RoomBootstrapResponse,
   type RoomScoreboardResponse,
+  type UpdateRoomSettingsRequest,
   RoomId,
   type RoomId as RoomIdType,
   seedFromCrypto,
@@ -71,6 +73,11 @@ const createRoomSchema = z.object({
   pin: z.string().nullable().optional(),
   avatarUrl: z.string().url().nullable().optional(),
   defaultSelectionStrategy: z.string().trim().min(1).max(64).optional(),
+  squadPlatform: z.enum(['PS5', 'PC64', 'XBSX']).optional(),
+})
+
+const updateRoomSettingsSchema = z.object({
+  squadPlatform: z.enum(['PS5', 'PC64', 'XBSX']).optional(),
 })
 
 const joinRoomSchema = z.object({
@@ -180,6 +187,7 @@ roomRoutes.post('/rooms', async (c) => {
     pinHash,
     pinSalt,
     defaultSelectionStrategy: strategyId,
+    squadPlatform: body.squadPlatform ?? DEFAULT_SQUAD_PLATFORM,
     createdAt: now,
     updatedAt: now,
   }
@@ -247,6 +255,29 @@ roomRoutes.get('/rooms/:roomId/scoreboard', async (c) => {
   return c.json(await buildScoreboard(c, roomId))
 })
 
+roomRoutes.patch('/rooms/:roomId/settings', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const room = await c.get('deps').rooms.get(roomId)
+  if (!room) return c.json({ error: 'not_found', roomId }, 404)
+
+  const parsed = updateRoomSettingsSchema.safeParse(await parseJson(c))
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.flatten() }, 400)
+  }
+
+  const body = parsed.data satisfies UpdateRoomSettingsRequest
+  const updated: Room = {
+    ...room,
+    squadPlatform: body.squadPlatform ?? room.squadPlatform,
+    updatedAt: Date.now(),
+  }
+  await c.get('deps').rooms.update(updated)
+  return c.json({ room: toRoomSummary(updated) })
+})
+
 roomRoutes.post('/rooms/:roomId/settings/squad-assets/refresh', async (c) => {
   const roomId = RoomId(c.req.param('roomId'))
   const session = await requireRoomSession(c, roomId)
@@ -268,9 +299,13 @@ roomRoutes.post('/rooms/:roomId/settings/squads/retrieve', async (c) => {
   const session = await requireRoomSession(c, roomId)
   if (!session) return c.json({ error: 'unauthorized' }, 401)
 
-  const config = resolveSquadSyncConfig(c.env)
+  const room = await c.get('deps').rooms.get(roomId)
+  if (!room) return c.json({ error: 'not_found', roomId }, 404)
+
+  const config = resolveSquadSyncConfig(c.env, { platform: room.squadPlatform })
   c.get('logger').info('squad-sync', 'manual squad retrieval requested', {
     roomId,
+    squadPlatform: room.squadPlatform,
     hasDbBinding: Boolean(c.env.DB),
     hasSquadsBinding: Boolean(c.env.SQUADS),
     ...summarizeSquadSyncConfig(config),
@@ -1194,12 +1229,6 @@ function summarizeSquadSyncConfig(
         discoveryUrl: config.discoveryUrl,
         snapshotUrlTemplate: config.snapshotUrlTemplate,
         platform: config.platform,
-      }
-    case 'github-release-json':
-      return {
-        sourceKind: config.sourceKind,
-        repository: config.repository,
-        assetName: config.assetName,
       }
   }
 }

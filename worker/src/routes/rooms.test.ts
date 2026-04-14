@@ -152,6 +152,56 @@ describe('room routes', () => {
     expect(bootstrap.session.token).toBe(created.session.token)
   })
 
+  it('updates the room squad platform from settings', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Platform Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(createRes.status).toBe(201)
+    const created = (await createRes.json()) as RoomBootstrapResponse
+    expect(created.room.squadPlatform).toBe('PS5')
+
+    const updateRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${created.room.id}/settings`, {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          [ROOM_SESSION_HEADER]: created.session.token!,
+        },
+        body: JSON.stringify({ squadPlatform: 'XBSX' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(updateRes.status).toBe(200)
+    expect(await updateRes.json()).toEqual({
+      room: expect.objectContaining({
+        id: created.room.id,
+        squadPlatform: 'XBSX',
+      }),
+    })
+
+    const bootstrapRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${created.room.id}/bootstrap`, {
+        headers: {
+          [ROOM_SESSION_HEADER]: created.session.token!,
+        },
+      }),
+      env,
+      execCtx(),
+    )
+    expect(bootstrapRes.status).toBe(200)
+    const bootstrap = (await bootstrapRes.json()) as RoomBootstrapResponse
+    expect(bootstrap.room.squadPlatform).toBe('XBSX')
+  })
+
   it('refreshes squad assets from the room settings route', async () => {
     const app = buildTestApp()
     const createRes = await app.fetch(
@@ -359,15 +409,14 @@ describe('room routes', () => {
 
     const originalFetch = globalThis.fetch
     globalThis.fetch = (async () => {
-      throw new Error('github latest release fetch failed with status 404')
+      throw new Error('snapshot fetch failed with status 404')
     }) as typeof fetch
 
     try {
       const syncEnv: Env = {
         ...env,
-        SQUAD_SYNC_SOURCE_KIND: 'github-release-json',
-        SQUAD_SYNC_GITHUB_REPOSITORY: 'example/fc26-snapshots',
-        SQUAD_SYNC_GITHUB_ASSET_NAME: 'fc26-latest.json',
+        SQUAD_SYNC_SOURCE_KIND: 'json-snapshot',
+        SQUAD_SYNC_SOURCE_URL: 'https://snapshots.example/latest.json',
       }
       const retrieveRes = await app.fetch(
         new Request(`http://localhost/api/rooms/${created.room.id}/settings/squads/retrieve`, {
@@ -382,7 +431,7 @@ describe('room routes', () => {
       expect(retrieveRes.status).toBe(502)
       expect(await retrieveRes.json()).toEqual({
         error: 'squad_sync_failed',
-        message: 'github latest release fetch failed with status 404',
+        message: 'snapshot fetch failed with status 404',
       })
     } finally {
       globalThis.fetch = originalFetch

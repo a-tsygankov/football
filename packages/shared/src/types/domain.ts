@@ -20,6 +20,21 @@ export interface GameFormatDefinition {
   size: GameSize
 }
 
+export type SquadPlatform = 'PS5' | 'PC64' | 'XBSX'
+
+export interface SquadPlatformDefinition {
+  id: SquadPlatform
+  label: string
+}
+
+export const DEFAULT_SQUAD_PLATFORM: SquadPlatform = 'PS5'
+
+export const SQUAD_PLATFORMS: Readonly<Record<SquadPlatform, SquadPlatformDefinition>> = {
+  PS5: { id: 'PS5', label: 'PlayStation 5' },
+  PC64: { id: 'PC64', label: 'PC' },
+  XBSX: { id: 'XBSX', label: 'Xbox Series X|S' },
+} as const
+
 export const GAME_FORMATS: Readonly<Record<GameFormat, GameFormatDefinition>> = {
   '1v1': { id: '1v1', label: '1 vs 1', homeSize: 1, awaySize: 1, size: 2 },
   '1v2': { id: '1v2', label: '1 vs 2', homeSize: 1, awaySize: 2, size: 3 },
@@ -44,6 +59,7 @@ export interface Room {
   pinHash: string | null
   pinSalt: string | null
   defaultSelectionStrategy: string
+  squadPlatform: SquadPlatform
   createdAt: number
   updatedAt: number
 }
@@ -54,6 +70,7 @@ export interface RoomSummary {
   avatarUrl: string | null
   hasPin: boolean
   defaultSelectionStrategy: string
+  squadPlatform: SquadPlatform
   createdAt: number
   updatedAt: number
 }

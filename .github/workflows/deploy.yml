@@ -171,12 +171,6 @@ jobs:
           if [ -n "$SQUAD_SYNC_PLATFORM" ]; then
             cmd+=(--var "SQUAD_SYNC_PLATFORM:$SQUAD_SYNC_PLATFORM")
           fi
-          if [ -n "$SQUAD_SYNC_GITHUB_REPOSITORY" ]; then
-            cmd+=(--var "SQUAD_SYNC_GITHUB_REPOSITORY:$SQUAD_SYNC_GITHUB_REPOSITORY")
-          fi
-          if [ -n "$SQUAD_SYNC_GITHUB_ASSET_NAME" ]; then
-            cmd+=(--var "SQUAD_SYNC_GITHUB_ASSET_NAME:$SQUAD_SYNC_GITHUB_ASSET_NAME")
-          fi
           if [ -n "$SQUAD_SYNC_RETENTION_COUNT" ]; then
             cmd+=(--var "SQUAD_SYNC_RETENTION_COUNT:$SQUAD_SYNC_RETENTION_COUNT")
           fi
@@ -189,6 +183,4 @@ jobs:
           SQUAD_SYNC_DISCOVERY_URL: ${{ vars.SQUAD_SYNC_DISCOVERY_URL }}
           SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE: ${{ vars.SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE }}
           SQUAD_SYNC_PLATFORM: ${{ vars.SQUAD_SYNC_PLATFORM }}
-          SQUAD_SYNC_GITHUB_REPOSITORY: ${{ vars.SQUAD_SYNC_GITHUB_REPOSITORY }}
-          SQUAD_SYNC_GITHUB_ASSET_NAME: ${{ vars.SQUAD_SYNC_GITHUB_ASSET_NAME }}
           SQUAD_SYNC_RETENTION_COUNT: ${{ vars.SQUAD_SYNC_RETENTION_COUNT }}

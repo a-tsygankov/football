@@ -25,17 +25,12 @@ SQUAD_SYNC_RETENTION_COUNT = "12"
 # - ea-rosterupdate-json: scrape EA's rosterupdate.xml for the latest version,
 #   then fetch the normalized snapshot from SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE
 #   with {version} and {platform} placeholders.
-# - github-release-json: discover the latest GitHub release for a repo, then
-#   download a normalized snapshot JSON asset by exact asset name.
 # SQUAD_SYNC_SOURCE_KIND = "json-snapshot"
 # SQUAD_SYNC_SOURCE_URL = "https://example.com/fc26/latest.json"
 # SQUAD_SYNC_SOURCE_KIND = "ea-rosterupdate-json"
 # SQUAD_SYNC_DISCOVERY_URL = "https://eafc26.content.easports.com/fc/fltOnlineAssets/26E4D4D6-8DBB-4A9A-BD99-9C47D3AA341D/2026/fc/fclive/genxtitle/rosterupdate.xml"
 # SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE = "https://example.com/fc26/{version}.json"
-# SQUAD_SYNC_PLATFORM = "PC64"
-# SQUAD_SYNC_SOURCE_KIND = "github-release-json"
-# SQUAD_SYNC_GITHUB_REPOSITORY = "owner/repo"
-# SQUAD_SYNC_GITHUB_ASSET_NAME = "fc26-latest.json"
+# SQUAD_SYNC_PLATFORM = "PS5"
 # On-demand club + league logo refresh (triggered from the app Settings panel):
 # SQUAD_ASSET_PROVIDER_BASE_URL = "https://www.thesportsdb.com/api/v1/json/123"
 # Optional exact-name overrides when EA and provider league names differ.

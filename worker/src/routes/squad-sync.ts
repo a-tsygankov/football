@@ -79,11 +79,5 @@ function summarizeSquadSyncConfig(
         snapshotUrlTemplate: config.snapshotUrlTemplate,
         platform: config.platform,
       }
-    case 'github-release-json':
-      return {
-        sourceKind: config.sourceKind,
-        repository: config.repository,
-        assetName: config.assetName,
-      }
   }
 }

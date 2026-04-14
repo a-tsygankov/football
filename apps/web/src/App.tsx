@@ -4,6 +4,7 @@ import {
   type CreateGamerRequest,
   type CreateCurrentGameRequest,
   type CurrentGame,
+  DEFAULT_SQUAD_PLATFORM,
   type FcPlayer,
   formatLocal,
   formatRelative,
@@ -21,14 +22,18 @@ import {
   type RetrieveRoomSquadsResponse,
   type RoomBootstrapResponse,
   type RoomScoreboardResponse,
+  SQUAD_PLATFORMS,
   type SquadClubsResponse,
   type SquadDiff,
   type SquadLeague,
+  type SquadPlatform,
   type SquadLeaguesResponse,
   type SquadPlayersResponse,
   type SquadVersion,
   type SquadVersionsResponse,
   type UpdateGamerRequest,
+  type UpdateRoomSettingsRequest,
+  type UpdateRoomSettingsResponse,
 } from '@fc26/shared'
 import { apiJson, persistRoomSession } from './lib/api.js'
 import { logger } from './lib/logger.js'
@@ -56,6 +61,7 @@ type BusyState =
   | 'creating-game'
   | 'recording-game'
   | 'interrupting-game'
+  | 'saving-room-settings'
   | 'refreshing-squad-assets'
   | 'retrieving-squad-data'
   | 'resetting-squad-data'
@@ -81,6 +87,7 @@ export function App() {
   const [gamerRating, setGamerRating] = useState('3')
   const [gamerPin, setGamerPin] = useState('')
   const [gamerAvatarUrl, setGamerAvatarUrl] = useState<string | null>(null)
+  const [roomSquadPlatform, setRoomSquadPlatform] = useState<SquadPlatform>(DEFAULT_SQUAD_PLATFORM)
 
   useEffect(() => {
     logger.info('system', 'app booted', { appVersion: APP_VERSION })
@@ -106,8 +113,9 @@ export function App() {
       setScoreboard(null)
       return
     }
+    setRoomSquadPlatform(bootstrap.room.squadPlatform)
     void refreshScoreboard(bootstrap.room.id)
-  }, [bootstrap?.room.id])
+  }, [bootstrap])
 
   async function refreshRoom(
     roomId: string,
@@ -183,7 +191,7 @@ export function App() {
       const { result } = response
       setNotice(
         result.status === 'ingested'
-          ? `Fetched squad clubs and players for ${result.version}. Stored ${result.clubCount} clubs and ${result.playerCount} players.`
+          ? `Fetched squad clubs and players for ${result.version}${result.platform ? ` on ${SQUAD_PLATFORMS[result.platform as SquadPlatform]?.label ?? result.platform}` : ''}. Stored ${result.clubCount} clubs and ${result.playerCount} players.`
           : result.status === 'noop'
             ? `Squad version ${result.version ?? 'unknown'} is already stored.`
             : 'Squad retrieval is disabled because no upstream source is configured.',
@@ -191,6 +199,39 @@ export function App() {
       void apiJson<WorkerVersionInfo>('/api/version')
         .then((value) => setWorker(value))
         .catch(() => undefined)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function saveRoomSettings(roomId: string): Promise<void> {
+    setBusy('saving-room-settings')
+    setError(null)
+    setNotice(null)
+    try {
+      const response = await apiJson<UpdateRoomSettingsResponse>(
+        `/api/rooms/${roomId}/settings`,
+        {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            squadPlatform: roomSquadPlatform,
+          } satisfies UpdateRoomSettingsRequest),
+        },
+      )
+      startTransition(() => {
+        setBootstrap((current) =>
+          current
+            ? {
+                ...current,
+                room: response.room,
+              }
+            : current,
+        )
+      })
+      setNotice(`Room squad platform saved as ${SQUAD_PLATFORMS[response.room.squadPlatform].label}.`)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -643,6 +684,7 @@ export function App() {
             bootstrap={bootstrap}
             busy={busy}
             latestSquadVersion={worker?.latestSquadVersion ?? null}
+            roomSquadPlatform={roomSquadPlatform}
             gamerName={gamerName}
             gamerRating={gamerRating}
             gamerPin={gamerPin}
@@ -659,6 +701,8 @@ export function App() {
             onResetSquadData={() => resetSquadData(bootstrap.room.id)}
             onRetrieveSquadData={() => retrieveSquadData(bootstrap.room.id)}
             onRefreshSquadAssets={() => refreshSquadAssets(bootstrap.room.id)}
+            onSaveRoomSettings={() => saveRoomSettings(bootstrap.room.id)}
+            onChangeRoomSquadPlatform={setRoomSquadPlatform}
             scoreboard={scoreboard}
             onSaveActiveGameNightGamers={saveActiveGameNightGamers}
             onStartGameNight={startGameNight}
@@ -802,6 +846,7 @@ function RoomScreen({
   bootstrap,
   busy,
   latestSquadVersion,
+  roomSquadPlatform,
   scoreboard,
   gamerName,
   gamerRating,
@@ -819,6 +864,8 @@ function RoomScreen({
   onResetSquadData,
   onRetrieveSquadData,
   onRefreshSquadAssets,
+  onSaveRoomSettings,
+  onChangeRoomSquadPlatform,
   onSaveActiveGameNightGamers,
   onStartGameNight,
   onToggleGamer,
@@ -827,6 +874,7 @@ function RoomScreen({
   bootstrap: RoomBootstrapResponse
   busy: BusyState
   latestSquadVersion: string | null
+  roomSquadPlatform: SquadPlatform
   scoreboard: RoomScoreboardResponse | null
   gamerName: string
   gamerRating: string
@@ -852,6 +900,8 @@ function RoomScreen({
   onResetSquadData: () => Promise<void>
   onRetrieveSquadData: () => Promise<void>
   onRefreshSquadAssets: () => Promise<void>
+  onSaveRoomSettings: () => Promise<void>
+  onChangeRoomSquadPlatform: (value: SquadPlatform) => void
   onSaveActiveGameNightGamers: (
     gameNightId: string,
     activeGamerIds: string[],
@@ -2238,8 +2288,43 @@ function RoomScreen({
               <p style={{ margin: '8px 0 0', fontSize: 14, opacity: 0.76 }}>
                 Latest stored squad version: {latestSquadVersion ?? 'unseeded'}.
                 Pull clubs and players manually, refresh static logos only from here, or wipe stored
-                squad data completely.
+                squad data completely. The room platform controls which upstream roster is used for
+                EA-based retrieval.
               </p>
+            </div>
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 18,
+                background: '#ffffff',
+                border: '1px solid #d1fae5',
+                display: 'grid',
+                gap: 12,
+              }}
+            >
+              <strong style={{ display: 'block', fontSize: 16 }}>Room squad platform</strong>
+              <Field label="Preferred platform">
+                <select
+                  value={roomSquadPlatform}
+                  onChange={(event) => onChangeRoomSquadPlatform(event.target.value as SquadPlatform)}
+                  disabled={busy !== null}
+                  style={inputStyle}
+                >
+                  {Object.values(SQUAD_PLATFORMS).map((platform) => (
+                    <option key={platform.id} value={platform.id}>
+                      {platform.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <button
+                type="button"
+                disabled={busy !== null || !bootstrap || roomSquadPlatform === bootstrap.room.squadPlatform}
+                onClick={() => void onSaveRoomSettings()}
+                style={secondaryButtonStyle}
+              >
+                {busy === 'saving-room-settings' ? 'Saving platform...' : 'Save platform'}
+              </button>
             </div>
             <button
               type="button"

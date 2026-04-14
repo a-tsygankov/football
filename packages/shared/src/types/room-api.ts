@@ -7,6 +7,7 @@ import type {
   GamerPoints,
   GamerTeamPoints,
   RoomSummary,
+  SquadPlatform,
 } from './domain.js'
 import type { GameResult } from './events.js'
 import type { RoomId } from './ids.js'
@@ -34,6 +35,15 @@ export interface CreateRoomRequest {
   pin?: string | null
   avatarUrl?: string | null
   defaultSelectionStrategy?: string
+  squadPlatform?: SquadPlatform
+}
+
+export interface UpdateRoomSettingsRequest {
+  squadPlatform?: SquadPlatform
+}
+
+export interface UpdateRoomSettingsResponse {
+  room: RoomSummary
 }
 
 export interface JoinRoomRequest {

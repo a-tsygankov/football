@@ -10,34 +10,34 @@ const baseEnv: Env = {
 }
 
 describe('resolveSquadSyncConfig', () => {
-  it('resolves github release json config from env', () => {
+  it('resolves direct snapshot config from env', () => {
     expect(
       resolveSquadSyncConfig({
         ...baseEnv,
-        SQUAD_SYNC_SOURCE_KIND: 'github-release-json',
-        SQUAD_SYNC_GITHUB_REPOSITORY: 'example/fc26-snapshots',
-        SQUAD_SYNC_GITHUB_ASSET_NAME: 'fc26-latest.json',
+        SQUAD_SYNC_SOURCE_KIND: 'json-snapshot',
+        SQUAD_SYNC_SOURCE_URL: 'https://snapshots.example/latest.json',
         SQUAD_SYNC_RETENTION_COUNT: '6',
       }),
     ).toEqual({
-      sourceKind: 'github-release-json',
-      repository: 'example/fc26-snapshots',
-      assetName: 'fc26-latest.json',
+      sourceKind: 'json-snapshot',
+      sourceUrl: 'https://snapshots.example/latest.json',
       retentionCount: 6,
     })
   })
 
-  it('infers github release json config when repository is present', () => {
+  it('resolves EA discovery config and defaults the platform to PS5', () => {
     expect(
       resolveSquadSyncConfig({
         ...baseEnv,
-        SQUAD_SYNC_GITHUB_REPOSITORY: 'example/fc26-snapshots',
-        SQUAD_SYNC_GITHUB_ASSET_NAME: 'fc26-latest.json',
+        SQUAD_SYNC_SOURCE_KIND: 'ea-rosterupdate-json',
+        SQUAD_SYNC_SNAPSHOT_URL_TEMPLATE: 'https://snapshots.example/{platform}/{version}.json',
       }),
     ).toEqual({
-      sourceKind: 'github-release-json',
-      repository: 'example/fc26-snapshots',
-      assetName: 'fc26-latest.json',
+      sourceKind: 'ea-rosterupdate-json',
+      discoveryUrl:
+        'https://eafc26.content.easports.com/fc/fltOnlineAssets/26E4D4D6-8DBB-4A9A-BD99-9C47D3AA341D/2026/fc/fclive/genxtitle/rosterupdate.xml',
+      snapshotUrlTemplate: 'https://snapshots.example/{platform}/{version}.json',
+      platform: 'PS5',
       retentionCount: 12,
     })
   })

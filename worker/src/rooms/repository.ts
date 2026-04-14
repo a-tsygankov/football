@@ -14,6 +14,7 @@ export function toRoomSummary(room: Room): RoomSummary {
     avatarUrl: room.avatarUrl,
     hasPin: Boolean(room.pinHash),
     defaultSelectionStrategy: room.defaultSelectionStrategy,
+    squadPlatform: room.squadPlatform,
     createdAt: room.createdAt,
     updatedAt: room.updatedAt,
   }
@@ -53,6 +54,7 @@ interface RoomRow {
   pin_hash: string | null
   pin_salt: string | null
   default_selection_strategy: string
+  squad_platform: Room['squadPlatform']
   created_at: number
   updated_at: number
 }
@@ -66,6 +68,7 @@ function rowToRoom(row: RoomRow): Room {
     pinHash: row.pin_hash,
     pinSalt: row.pin_salt,
     defaultSelectionStrategy: row.default_selection_strategy,
+    squadPlatform: row.squad_platform,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -78,8 +81,8 @@ export class D1RoomRepository implements IRoomRepository {
     await this.db
       .prepare(
         `INSERT INTO rooms
-           (id, name, name_key, avatar_url, pin_hash, pin_salt, default_selection_strategy, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, name, name_key, avatar_url, pin_hash, pin_salt, default_selection_strategy, squad_platform, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         room.id,
@@ -89,6 +92,7 @@ export class D1RoomRepository implements IRoomRepository {
         room.pinHash,
         room.pinSalt,
         room.defaultSelectionStrategy,
+        room.squadPlatform,
         room.createdAt,
         room.updatedAt,
       )
@@ -115,7 +119,7 @@ export class D1RoomRepository implements IRoomRepository {
     await this.db
       .prepare(
         `UPDATE rooms
-         SET name = ?, name_key = ?, avatar_url = ?, pin_hash = ?, pin_salt = ?, default_selection_strategy = ?, updated_at = ?
+         SET name = ?, name_key = ?, avatar_url = ?, pin_hash = ?, pin_salt = ?, default_selection_strategy = ?, squad_platform = ?, updated_at = ?
          WHERE id = ?`,
       )
       .bind(
@@ -125,6 +129,7 @@ export class D1RoomRepository implements IRoomRepository {
         room.pinHash,
         room.pinSalt,
         room.defaultSelectionStrategy,
+        room.squadPlatform,
         room.updatedAt,
         room.id,
       )

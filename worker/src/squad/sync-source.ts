@@ -47,19 +47,6 @@ const squadSnapshotPayloadSchema = z.object({
   playersByClubId: z.record(z.string(), z.array(fcPlayerSchema)).optional(),
 })
 
-const gitHubReleaseAssetSchema = z.object({
-  id: z.number().int().positive(),
-  name: z.string().min(1),
-  browser_download_url: z.string().url(),
-  url: z.string().url(),
-})
-
-const gitHubReleaseSchema = z.object({
-  html_url: z.string().url(),
-  published_at: z.string().datetime({ offset: true }).nullable().optional(),
-  assets: z.array(gitHubReleaseAssetSchema),
-})
-
 export interface ISquadSnapshotSource {
   getLatestSnapshot(): Promise<SquadSnapshot>
 }
@@ -80,10 +67,7 @@ export function buildSquadSnapshotSource(
   if (config.sourceKind === 'json-snapshot') {
     return new JsonSnapshotSource(fetchImpl, config.sourceUrl, logger)
   }
-  if (config.sourceKind === 'ea-rosterupdate-json') {
-    return new EaRosterupdateJsonSnapshotSource(fetchImpl, config, logger)
-  }
-  return new GitHubReleaseJsonSnapshotSource(fetchImpl, config, logger)
+  return new EaRosterupdateJsonSnapshotSource(fetchImpl, config, logger)
 }
 
 export function extractRosterUpdatePlatformMetadata(
@@ -197,101 +181,6 @@ class EaRosterupdateJsonSnapshotSource implements ISquadSnapshotSource {
   }
 }
 
-class GitHubReleaseJsonSnapshotSource implements ISquadSnapshotSource {
-  constructor(
-    private readonly fetchImpl: typeof fetch,
-    private readonly config: Extract<SquadSyncConfig, { sourceKind: 'github-release-json' }>,
-    private readonly logger?: ILogger,
-  ) {}
-
-  async getLatestSnapshot(): Promise<SquadSnapshot> {
-    this.assertRepositoryConfigured()
-    const release = await this.fetchLatestRelease()
-    const asset = release.assets.find((entry) => entry.name === this.config.assetName)
-    if (!asset) {
-      const availableAssets = release.assets.map((entry) => entry.name).sort()
-      throw new Error(
-        `release asset ${this.config.assetName} not found in ${this.config.repository}; available assets: ${availableAssets.join(', ')}`,
-      )
-    }
-    this.logger?.info('squad-sync', 'github release asset selected', {
-      repository: this.config.repository,
-      assetName: asset.name,
-      assetUrl: asset.browser_download_url,
-    })
-
-    const snapshotResponse = await this.fetchAsset(asset)
-    if (!snapshotResponse.ok) {
-      throw new Error(
-        `github release asset fetch failed with status ${snapshotResponse.status}`,
-      )
-    }
-    const payload = squadSnapshotPayloadSchema.parse(await snapshotResponse.json())
-    this.logger?.info('squad-sync', 'github release snapshot payload received', {
-      repository: this.config.repository,
-      assetName: asset.name,
-      version: payload.version,
-      clubCount: payload.clubs.length,
-      hasPlayers: Boolean(payload.players),
-      hasPlayersByClubId: Boolean(payload.playersByClubId),
-    })
-    return normalizeSnapshotPayloadWithDefaults(payload, {
-      fallbackReleasedAt: release.published_at
-        ? Date.parse(release.published_at)
-        : null,
-      fallbackSourceUrl: asset.browser_download_url,
-      fallbackNotes: `github-release:${this.config.repository}`,
-    })
-  }
-
-  private async fetchLatestRelease(): Promise<z.infer<typeof gitHubReleaseSchema>> {
-    const releaseUrl = `https://api.github.com/repos/${this.config.repository}/releases/latest`
-    this.logger?.info('squad-sync', 'fetching github latest release', {
-      repository: this.config.repository,
-      releaseUrl,
-      assetName: this.config.assetName,
-    })
-    const response = await this.fetchImpl(
-      releaseUrl,
-      {
-        headers: buildGitHubHeaders(),
-      },
-    )
-    if (!response.ok) {
-      throw new Error(
-        `github latest release fetch failed with status ${response.status}`,
-      )
-    }
-    const release = gitHubReleaseSchema.parse(await response.json())
-    this.logger?.info('squad-sync', 'github latest release resolved', {
-      repository: this.config.repository,
-      assetCount: release.assets.length,
-      assetNames: release.assets.map((asset) => asset.name).sort(),
-      publishedAt: release.published_at ?? null,
-    })
-    return release
-  }
-
-  private fetchAsset(
-    asset: z.infer<typeof gitHubReleaseAssetSchema>,
-  ): Promise<Response> {
-    this.logger?.info('squad-sync', 'fetching github release asset', {
-      repository: this.config.repository,
-      assetName: asset.name,
-      assetUrl: asset.browser_download_url,
-    })
-    return this.fetchImpl(asset.browser_download_url)
-  }
-
-  private assertRepositoryConfigured(): void {
-    if (this.config.repository.trim().toLowerCase() === 'owner/repo') {
-      throw new Error(
-        'SQUAD_SYNC_GITHUB_REPOSITORY is still set to the placeholder owner/repo',
-      )
-    }
-  }
-}
-
 function normalizeSnapshotPayload(
   payload: z.infer<typeof squadSnapshotPayloadSchema>,
   fallbackSourceUrl: string,
@@ -368,17 +257,9 @@ function applyTemplate(
   )
 }
 
-function buildGitHubHeaders(): HeadersInit {
-  return {
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-  }
-}
-
 export const __TEST_ONLY__ = {
   normalizeSnapshotPayload,
   normalizeSnapshotPayloadWithDefaults,
   flattenPlayersByClubId,
   applyTemplate,
-  buildGitHubHeaders,
 }

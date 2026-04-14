@@ -190,6 +190,7 @@ export interface SquadSyncResult {
   readonly version: string | null
   readonly sourceKind: string | null
   readonly sourceUrl: string | null
+  readonly platform: string | null
   readonly releasedAt: number | null
   readonly previousVersion: string | null
   readonly clubCount: number

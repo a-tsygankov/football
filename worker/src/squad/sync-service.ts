@@ -28,6 +28,7 @@ export class SquadSyncService {
         version: null,
         sourceKind: null,
         sourceUrl: null,
+        platform: null,
         releasedAt: null,
         previousVersion: null,
         clubCount: 0,
@@ -67,6 +68,7 @@ export class SquadSyncService {
         version: snapshot.version,
         sourceKind: config.sourceKind,
         sourceUrl: snapshot.sourceUrl,
+        platform: config.sourceKind === 'ea-rosterupdate-json' ? config.platform : null,
         releasedAt: snapshot.releasedAt,
         previousVersion: latestBefore?.version ?? null,
         clubCount: existing.clubCount,
@@ -84,6 +86,7 @@ export class SquadSyncService {
       version: snapshot.version,
       sourceKind: config.sourceKind,
       sourceUrl: snapshot.sourceUrl,
+      platform: config.sourceKind === 'ea-rosterupdate-json' ? config.platform : null,
       releasedAt: snapshot.releasedAt,
       previousVersion: latestBefore?.version ?? null,
       clubCount: snapshot.clubs.length,
@@ -217,11 +220,6 @@ function summarizeConfig(config: SquadSyncConfig): Record<string, unknown> {
         discoveryUrl: config.discoveryUrl,
         snapshotUrlTemplate: config.snapshotUrlTemplate,
         platform: config.platform,
-      }
-    case 'github-release-json':
-      return {
-        repository: config.repository,
-        assetName: config.assetName,
       }
   }
 }
