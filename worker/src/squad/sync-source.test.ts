@@ -149,4 +149,22 @@ describe('squad sync source', () => {
       'https://github.com/example/fc26-snapshots/releases/download/fc26-r12/fc26-latest.json',
     ])
   })
+
+  it('rejects the placeholder github repository value before fetching', async () => {
+    const source = buildSquadSnapshotSource(
+      {
+        sourceKind: 'github-release-json',
+        repository: 'owner/repo',
+        assetName: 'fc26-latest.json',
+        retentionCount: 12,
+      },
+      async () => {
+        throw new Error('fetch should not be called for the placeholder repository')
+      },
+    )
+
+    await expect(source.getLatestSnapshot()).rejects.toThrow(
+      'SQUAD_SYNC_GITHUB_REPOSITORY is still set to the placeholder owner/repo',
+    )
+  })
 })

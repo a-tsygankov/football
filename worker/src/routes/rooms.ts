@@ -268,8 +268,16 @@ roomRoutes.post('/rooms/:roomId/settings/squads/retrieve', async (c) => {
   const session = await requireRoomSession(c, roomId)
   if (!session) return c.json({ error: 'unauthorized' }, 401)
 
+  const config = resolveSquadSyncConfig(c.env)
+  c.get('logger').info('squad-sync', 'manual squad retrieval requested', {
+    roomId,
+    hasDbBinding: Boolean(c.env.DB),
+    hasSquadsBinding: Boolean(c.env.SQUADS),
+    ...summarizeSquadSyncConfig(config),
+  })
+
   const service = new SquadSyncService({
-    config: resolveSquadSyncConfig(c.env),
+    config,
     fetchImpl: fetch,
     logger: c.get('logger'),
     now: () => Date.now(),
@@ -281,9 +289,11 @@ roomRoutes.post('/rooms/:roomId/settings/squads/retrieve', async (c) => {
     result = await service.syncLatest()
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    c.get('logger').error('squad-sync', 'manual squad retrieval failed', {
+    c.get('logger').error('squad-sync', `manual squad retrieval failed: ${message}`, {
       roomId,
-      error: message,
+      hasDbBinding: Boolean(c.env.DB),
+      hasSquadsBinding: Boolean(c.env.SQUADS),
+      ...summarizeSquadSyncConfig(config),
     })
     return c.json(
       {
@@ -1164,6 +1174,34 @@ async function parseJson(c: RouteContext): Promise<unknown> {
 
 function dedupeGamerIds(ids: ReadonlyArray<string>): GamerId[] {
   return [...new Set(ids.map((id) => GamerId(id)))]
+}
+
+function summarizeSquadSyncConfig(
+  config: ReturnType<typeof resolveSquadSyncConfig>,
+): Record<string, unknown> {
+  if (!config) {
+    return { sourceKind: null }
+  }
+  switch (config.sourceKind) {
+    case 'json-snapshot':
+      return {
+        sourceKind: config.sourceKind,
+        sourceUrl: config.sourceUrl,
+      }
+    case 'ea-rosterupdate-json':
+      return {
+        sourceKind: config.sourceKind,
+        discoveryUrl: config.discoveryUrl,
+        snapshotUrlTemplate: config.snapshotUrlTemplate,
+        platform: config.platform,
+      }
+    case 'github-release-json':
+      return {
+        sourceKind: config.sourceKind,
+        repository: config.repository,
+        assetName: config.assetName,
+      }
+  }
 }
 
 function validateManualGameSides(

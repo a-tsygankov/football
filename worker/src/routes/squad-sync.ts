@@ -21,8 +21,15 @@ squadSyncRoutes.post('/internal/squads/sync', async (c) => {
     return c.json({ error: 'unauthorized' }, 401)
   }
 
+  const config = resolveSquadSyncConfig(c.env)
+  c.get('logger').info('squad-sync', 'internal squad sync requested', {
+    hasDbBinding: Boolean(c.env.DB),
+    hasSquadsBinding: Boolean(c.env.SQUADS),
+    ...summarizeSquadSyncConfig(config),
+  })
+
   const service = new SquadSyncService({
-    config: resolveSquadSyncConfig(c.env),
+    config,
     fetchImpl: fetch,
     logger: c.get('logger'),
     now: () => Date.now(),
@@ -35,8 +42,10 @@ squadSyncRoutes.post('/internal/squads/sync', async (c) => {
     result = await service.syncLatest()
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    c.get('logger').error('squad-sync', 'internal squad sync failed', {
-      error: message,
+    c.get('logger').error('squad-sync', `internal squad sync failed: ${message}`, {
+      hasDbBinding: Boolean(c.env.DB),
+      hasSquadsBinding: Boolean(c.env.SQUADS),
+      ...summarizeSquadSyncConfig(config),
     })
     return c.json(
       {
@@ -50,3 +59,31 @@ squadSyncRoutes.post('/internal/squads/sync', async (c) => {
 })
 
 export { SQUAD_SYNC_SECRET_HEADER }
+
+function summarizeSquadSyncConfig(
+  config: ReturnType<typeof resolveSquadSyncConfig>,
+): Record<string, unknown> {
+  if (!config) {
+    return { sourceKind: null }
+  }
+  switch (config.sourceKind) {
+    case 'json-snapshot':
+      return {
+        sourceKind: config.sourceKind,
+        sourceUrl: config.sourceUrl,
+      }
+    case 'ea-rosterupdate-json':
+      return {
+        sourceKind: config.sourceKind,
+        discoveryUrl: config.discoveryUrl,
+        snapshotUrlTemplate: config.snapshotUrlTemplate,
+        platform: config.platform,
+      }
+    case 'github-release-json':
+      return {
+        sourceKind: config.sourceKind,
+        repository: config.repository,
+        assetName: config.assetName,
+      }
+  }
+}

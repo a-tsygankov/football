@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Club, FcPlayer, SquadSnapshot } from '@fc26/shared'
+import type { Club, FcPlayer, ILogger, SquadSnapshot } from '@fc26/shared'
 import type { SquadSyncConfig } from './sync-config.js'
 
 const clubSchema = z.object({
@@ -75,14 +75,15 @@ export interface RosterUpdatePlatformMetadata {
 export function buildSquadSnapshotSource(
   config: SquadSyncConfig,
   fetchImpl: typeof fetch,
+  logger?: ILogger,
 ): ISquadSnapshotSource {
   if (config.sourceKind === 'json-snapshot') {
-    return new JsonSnapshotSource(fetchImpl, config.sourceUrl)
+    return new JsonSnapshotSource(fetchImpl, config.sourceUrl, logger)
   }
   if (config.sourceKind === 'ea-rosterupdate-json') {
-    return new EaRosterupdateJsonSnapshotSource(fetchImpl, config)
+    return new EaRosterupdateJsonSnapshotSource(fetchImpl, config, logger)
   }
-  return new GitHubReleaseJsonSnapshotSource(fetchImpl, config)
+  return new GitHubReleaseJsonSnapshotSource(fetchImpl, config, logger)
 }
 
 export function extractRosterUpdatePlatformMetadata(
@@ -115,14 +116,25 @@ class JsonSnapshotSource implements ISquadSnapshotSource {
   constructor(
     private readonly fetchImpl: typeof fetch,
     private readonly sourceUrl: string,
+    private readonly logger?: ILogger,
   ) {}
 
   async getLatestSnapshot(): Promise<SquadSnapshot> {
+    this.logger?.info('squad-sync', 'fetching json snapshot', {
+      sourceUrl: this.sourceUrl,
+    })
     const response = await this.fetchImpl(this.sourceUrl)
     if (!response.ok) {
       throw new Error(`snapshot fetch failed with status ${response.status}`)
     }
     const payload = squadSnapshotPayloadSchema.parse(await response.json())
+    this.logger?.info('squad-sync', 'json snapshot payload received', {
+      sourceUrl: this.sourceUrl,
+      version: payload.version,
+      clubCount: payload.clubs.length,
+      hasPlayers: Boolean(payload.players),
+      hasPlayersByClubId: Boolean(payload.playersByClubId),
+    })
     return normalizeSnapshotPayload(payload, this.sourceUrl)
   }
 }
@@ -131,9 +143,14 @@ class EaRosterupdateJsonSnapshotSource implements ISquadSnapshotSource {
   constructor(
     private readonly fetchImpl: typeof fetch,
     private readonly config: Extract<SquadSyncConfig, { sourceKind: 'ea-rosterupdate-json' }>,
+    private readonly logger?: ILogger,
   ) {}
 
   async getLatestSnapshot(): Promise<SquadSnapshot> {
+    this.logger?.info('squad-sync', 'fetching roster discovery xml', {
+      discoveryUrl: this.config.discoveryUrl,
+      platform: this.config.platform,
+    })
     const discoveryResponse = await this.fetchImpl(this.config.discoveryUrl)
     if (!discoveryResponse.ok) {
       throw new Error(
@@ -142,9 +159,19 @@ class EaRosterupdateJsonSnapshotSource implements ISquadSnapshotSource {
     }
     const xml = await discoveryResponse.text()
     const metadata = extractRosterUpdatePlatformMetadata(xml, this.config.platform)
+    this.logger?.info('squad-sync', 'roster discovery resolved version', {
+      discoveryUrl: this.config.discoveryUrl,
+      platform: metadata.platform,
+      squadVersion: metadata.squadVersion,
+      squadLocation: metadata.squadLocation,
+    })
     const snapshotUrl = applyTemplate(this.config.snapshotUrlTemplate, {
       version: metadata.squadVersion,
       platform: metadata.platform,
+    })
+    this.logger?.info('squad-sync', 'fetching versioned snapshot', {
+      snapshotUrl,
+      expectedVersion: metadata.squadVersion,
     })
     const snapshotResponse = await this.fetchImpl(snapshotUrl)
     if (!snapshotResponse.ok) {
@@ -153,6 +180,13 @@ class EaRosterupdateJsonSnapshotSource implements ISquadSnapshotSource {
       )
     }
     const payload = squadSnapshotPayloadSchema.parse(await snapshotResponse.json())
+    this.logger?.info('squad-sync', 'versioned snapshot payload received', {
+      snapshotUrl,
+      version: payload.version,
+      clubCount: payload.clubs.length,
+      hasPlayers: Boolean(payload.players),
+      hasPlayersByClubId: Boolean(payload.playersByClubId),
+    })
     const snapshot = normalizeSnapshotPayload(payload, snapshotUrl)
     if (snapshot.version !== metadata.squadVersion) {
       throw new Error(
@@ -167,9 +201,11 @@ class GitHubReleaseJsonSnapshotSource implements ISquadSnapshotSource {
   constructor(
     private readonly fetchImpl: typeof fetch,
     private readonly config: Extract<SquadSyncConfig, { sourceKind: 'github-release-json' }>,
+    private readonly logger?: ILogger,
   ) {}
 
   async getLatestSnapshot(): Promise<SquadSnapshot> {
+    this.assertRepositoryConfigured()
     const release = await this.fetchLatestRelease()
     const asset = release.assets.find((entry) => entry.name === this.config.assetName)
     if (!asset) {
@@ -178,14 +214,27 @@ class GitHubReleaseJsonSnapshotSource implements ISquadSnapshotSource {
         `release asset ${this.config.assetName} not found in ${this.config.repository}; available assets: ${availableAssets.join(', ')}`,
       )
     }
+    this.logger?.info('squad-sync', 'github release asset selected', {
+      repository: this.config.repository,
+      assetName: asset.name,
+      assetUrl: asset.browser_download_url,
+    })
 
     const snapshotResponse = await this.fetchAsset(asset)
     if (!snapshotResponse.ok) {
       throw new Error(
-      `github release asset fetch failed with status ${snapshotResponse.status}`,
+        `github release asset fetch failed with status ${snapshotResponse.status}`,
       )
     }
     const payload = squadSnapshotPayloadSchema.parse(await snapshotResponse.json())
+    this.logger?.info('squad-sync', 'github release snapshot payload received', {
+      repository: this.config.repository,
+      assetName: asset.name,
+      version: payload.version,
+      clubCount: payload.clubs.length,
+      hasPlayers: Boolean(payload.players),
+      hasPlayersByClubId: Boolean(payload.playersByClubId),
+    })
     return normalizeSnapshotPayloadWithDefaults(payload, {
       fallbackReleasedAt: release.published_at
         ? Date.parse(release.published_at)
@@ -196,8 +245,14 @@ class GitHubReleaseJsonSnapshotSource implements ISquadSnapshotSource {
   }
 
   private async fetchLatestRelease(): Promise<z.infer<typeof gitHubReleaseSchema>> {
+    const releaseUrl = `https://api.github.com/repos/${this.config.repository}/releases/latest`
+    this.logger?.info('squad-sync', 'fetching github latest release', {
+      repository: this.config.repository,
+      releaseUrl,
+      assetName: this.config.assetName,
+    })
     const response = await this.fetchImpl(
-      `https://api.github.com/repos/${this.config.repository}/releases/latest`,
+      releaseUrl,
       {
         headers: buildGitHubHeaders(),
       },
@@ -207,13 +262,33 @@ class GitHubReleaseJsonSnapshotSource implements ISquadSnapshotSource {
         `github latest release fetch failed with status ${response.status}`,
       )
     }
-    return gitHubReleaseSchema.parse(await response.json())
+    const release = gitHubReleaseSchema.parse(await response.json())
+    this.logger?.info('squad-sync', 'github latest release resolved', {
+      repository: this.config.repository,
+      assetCount: release.assets.length,
+      assetNames: release.assets.map((asset) => asset.name).sort(),
+      publishedAt: release.published_at ?? null,
+    })
+    return release
   }
 
   private fetchAsset(
     asset: z.infer<typeof gitHubReleaseAssetSchema>,
   ): Promise<Response> {
+    this.logger?.info('squad-sync', 'fetching github release asset', {
+      repository: this.config.repository,
+      assetName: asset.name,
+      assetUrl: asset.browser_download_url,
+    })
     return this.fetchImpl(asset.browser_download_url)
+  }
+
+  private assertRepositoryConfigured(): void {
+    if (this.config.repository.trim().toLowerCase() === 'owner/repo') {
+      throw new Error(
+        'SQUAD_SYNC_GITHUB_REPOSITORY is still set to the placeholder owner/repo',
+      )
+    }
   }
 }
 

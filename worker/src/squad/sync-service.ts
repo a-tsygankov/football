@@ -36,8 +36,19 @@ export class SquadSyncService {
       }
     }
 
-    const source = buildSquadSnapshotSource(config, this.options.fetchImpl)
+    logger.info('squad-sync', 'sync starting', {
+      sourceKind: config.sourceKind,
+      retentionCount: config.retentionCount,
+      storageBackend: this.options.squadStorage.constructor.name,
+      versionBackend: this.options.squadVersions.constructor.name,
+      ...summarizeConfig(config),
+    })
+
+    const source = buildSquadSnapshotSource(config, this.options.fetchImpl, logger)
     const latestBefore = await this.options.squadVersions.latest()
+    logger.info('squad-sync', 'latest stored version resolved', {
+      latestVersion: latestBefore?.version ?? null,
+    })
     const snapshot = await source.getLatestSnapshot()
     logger.info('squad-sync', 'snapshot fetched', {
       version: snapshot.version,
@@ -99,6 +110,12 @@ export class SquadSyncService {
       notes: snapshot.notes,
     } as const
 
+    logger.info('squad-sync', 'writing snapshot shards', {
+      version: snapshot.version,
+      clubCount: snapshot.clubs.length,
+      playerCount: snapshot.players.length,
+      previousVersion,
+    })
     await squadStorage.putClubs(snapshot.version, snapshot.clubs)
     for (const club of snapshot.clubs) {
       await squadStorage.putPlayersForClub(
@@ -132,6 +149,11 @@ export class SquadSyncService {
 
     await squadStorage.putVersionMetadata(versionRecord)
     await squadStorage.setLatestVersion(snapshot.version)
+    logger.info('squad-sync', 'writing version index row', {
+      version: snapshot.version,
+      releasedAt: snapshot.releasedAt,
+      sourceUrl: snapshot.sourceUrl,
+    })
     await squadVersions.insert(versionRecord)
 
     logger.info('squad-sync', 'snapshot stored', {
@@ -181,6 +203,26 @@ export class SquadSyncService {
         version: version.version,
       })
     }
+  }
+}
+
+function summarizeConfig(config: SquadSyncConfig): Record<string, unknown> {
+  switch (config.sourceKind) {
+    case 'json-snapshot':
+      return {
+        sourceUrl: config.sourceUrl,
+      }
+    case 'ea-rosterupdate-json':
+      return {
+        discoveryUrl: config.discoveryUrl,
+        snapshotUrlTemplate: config.snapshotUrlTemplate,
+        platform: config.platform,
+      }
+    case 'github-release-json':
+      return {
+        repository: config.repository,
+        assetName: config.assetName,
+      }
   }
 }
 
