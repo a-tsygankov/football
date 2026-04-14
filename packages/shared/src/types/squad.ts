@@ -163,6 +163,26 @@ export interface SquadLeague {
   readonly clubCount: number
 }
 
+export interface SquadVersionsResponse {
+  readonly versions: ReadonlyArray<SquadVersion>
+}
+
+export interface SquadClubsResponse {
+  readonly version: string
+  readonly clubs: ReadonlyArray<Club>
+}
+
+export interface SquadLeaguesResponse {
+  readonly version: string
+  readonly leagues: ReadonlyArray<SquadLeague>
+}
+
+export interface SquadPlayersResponse {
+  readonly version: string
+  readonly clubId: number
+  readonly players: ReadonlyArray<FcPlayer>
+}
+
 export type SquadSyncStatus = 'disabled' | 'noop' | 'ingested'
 
 export interface SquadSyncResult {

@@ -890,6 +890,7 @@ describe('App shell', () => {
     const scoreboardSection = screen.getByRole('heading', { name: 'Scoreboard' }).closest('section')
     expect(scoreboardSection).not.toBeNull()
     const scoreboard = within(scoreboardSection!)
+    await waitFor(() => expect(scoreboard.getByText('Alice')).toBeInTheDocument())
 
     expect(
       scoreboard.getByText(
@@ -911,6 +912,202 @@ describe('App shell', () => {
     fireEvent.click(scoreboard.getByRole('button', { name: /Gamer teams/i }))
     expect(scoreboard.getByText(/Alice \+ Bob|Bob \+ Alice/)).toBeInTheDocument()
     expect(scoreboard.getByText(/2-0-1 • 3 games • Win rate 67% • GD \+3/i)).toBeInTheDocument()
+  })
+
+  it('renders the teams and changes sections from the squad endpoints', async () => {
+    localStorage.setItem('fc26:last-room-id', 'room-8')
+    vi.stubGlobal('fetch', vi.fn(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/api/version')) {
+        return new Response(
+          JSON.stringify({
+            workerVersion: '0.1.0',
+            schemaVersion: 1,
+            minClientVersion: '0.1.0',
+            gitSha: null,
+            builtAt: new Date().toISOString(),
+            latestSquadVersion: 'v2',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/rooms/room-8/bootstrap')) {
+        return new Response(
+          JSON.stringify({
+            room: {
+              id: 'room-8',
+              name: 'Squad Browser',
+              avatarUrl: null,
+              hasPin: false,
+              defaultSelectionStrategy: 'uniform-random',
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            gamers: [],
+            activeGameNight: null,
+            activeGameNightGamers: [],
+            currentGame: null,
+            session: {
+              roomId: 'room-8',
+              expiresAt: Date.now() + 10_000,
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/rooms/room-8/scoreboard')) {
+        return emptyScoreboardResponse('room-8')
+      }
+      if (url.endsWith('/api/squads/versions')) {
+        return new Response(
+          JSON.stringify({
+            versions: [
+              {
+                version: 'v2',
+                releasedAt: 2000,
+                ingestedAt: 2100,
+                clubsBytes: 100,
+                clubCount: 1,
+                playerCount: 1,
+                sourceUrl: 'https://example.com/v2.json',
+                notes: null,
+              },
+              {
+                version: 'v1',
+                releasedAt: 1000,
+                ingestedAt: 1100,
+                clubsBytes: 90,
+                clubCount: 1,
+                playerCount: 1,
+                sourceUrl: 'https://example.com/v1.json',
+                notes: null,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/squads/v2/clubs')) {
+        return new Response(
+          JSON.stringify({
+            version: 'v2',
+            clubs: [
+              {
+                id: 1,
+                name: 'Arsenal',
+                shortName: 'ARS',
+                leagueId: 100,
+                leagueName: 'Premier League',
+                leagueLogoUrl: 'https://example.com/premier.png',
+                nationId: 14,
+                overallRating: 85,
+                attackRating: 84,
+                midfieldRating: 85,
+                defenseRating: 83,
+                avatarUrl: null,
+                logoUrl: 'https://example.com/arsenal.png',
+                starRating: 4,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/squads/v2/leagues')) {
+        return new Response(
+          JSON.stringify({
+            version: 'v2',
+            leagues: [
+              {
+                id: 100,
+                name: 'Premier League',
+                logoUrl: 'https://example.com/premier.png',
+                clubCount: 1,
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/squads/v2/players/1')) {
+        return new Response(
+          JSON.stringify({
+            version: 'v2',
+            clubId: 1,
+            players: [
+              {
+                id: 7,
+                clubId: 1,
+                name: 'Bukayo Saka',
+                avatarUrl: 'https://example.com/saka.png',
+                position: 'RW',
+                nationId: 14,
+                overall: 87,
+                attributes: {
+                  pace: 90,
+                  shooting: 83,
+                  passing: 81,
+                  dribbling: 89,
+                  defending: 60,
+                  physical: 72,
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      if (url.endsWith('/api/squads/v2/diff?from=v1')) {
+        return new Response(
+          JSON.stringify({
+            fromVersion: 'v1',
+            toVersion: 'v2',
+            generatedAt: 2200,
+            playerChanges: [
+              {
+                playerId: 7,
+                clubId: 1,
+                name: 'Bukayo Saka',
+                changes: [{ field: 'overall', from: 86, to: 87 }],
+              },
+            ],
+            clubChanges: [
+              {
+                clubId: 1,
+                field: 'overallRating',
+                from: 84,
+                to: 85,
+              },
+            ],
+            addedPlayers: [],
+            removedPlayers: [],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        )
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    }))
+
+    render(<App />)
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Squad Browser/i })).toBeInTheDocument(),
+    )
+    await waitFor(() => expect(screen.getByText('Arsenal')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByRole('img', { name: 'Bukayo Saka player avatar' })).toBeInTheDocument(),
+    )
+    expect(
+      screen
+        .getAllByRole('img', { name: 'Arsenal club logo' })
+        .some((image) => image.getAttribute('src') === 'https://example.com/arsenal.png'),
+    ).toBe(true)
+    expect(screen.getByRole('img', { name: 'Bukayo Saka player avatar' })).toHaveAttribute(
+      'src',
+      'https://example.com/saka.png',
+    )
+    expect(screen.getByText(/Overall changed from 84 to 85/i)).toBeInTheDocument()
+    expect(screen.getByText(/OVR 86 → 87/i)).toBeInTheDocument()
   })
 
   it('records the active game result and returns to game creation', async () => {

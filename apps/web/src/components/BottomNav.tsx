@@ -8,13 +8,15 @@ type Mode = 'game' | 'dashboard' | 'teams' | 'changes'
 const SECTION_TARGETS: Readonly<Partial<Record<Mode, string>>> = {
   game: 'fc26-game-section',
   dashboard: 'fc26-scoreboard-section',
+  teams: 'fc26-teams-section',
+  changes: 'fc26-changes-section',
 }
 
 const MODES: ReadonlyArray<{ id: Mode; label: string; targetId?: string }> = [
   { id: 'game', label: 'Game', targetId: SECTION_TARGETS.game },
   { id: 'dashboard', label: 'Scoreboard', targetId: SECTION_TARGETS.dashboard },
-  { id: 'teams', label: 'Teams' },
-  { id: 'changes', label: 'Changes' },
+  { id: 'teams', label: 'Teams', targetId: SECTION_TARGETS.teams },
+  { id: 'changes', label: 'Changes', targetId: SECTION_TARGETS.changes },
 ]
 
 export function BottomNav() {

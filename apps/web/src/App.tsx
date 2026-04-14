@@ -1,8 +1,10 @@
 import { startTransition, useEffect, useMemo, useState } from 'react'
 import {
+  type Club,
   type CreateGamerRequest,
   type CreateCurrentGameRequest,
   type CurrentGame,
+  type FcPlayer,
   formatLocal,
   formatRelative,
   GAME_FORMATS,
@@ -19,12 +21,25 @@ import {
   type RetrieveRoomSquadsResponse,
   type RoomBootstrapResponse,
   type RoomScoreboardResponse,
+  type SquadClubsResponse,
+  type SquadDiff,
+  type SquadLeague,
+  type SquadLeaguesResponse,
+  type SquadPlayersResponse,
+  type SquadVersion,
+  type SquadVersionsResponse,
   type UpdateGamerRequest,
 } from '@fc26/shared'
 import { apiJson, persistRoomSession } from './lib/api.js'
 import { logger } from './lib/logger.js'
 import { APP_VERSION, type WorkerVersionInfo } from './lib/version.js'
 import { BottomNav } from './components/BottomNav.jsx'
+import {
+  ClubIdentity,
+  FcPlayerIdentity,
+  GamerIdentity,
+  GamerTeamIdentity,
+} from './components/EntityIdentity.jsx'
 import { DebugConsole } from './debug/DebugConsole.jsx'
 import { defaultAvatar, imageFileToAvatarDataUrl } from './lib/avatars.js'
 
@@ -872,6 +887,21 @@ function RoomScreen({
   const [editingNextPin, setEditingNextPin] = useState('')
   const [scoreboardView, setScoreboardView] = useState<'gamers' | 'teams'>('gamers')
   const [includeTeamGamesInGamerBoard, setIncludeTeamGamesInGamerBoard] = useState(true)
+  const [squadVersions, setSquadVersions] = useState<ReadonlyArray<SquadVersion>>([])
+  const [teamsVersion, setTeamsVersion] = useState<string | null>(latestSquadVersion)
+  const [teamsLeagues, setTeamsLeagues] = useState<ReadonlyArray<SquadLeague>>([])
+  const [teamsClubs, setTeamsClubs] = useState<ReadonlyArray<Club>>([])
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | 'all'>('all')
+  const [selectedClubId, setSelectedClubId] = useState<number | null>(null)
+  const [selectedClubPlayers, setSelectedClubPlayers] = useState<ReadonlyArray<FcPlayer>>([])
+  const [changesToVersion, setChangesToVersion] = useState<string | null>(latestSquadVersion)
+  const [changesFromVersion, setChangesFromVersion] = useState<string | null>(null)
+  const [squadDiff, setSquadDiff] = useState<SquadDiff | null>(null)
+  const [changesClubs, setChangesClubs] = useState<ReadonlyArray<Club>>([])
+  const [teamsLoading, setTeamsLoading] = useState(false)
+  const [playersLoading, setPlayersLoading] = useState(false)
+  const [changesLoading, setChangesLoading] = useState(false)
+  const [squadPanelError, setSquadPanelError] = useState<string | null>(null)
   const activeRoomGamers = bootstrap.gamers.filter((gamer) => gamer.active)
   const activeGameNightGamers = bootstrap.activeGameNightGamers
     .map((item) => bootstrap.gamers.find((gamer) => gamer.id === item.gamerId))
@@ -896,6 +926,193 @@ function RoomScreen({
     if (availableRandomFormats.some((format) => format.id === randomFormat)) return
     setRandomFormat(availableRandomFormats.at(-1)?.id ?? '1v1')
   }, [availableRandomFormats, randomFormat])
+
+  useEffect(() => {
+    setTeamsVersion((current) =>
+      current && current.length > 0 ? current : latestSquadVersion,
+    )
+    setChangesToVersion((current) =>
+      current && current.length > 0 ? current : latestSquadVersion,
+    )
+  }, [latestSquadVersion])
+
+  useEffect(() => {
+    if (!latestSquadVersion) {
+      setSquadVersions([])
+      setTeamsVersion(null)
+      setChangesToVersion(null)
+      setChangesFromVersion(null)
+      setTeamsClubs([])
+      setTeamsLeagues([])
+      setSelectedClubPlayers([])
+      setSelectedClubId(null)
+      setChangesClubs([])
+      setSquadDiff(null)
+      return
+    }
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const response = await apiJson<SquadVersionsResponse>('/api/squads/versions')
+        if (cancelled) return
+        setSquadVersions(response.versions)
+      } catch (err) {
+        if (cancelled) return
+        setSquadPanelError(err instanceof Error ? err.message : String(err))
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [latestSquadVersion])
+
+  useEffect(() => {
+    if (!teamsVersion) {
+      setTeamsClubs([])
+      setTeamsLeagues([])
+      setSelectedClubId(null)
+      setSelectedClubPlayers([])
+      return
+    }
+
+    let cancelled = false
+    setTeamsLoading(true)
+    setSquadPanelError(null)
+    void (async () => {
+      try {
+        const [clubsResponse, leaguesResponse] = await Promise.all([
+          apiJson<SquadClubsResponse>(`/api/squads/${teamsVersion}/clubs`),
+          apiJson<SquadLeaguesResponse>(`/api/squads/${teamsVersion}/leagues`),
+        ])
+        if (cancelled) return
+        setTeamsClubs(clubsResponse.clubs)
+        setTeamsLeagues(leaguesResponse.leagues)
+      } catch (err) {
+        if (cancelled) return
+        setSquadPanelError(err instanceof Error ? err.message : String(err))
+        setTeamsClubs([])
+        setTeamsLeagues([])
+      } finally {
+        if (!cancelled) setTeamsLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [teamsVersion])
+
+  useEffect(() => {
+    if (selectedLeagueId === 'all') return
+    if (teamsLeagues.some((league) => league.id === selectedLeagueId)) return
+    setSelectedLeagueId('all')
+  }, [selectedLeagueId, teamsLeagues])
+
+  const filteredTeamsClubs = useMemo(
+    () =>
+      teamsClubs.filter((club) =>
+        selectedLeagueId === 'all' ? true : club.leagueId === selectedLeagueId,
+      ),
+    [selectedLeagueId, teamsClubs],
+  )
+
+  useEffect(() => {
+    if (filteredTeamsClubs.length === 0) {
+      setSelectedClubId(null)
+      setSelectedClubPlayers([])
+      return
+    }
+    if (selectedClubId && filteredTeamsClubs.some((club) => club.id === selectedClubId)) return
+    setSelectedClubId(filteredTeamsClubs[0]!.id)
+  }, [filteredTeamsClubs, selectedClubId])
+
+  useEffect(() => {
+    if (!teamsVersion || !selectedClubId) {
+      setSelectedClubPlayers([])
+      return
+    }
+
+    let cancelled = false
+    setPlayersLoading(true)
+    setSquadPanelError(null)
+    void (async () => {
+      try {
+        const response = await apiJson<SquadPlayersResponse>(
+          `/api/squads/${teamsVersion}/players/${selectedClubId}`,
+        )
+        if (cancelled) return
+        setSelectedClubPlayers(
+          [...response.players].sort((left, right) => right.overall - left.overall),
+        )
+      } catch (err) {
+        if (cancelled) return
+        setSquadPanelError(err instanceof Error ? err.message : String(err))
+        setSelectedClubPlayers([])
+      } finally {
+        if (!cancelled) setPlayersLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedClubId, teamsVersion])
+
+  useEffect(() => {
+    if (!changesToVersion) {
+      setChangesFromVersion(null)
+      setSquadDiff(null)
+      setChangesClubs([])
+      return
+    }
+
+    const availablePreviousVersions = squadVersions
+      .filter((version) => version.version !== changesToVersion)
+      .map((version) => version.version)
+    if (
+      changesFromVersion &&
+      availablePreviousVersions.includes(changesFromVersion)
+    ) {
+      return
+    }
+    setChangesFromVersion(availablePreviousVersions[0] ?? null)
+  }, [changesFromVersion, changesToVersion, squadVersions])
+
+  useEffect(() => {
+    if (!changesToVersion || !changesFromVersion) {
+      setSquadDiff(null)
+      setChangesClubs([])
+      return
+    }
+
+    let cancelled = false
+    setChangesLoading(true)
+    setSquadPanelError(null)
+    void (async () => {
+      try {
+        const [diffResponse, clubsResponse] = await Promise.all([
+          apiJson<SquadDiff>(`/api/squads/${changesToVersion}/diff?from=${encodeURIComponent(changesFromVersion)}`),
+          apiJson<SquadClubsResponse>(`/api/squads/${changesToVersion}/clubs`),
+        ])
+        if (cancelled) return
+        setSquadDiff(diffResponse)
+        setChangesClubs(clubsResponse.clubs)
+      } catch (err) {
+        if (cancelled) return
+        setSquadPanelError(err instanceof Error ? err.message : String(err))
+        setSquadDiff(null)
+        setChangesClubs([])
+      } finally {
+        if (!cancelled) setChangesLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [changesFromVersion, changesToVersion])
 
   const manualHomeIds = Object.entries(manualAssignments)
     .filter(([gamerId, side]) => side === 'home' && activeGameNightGamerIds.has(gamerId))
@@ -932,6 +1149,12 @@ function RoomScreen({
     () => sortTeamScoreboardRows(scoreboard?.gamerTeamRows ?? []),
     [scoreboard?.gamerTeamRows],
   )
+  const selectedClub = filteredTeamsClubs.find((club) => club.id === selectedClubId) ?? null
+  const changesClubById = useMemo(
+    () => new Map<number, Club>(changesClubs.map((club) => [club.id, club])),
+    [changesClubs],
+  )
+  const versionsForChanges = squadVersions.map((version) => version.version)
 
   function toggleActiveGamerDraft(gamerId: string): void {
     if (currentGameGamerIds.has(gamerId)) return
@@ -1200,11 +1423,11 @@ function RoomScreen({
                       opacity: locked ? 0.7 : 1,
                     }}
                   >
-                    <strong style={{ display: 'block', fontSize: 16 }}>{gamer.name}</strong>
-                    <span style={{ fontSize: 13, opacity: 0.72 }}>
-                      Rating {gamer.rating}
-                      {locked ? ' • locked in current game' : selected ? ' • in live pool' : ' • out'}
-                    </span>
+                    <GamerIdentity
+                      gamer={gamer}
+                      size={48}
+                      subtitle={`Rating ${gamer.rating}${locked ? ' • locked in current game' : selected ? ' • in live pool' : ' • out'}`}
+                    />
                   </button>
                 )
               })}
@@ -1329,16 +1552,17 @@ function RoomScreen({
                                 alignItems: 'center',
                               }}
                             >
-                              <div>
-                                <strong style={{ display: 'block', fontSize: 16 }}>{gamer.name}</strong>
-                                <span style={{ fontSize: 13, opacity: 0.72 }}>
-                                  {assignment === 'bench'
+                              <GamerIdentity
+                                gamer={gamer}
+                                size={46}
+                                subtitle={
+                                  assignment === 'bench'
                                     ? 'Waiting'
                                     : assignment === 'home'
                                       ? 'Home side'
-                                      : 'Away side'}
-                                </span>
-                              </div>
+                                      : 'Away side'
+                                }
+                              />
                               <div
                                 style={{
                                   display: 'grid',
@@ -1565,11 +1789,13 @@ function RoomScreen({
                           alignItems: 'center',
                           gap: 12,
                         }}
-                        >
-                        <div>
-                          <div style={{ fontSize: 12, opacity: 0.62 }}>#{index + 1}</div>
-                          <strong style={{ display: 'block', fontSize: 18 }}>{row.gamer.name}</strong>
-                        </div>
+                      >
+                        <GamerIdentity
+                          gamer={row.gamer}
+                          size={46}
+                          subtitle={`#${index + 1}`}
+                          nameStyle={{ fontSize: 18 }}
+                        />
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: 12, opacity: 0.62 }}>Points</div>
                           <strong style={{ fontSize: 18 }}>{row.points}</strong>
@@ -1612,12 +1838,12 @@ function RoomScreen({
                       gap: 12,
                     }}
                   >
-                    <div>
-                      <div style={{ fontSize: 12, opacity: 0.62 }}>#{index + 1}</div>
-                      <strong style={{ display: 'block', fontSize: 18 }}>
-                        {row.members.map((member) => member.name).join(' + ')}
-                      </strong>
-                    </div>
+                    <GamerTeamIdentity
+                      members={row.members}
+                      size={48}
+                      subtitle={`#${index + 1}`}
+                      nameStyle={{ fontSize: 18 }}
+                    />
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 12, opacity: 0.62 }}>Points</div>
                       <strong style={{ fontSize: 18 }}>{row.points}</strong>
@@ -1629,6 +1855,366 @@ function RoomScreen({
                   </div>
                 </article>
               ))}
+            </div>
+          )}
+        </Panel>
+      </section>
+
+      <section id="fc26-teams-section" style={{ marginTop: 18 }}>
+        <Panel
+          title="Teams"
+          subtitle="Browse stored FC clubs, league logos, and player avatars from the selected squad version."
+        >
+          {!latestSquadVersion ? (
+            <InlineNotice
+              tone="warn"
+              message="Retrieve club and player data in Settings to unlock the Teams view."
+            />
+          ) : (
+            <div style={{ display: 'grid', gap: 14 }}>
+              {squadPanelError ? <InlineNotice tone="warn" message={squadPanelError} /> : null}
+              <Field label="Squad version">
+                <select
+                  value={teamsVersion ?? latestSquadVersion}
+                  onChange={(event) => setTeamsVersion(event.target.value)}
+                  style={inputStyle}
+                >
+                  {squadVersions.map((version) => (
+                    <option key={version.version} value={version.version}>
+                      {version.version}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLeagueId('all')}
+                  style={selectedLeagueId === 'all' ? primaryButtonStyle : compactButtonStyle}
+                >
+                  All leagues
+                </button>
+                {teamsLeagues.map((league) => (
+                  <button
+                    key={league.id}
+                    type="button"
+                    onClick={() => setSelectedLeagueId(league.id)}
+                    style={selectedLeagueId === league.id ? primaryButtonStyle : compactButtonStyle}
+                  >
+                    {league.name}
+                  </button>
+                ))}
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 14,
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                  alignItems: 'start',
+                }}
+              >
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {teamsLoading ? (
+                    <InlineNotice tone="info" message="Loading clubs and leagues..." />
+                  ) : filteredTeamsClubs.length === 0 ? (
+                    <InlineNotice
+                      tone="info"
+                      message="No clubs match the selected league filter for this squad version."
+                    />
+                  ) : (
+                    filteredTeamsClubs.map((club) => (
+                      <button
+                        key={club.id}
+                        type="button"
+                        onClick={() => setSelectedClubId(club.id)}
+                        style={{
+                          textAlign: 'left',
+                          borderRadius: 18,
+                          padding: 14,
+                          background: selectedClubId === club.id ? '#ecfdf5' : '#ffffff',
+                          border: `1px solid ${selectedClubId === club.id ? '#22c55e' : '#d1fae5'}`,
+                          color: '#052e16',
+                        }}
+                      >
+                        <ClubIdentity
+                          club={club}
+                          subtitle={`${club.leagueName} • ${club.starRating} stars`}
+                          size={48}
+                          trailing={
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: 12, opacity: 0.62 }}>OVR</div>
+                              <strong style={{ fontSize: 18 }}>{club.overallRating}</strong>
+                            </div>
+                          }
+                          nameStyle={{ fontSize: 18 }}
+                        />
+                      </button>
+                    ))
+                  )}
+                </div>
+                <div
+                  style={{
+                    borderRadius: 18,
+                    padding: 14,
+                    background: '#ffffff',
+                    border: '1px solid #d1fae5',
+                    display: 'grid',
+                    gap: 12,
+                  }}
+                >
+                  {selectedClub ? (
+                    <>
+                      <ClubIdentity
+                        club={selectedClub}
+                        subtitle={`${selectedClub.leagueName} • ATT ${selectedClub.attackRating} • MID ${selectedClub.midfieldRating} • DEF ${selectedClub.defenseRating}`}
+                        size={60}
+                        trailing={
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 12, opacity: 0.62 }}>Nation</div>
+                            <strong style={{ fontSize: 18 }}>{selectedClub.nationId}</strong>
+                          </div>
+                        }
+                        nameStyle={{ fontSize: 22 }}
+                      />
+                      <div style={{ display: 'grid', gap: 10 }}>
+                        {playersLoading ? (
+                          <InlineNotice tone="info" message="Loading club players..." />
+                        ) : selectedClubPlayers.length === 0 ? (
+                          <InlineNotice tone="info" message="No stored players found for this club." />
+                        ) : (
+                          selectedClubPlayers.map((player) => (
+                            <article
+                              key={player.id}
+                              style={{
+                                borderRadius: 16,
+                                padding: 12,
+                                background: '#f8fafc',
+                                border: '1px solid #d1fae5',
+                              }}
+                            >
+                              <FcPlayerIdentity
+                                player={player}
+                                subtitle={`${player.position} • PAC ${player.attributes.pace} • SHO ${player.attributes.shooting} • PAS ${player.attributes.passing}`}
+                                size={44}
+                                trailing={
+                                  <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: 12, opacity: 0.62 }}>OVR</div>
+                                    <strong style={{ fontSize: 18 }}>{player.overall}</strong>
+                                  </div>
+                                }
+                              />
+                            </article>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <InlineNotice tone="info" message="Select a club to inspect its players." />
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </Panel>
+      </section>
+
+      <section id="fc26-changes-section" style={{ marginTop: 18 }}>
+        <Panel
+          title="Changes"
+          subtitle="Compare stored squad snapshots to see club rating shifts and player updates between versions."
+        >
+          {!latestSquadVersion ? (
+            <InlineNotice
+              tone="warn"
+              message="Retrieve club and player data in Settings to unlock the Changes view."
+            />
+          ) : squadVersions.length < 2 ? (
+            <InlineNotice
+              tone="info"
+              message="At least two stored squad versions are needed before version-to-version changes can be shown."
+            />
+          ) : (
+            <div style={{ display: 'grid', gap: 14 }}>
+              {squadPanelError ? <InlineNotice tone="warn" message={squadPanelError} /> : null}
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 10,
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                }}
+              >
+                <Field label="From version">
+                  <select
+                    value={changesFromVersion ?? ''}
+                    onChange={(event) => setChangesFromVersion(event.target.value || null)}
+                    style={inputStyle}
+                  >
+                    {versionsForChanges
+                      .filter((version) => version !== changesToVersion)
+                      .map((version) => (
+                        <option key={version} value={version}>
+                          {version}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                <Field label="To version">
+                  <select
+                    value={changesToVersion ?? latestSquadVersion}
+                    onChange={(event) => setChangesToVersion(event.target.value)}
+                    style={inputStyle}
+                  >
+                    {versionsForChanges.map((version) => (
+                      <option key={version} value={version}>
+                        {version}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              {changesLoading ? (
+                <InlineNotice tone="info" message="Loading version diff..." />
+              ) : squadDiff ? (
+                <>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gap: 10,
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                    }}
+                  >
+                    <MiniStat label="Club changes" value={String(squadDiff.clubChanges.length)} />
+                    <MiniStat label="Player changes" value={String(squadDiff.playerChanges.length)} />
+                    <MiniStat label="Added players" value={String(squadDiff.addedPlayers.length)} />
+                    <MiniStat label="Removed players" value={String(squadDiff.removedPlayers.length)} />
+                  </div>
+
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <strong style={{ fontSize: 16 }}>Club updates</strong>
+                    {squadDiff.clubChanges.length === 0 ? (
+                      <InlineNotice tone="info" message="No club rating changes between these versions." />
+                    ) : (
+                      squadDiff.clubChanges.map((change, index) => {
+                        const club = changesClubById.get(change.clubId)
+                        return (
+                          <article
+                            key={`${change.clubId}-${change.field}-${index}`}
+                            style={{
+                              borderRadius: 16,
+                              padding: 12,
+                              background: '#ffffff',
+                              border: '1px solid #d1fae5',
+                            }}
+                          >
+                            {club ? (
+                              <ClubIdentity
+                                club={club}
+                                subtitle={`${formatClubChangeField(change.field)} changed from ${change.from} to ${change.to}`}
+                                size={42}
+                              />
+                            ) : (
+                              <div style={{ fontSize: 14 }}>
+                                Club #{change.clubId}: {formatClubChangeField(change.field)} {change.from} → {change.to}
+                              </div>
+                            )}
+                          </article>
+                        )
+                      })
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <strong style={{ fontSize: 16 }}>Player updates</strong>
+                    {squadDiff.playerChanges.length === 0 ? (
+                      <InlineNotice tone="info" message="No player stat changes between these versions." />
+                    ) : (
+                      squadDiff.playerChanges.map((playerChange) => (
+                        <article
+                          key={playerChange.playerId}
+                          style={{
+                            borderRadius: 16,
+                            padding: 12,
+                            background: '#ffffff',
+                            border: '1px solid #d1fae5',
+                          }}
+                        >
+                          <strong style={{ display: 'block', fontSize: 16 }}>{playerChange.name}</strong>
+                          <span style={{ display: 'block', marginTop: 4, fontSize: 13, opacity: 0.72 }}>
+                            {changesClubById.get(playerChange.clubId)?.name ?? `Club #${playerChange.clubId}`}
+                          </span>
+                          <div style={{ marginTop: 8, fontSize: 14, opacity: 0.82 }}>
+                            {playerChange.changes
+                              .map(
+                                (entry) =>
+                                  `${formatPlayerChangeField(entry.field)} ${entry.from} → ${entry.to}`,
+                              )
+                              .join(' • ')}
+                          </div>
+                        </article>
+                      ))
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gap: 14,
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                    }}
+                  >
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      <strong style={{ fontSize: 16 }}>Added players</strong>
+                      {squadDiff.addedPlayers.length === 0 ? (
+                        <InlineNotice tone="info" message="No new players added in this version." />
+                      ) : (
+                        squadDiff.addedPlayers.map((player) => (
+                          <article
+                            key={`added-${player.playerId}`}
+                            style={{
+                              borderRadius: 16,
+                              padding: 12,
+                              background: '#ffffff',
+                              border: '1px solid #d1fae5',
+                              fontSize: 14,
+                            }}
+                          >
+                            <strong>{player.name}</strong>
+                            <div style={{ marginTop: 4, opacity: 0.72 }}>
+                              {changesClubById.get(player.clubId)?.name ?? `Club #${player.clubId}`}
+                            </div>
+                          </article>
+                        ))
+                      )}
+                    </div>
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      <strong style={{ fontSize: 16 }}>Removed players</strong>
+                      {squadDiff.removedPlayers.length === 0 ? (
+                        <InlineNotice tone="info" message="No players removed in this version." />
+                      ) : (
+                        squadDiff.removedPlayers.map((player) => (
+                          <article
+                            key={`removed-${player.playerId}`}
+                            style={{
+                              borderRadius: 16,
+                              padding: 12,
+                              background: '#ffffff',
+                              border: '1px solid #d1fae5',
+                              fontSize: 14,
+                            }}
+                          >
+                            <strong>{player.name}</strong>
+                            <div style={{ marginTop: 4, opacity: 0.72 }}>
+                              {changesClubById.get(player.clubId)?.name ?? `Club #${player.clubId}`}
+                            </div>
+                          </article>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <InlineNotice tone="info" message="Pick two stored versions to inspect their differences." />
+              )}
             </div>
           )}
         </Panel>
@@ -1750,13 +2336,12 @@ function RoomScreen({
                       }}
                     />
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                      <div>
-                        <strong style={{ display: 'block', fontSize: 20 }}>{gamer.name}</strong>
-                        <span style={{ fontSize: 14, opacity: 0.72 }}>
-                          Rating {gamer.rating} • {gamer.active ? 'Available' : 'Inactive'}
-                          {gamer.hasPin ? ' • PIN protected' : ' • No PIN'}
-                        </span>
-                      </div>
+                      <GamerIdentity
+                        gamer={gamer}
+                        size={56}
+                        subtitle={`Rating ${gamer.rating} • ${gamer.active ? 'Available' : 'Inactive'}${gamer.hasPin ? ' • PIN protected' : ' • No PIN'}`}
+                        nameStyle={{ fontSize: 20 }}
+                      />
                       <div style={{ display: 'grid', gap: 8 }}>
                         <button
                           type="button"
@@ -2079,11 +2664,21 @@ function TeamColumn({
     >
       <strong style={{ display: 'block', marginBottom: 10 }}>{title}</strong>
       <div style={{ display: 'grid', gap: 8 }}>
-        {gamerIds.map((gamerId) => (
-          <div key={gamerId} style={{ fontSize: 14 }}>
-            {gamers.find((gamer) => gamer.id === gamerId)?.name ?? gamerId}
-          </div>
-        ))}
+        {gamerIds.map((gamerId) => {
+          const gamer = gamers.find((item) => item.id === gamerId)
+          return gamer ? (
+            <GamerIdentity
+              key={gamerId}
+              gamer={gamer}
+              size={38}
+              subtitle={`Rating ${gamer.rating}`}
+            />
+          ) : (
+            <div key={gamerId} style={{ fontSize: 14 }}>
+              {gamerId}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -2383,6 +2978,44 @@ function formatPercent(value: number): string {
 
 function formatSignedNumber(value: number): string {
   return value > 0 ? `+${value}` : `${value}`
+}
+
+function formatClubChangeField(field: string): string {
+  switch (field) {
+    case 'overallRating':
+      return 'Overall'
+    case 'attackRating':
+      return 'Attack'
+    case 'midfieldRating':
+      return 'Midfield'
+    case 'defenseRating':
+      return 'Defense'
+    case 'starRating':
+      return 'Stars'
+    default:
+      return field
+  }
+}
+
+function formatPlayerChangeField(field: string): string {
+  switch (field) {
+    case 'pace':
+      return 'PAC'
+    case 'shooting':
+      return 'SHO'
+    case 'passing':
+      return 'PAS'
+    case 'dribbling':
+      return 'DRI'
+    case 'defending':
+      return 'DEF'
+    case 'physical':
+      return 'PHY'
+    case 'overall':
+      return 'OVR'
+    default:
+      return field
+  }
 }
 
 function sameIds(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {

@@ -18,7 +18,7 @@ describe('BottomNav', () => {
     document.body.innerHTML = ''
   })
 
-  it('scrolls to the implemented game and scoreboard sections', () => {
+  it('scrolls to the implemented sections', () => {
     const gameSection = document.createElement('section')
     gameSection.id = 'fc26-game-section'
     gameSection.getBoundingClientRect = vi.fn(() => ({
@@ -49,6 +49,36 @@ describe('BottomNav', () => {
     }))
     document.body.appendChild(scoreboardSection)
 
+    const teamsSection = document.createElement('section')
+    teamsSection.id = 'fc26-teams-section'
+    teamsSection.getBoundingClientRect = vi.fn(() => ({
+      top: 900,
+      left: 0,
+      bottom: 1180,
+      right: 0,
+      width: 0,
+      height: 280,
+      x: 0,
+      y: 900,
+      toJSON: () => ({}),
+    }))
+    document.body.appendChild(teamsSection)
+
+    const changesSection = document.createElement('section')
+    changesSection.id = 'fc26-changes-section'
+    changesSection.getBoundingClientRect = vi.fn(() => ({
+      top: 1280,
+      left: 0,
+      bottom: 1540,
+      right: 0,
+      width: 0,
+      height: 260,
+      x: 0,
+      y: 1280,
+      toJSON: () => ({}),
+    }))
+    document.body.appendChild(changesSection)
+
     render(<BottomNav />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Game' }))
@@ -56,6 +86,14 @@ describe('BottomNav', () => {
 
     scrollIntoView.mockClear()
     fireEvent.click(screen.getByRole('button', { name: 'Scoreboard' }))
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+
+    scrollIntoView.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Teams' }))
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+
+    scrollIntoView.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Changes' }))
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
   })
 
@@ -107,9 +145,39 @@ describe('BottomNav', () => {
     expect(screen.getByRole('button', { name: 'Game' })).not.toHaveAttribute('aria-current')
   })
 
-  it('keeps unfinished tabs disabled', () => {
+  it('enables the teams and changes tabs when their sections exist', () => {
+    const teamsSection = document.createElement('section')
+    teamsSection.id = 'fc26-teams-section'
+    teamsSection.getBoundingClientRect = vi.fn(() => ({
+      top: 200,
+      left: 0,
+      bottom: 400,
+      right: 0,
+      width: 0,
+      height: 200,
+      x: 0,
+      y: 200,
+      toJSON: () => ({}),
+    }))
+    document.body.appendChild(teamsSection)
+
+    const changesSection = document.createElement('section')
+    changesSection.id = 'fc26-changes-section'
+    changesSection.getBoundingClientRect = vi.fn(() => ({
+      top: 500,
+      left: 0,
+      bottom: 700,
+      right: 0,
+      width: 0,
+      height: 200,
+      x: 0,
+      y: 500,
+      toJSON: () => ({}),
+    }))
+    document.body.appendChild(changesSection)
+
     render(<BottomNav />)
-    expect(screen.getByRole('button', { name: 'Teams' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Changes' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Teams' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Changes' })).toBeEnabled()
   })
 })
