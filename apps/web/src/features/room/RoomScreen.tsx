@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import type {
   CreateCurrentGameRequest,
   Gamer,
@@ -12,7 +12,6 @@ import type {
 import { AddGamerPanel } from '../gamers/AddGamerPanel.jsx'
 import { RosterPanel } from '../gamers/RosterPanel.jsx'
 import { GameCreationPanel } from '../gameNight/GameCreationPanel.jsx'
-import { GameNightRosterPanel } from '../gameNight/GameNightRosterPanel.jsx'
 import { StartGameNightPanel } from '../gameNight/StartGameNightPanel.jsx'
 import { ScoreboardPanel } from '../scoreboard/ScoreboardPanel.jsx'
 import { ChangesPanel } from '../squads/ChangesPanel.jsx'
@@ -21,7 +20,6 @@ import { useSquadBrowser } from '../squads/useSquadBrowser.js'
 import { ActiveRoomHeader } from './ActiveRoomHeader.jsx'
 import { SettingsPanel } from './SettingsPanel.jsx'
 import type { BusyState } from '../../types/busyState.js'
-import { sameIds } from '../../utils/roster.js'
 
 export function RoomScreen({
   bootstrap,
@@ -48,7 +46,6 @@ export function RoomScreen({
   onRefreshSquadAssets,
   onSaveRoomSettings,
   onChangeRoomSquadPlatform,
-  onSaveActiveGameNightGamers,
   onStartGameNight,
   onToggleGamer,
   onUpdateGamerDetails,
@@ -85,10 +82,6 @@ export function RoomScreen({
   onRefreshSquadAssets: () => Promise<void>
   onSaveRoomSettings: () => Promise<void>
   onChangeRoomSquadPlatform: (value: SquadPlatform) => void
-  onSaveActiveGameNightGamers: (
-    gameNightId: string,
-    activeGamerIds: string[],
-  ) => Promise<void>
   onStartGameNight: () => Promise<void>
   onToggleGamer: (gamer: Gamer) => Promise<void>
   onUpdateGamerDetails: (gamerId: string, request: UpdateGamerRequest) => Promise<void>
@@ -105,29 +98,10 @@ export function RoomScreen({
       ]),
     [bootstrap.currentGame],
   )
-  const [draftActiveGamerIds, setDraftActiveGamerIds] = useState<string[]>([])
-  const activeRoomGamers = bootstrap.gamers.filter((gamer) => gamer.active)
   const activeGameNightGamers = bootstrap.activeGameNightGamers
     .map((item) => bootstrap.gamers.find((gamer) => gamer.id === item.gamerId))
     .filter((gamer): gamer is Gamer => gamer !== undefined)
-  const hasUnsavedActiveGamers = !sameIds(
-    draftActiveGamerIds,
-    bootstrap.activeGameNightGamers.map((item) => item.gamerId),
-  )
   const squadBrowser = useSquadBrowser(latestSquadVersion)
-
-  useEffect(() => {
-    setDraftActiveGamerIds(bootstrap.activeGameNightGamers.map((item) => item.gamerId))
-  }, [bootstrap.activeGameNightGamers])
-
-  function toggleActiveGamerDraft(gamerId: string): void {
-    if (currentGameGamerIds.has(gamerId)) return
-    setDraftActiveGamerIds((current) =>
-      current.includes(gamerId)
-        ? current.filter((item) => item !== gamerId)
-        : [...current, gamerId],
-    )
-  }
 
   function scrollToSection(sectionId: string): void {
     document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -152,14 +126,16 @@ export function RoomScreen({
           marginTop: 18,
           display: 'grid',
           gap: 14,
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))',
         }}
       >
-        <StartGameNightPanel
-          bootstrap={bootstrap}
-          busy={busy}
-          onStartGameNight={onStartGameNight}
-        />
+        {bootstrap.activeGameNight ? null : (
+          <StartGameNightPanel
+            bootstrap={bootstrap}
+            busy={busy}
+            onStartGameNight={onStartGameNight}
+          />
+        )}
         <AddGamerPanel
           bootstrap={bootstrap}
           busy={busy}
@@ -176,31 +152,12 @@ export function RoomScreen({
       </section>
 
       {bootstrap.activeGameNight ? (
-        <section
-          id="fc26-game-live-section"
-          style={{
-            marginTop: 18,
-            display: 'grid',
-            gap: 14,
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-          }}
-        >
-          <GameNightRosterPanel
-            bootstrap={bootstrap}
-            busy={busy}
-            activeRoomGamers={activeRoomGamers}
-            currentGameGamerIds={currentGameGamerIds}
-            draftActiveGamerIds={draftActiveGamerIds}
-            hasUnsavedActiveGamers={hasUnsavedActiveGamers}
-            onToggleDraftGamer={toggleActiveGamerDraft}
-            onSaveActiveGameNightGamers={onSaveActiveGameNightGamers}
-          />
+        <section id="fc26-game-live-section" style={{ marginTop: 18 }}>
           <GameCreationPanel
             bootstrap={bootstrap}
             busy={busy}
             activeGameNightGamers={activeGameNightGamers}
             activeGameNightGamerIds={activeGameNightGamerIds}
-            hasUnsavedActiveGamers={hasUnsavedActiveGamers}
             latestSquadVersion={latestSquadVersion}
             squadClubs={squadBrowser.teams.clubs}
             squadLeagues={squadBrowser.teams.leagues}

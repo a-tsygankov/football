@@ -4,7 +4,6 @@ export type BusyState =
   | 'refreshing-room'
   | 'creating-gamer'
   | 'updating-gamer'
-  | 'saving-active-gamers'
   | 'starting-game-night'
   | 'creating-game'
   | 'recording-game'

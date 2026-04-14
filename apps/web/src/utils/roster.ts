@@ -70,9 +70,3 @@ export function getRosterStatusDot({
   }
 }
 
-export function sameIds(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {
-  if (left.length !== right.length) return false
-  const a = [...left].sort()
-  const b = [...right].sort()
-  return a.every((value, index) => value === b[index])
-}

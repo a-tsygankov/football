@@ -97,26 +97,29 @@ export function CurrentGameCard({
   }
 
   return (
-    <div style={{ display: 'grid', gap: 14 }}>
+    <div style={{ display: 'grid', gap: 12 }}>
       <div
         style={{
-          padding: 14,
-          borderRadius: 18,
+          padding: '10px 12px',
+          borderRadius: 14,
           background: '#ecfdf5',
           border: '1px solid #86efac',
+          fontSize: 13,
+          opacity: 0.85,
         }}
       >
-        <strong style={{ display: 'block', fontSize: 18 }}>
-          Game night live
-        </strong>
-        <span style={{ fontSize: 14, opacity: 0.72 }}>
-          {GAME_FORMATS[currentGame.format].label} •{' '}
-          {currentGame.allocationMode === 'manual'
-            ? 'Manual matchup'
-            : `Random via ${currentGame.selectionStrategyId}`}
-        </span>
+        {GAME_FORMATS[currentGame.format].label} •{' '}
+        {currentGame.allocationMode === 'manual'
+          ? 'Manual matchup'
+          : `Random via ${currentGame.selectionStrategyId}`}
       </div>
-      <div style={{ display: 'grid', gap: 10, gridTemplateColumns: '1fr 1fr' }}>
+      <div
+        style={{
+          display: 'grid',
+          gap: 10,
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',
+        }}
+      >
         <TeamColumn
           title="Home"
           club={homeClub}
@@ -132,7 +135,7 @@ export function CurrentGameCard({
       </div>
       <div
         style={{
-          padding: 14,
+          padding: 12,
           borderRadius: 18,
           background: '#ffffff',
           border: '1px solid #d1fae5',
@@ -206,12 +209,12 @@ export function CurrentGameCard({
             )}
           </div>
         </Field>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
           <button
             type="button"
             disabled={busy !== null || !scorePairReady}
             onClick={() => void submitResult('home')}
-            style={primaryButtonStyle}
+            style={{ ...primaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
           >
             {busy === 'recording-game' ? 'Saving...' : 'Home win'}
           </button>
@@ -219,7 +222,7 @@ export function CurrentGameCard({
             type="button"
             disabled={busy !== null || !scorePairReady}
             onClick={() => void submitResult('draw')}
-            style={secondaryButtonStyle}
+            style={{ ...secondaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
           >
             {busy === 'recording-game' ? 'Saving...' : 'Draw'}
           </button>
@@ -227,7 +230,7 @@ export function CurrentGameCard({
             type="button"
             disabled={busy !== null || !scorePairReady}
             onClick={() => void submitResult('away')}
-            style={primaryButtonStyle}
+            style={{ ...primaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
           >
             {busy === 'recording-game' ? 'Saving...' : 'Away win'}
           </button>
@@ -238,7 +241,7 @@ export function CurrentGameCard({
       </div>
       <div
         style={{
-          padding: 14,
+          padding: 12,
           borderRadius: 18,
           background: '#fffbeb',
           border: '1px solid #fcd34d',

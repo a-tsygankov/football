@@ -22,9 +22,10 @@ export function TeamColumn({
     <div
       style={{
         borderRadius: 18,
-        padding: 14,
+        padding: 12,
         background: '#ffffff',
         border: '1px solid #d1fae5',
+        minWidth: 0,
       }}
     >
       <strong style={{ display: 'block', marginBottom: 10 }}>{title}</strong>

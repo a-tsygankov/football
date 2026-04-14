@@ -33,7 +33,6 @@ export function GameCreationPanel({
   busy,
   activeGameNightGamers,
   activeGameNightGamerIds,
-  hasUnsavedActiveGamers,
   latestSquadVersion,
   squadClubs,
   squadLeagues,
@@ -46,7 +45,6 @@ export function GameCreationPanel({
   busy: BusyState
   activeGameNightGamers: ReadonlyArray<Gamer>
   activeGameNightGamerIds: ReadonlySet<string>
-  hasUnsavedActiveGamers: boolean
   latestSquadVersion: string | null
   squadClubs: ReadonlyArray<Club>
   squadLeagues: ReadonlyArray<SquadLeague>
@@ -136,12 +134,10 @@ export function GameCreationPanel({
   const manualFormat = inferGameFormat(manualHomeIds.length, manualAwayIds.length)
   const canCreateManualGame =
     !bootstrap.currentGame &&
-    !hasUnsavedActiveGamers &&
     manualFormat !== null &&
     canResolveManualTeams(teamAssignmentMode, manualHomeClubId, manualAwayClubId)
   const canCreateRandomGame =
     !bootstrap.currentGame &&
-    !hasUnsavedActiveGamers &&
     availableRandomFormats.length > 0 &&
     canResolveRandomTeams(teamAssignmentMode, homeRandomClubChoices, awayRandomClubChoices)
 
@@ -216,21 +212,6 @@ export function GameCreationPanel({
               Random
             </button>
           </div>
-
-          {hasUnsavedActiveGamers ? (
-            <div
-              style={{
-                marginBottom: 14,
-                padding: 12,
-                borderRadius: 16,
-                background: '#fffbeb',
-                border: '1px solid #fcd34d',
-                fontSize: 14,
-              }}
-            >
-              Save the live pool before creating the next game.
-            </div>
-          ) : null}
 
           <OptionalTeamAssignmentSection
             latestSquadVersion={latestSquadVersion}
@@ -532,7 +513,7 @@ function OptionalTeamAssignmentSection({
       ) : squadLoading ? (
         <InlineNotice tone="info" message="Loading FC teams..." />
       ) : teamAssignmentMode === 'manual' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 12 }}>
           <ManualTeamPicker
             title="Home FC team"
             collection={homeTeamCollection}
@@ -577,7 +558,7 @@ function OptionalTeamAssignmentSection({
               </select>
             </Field>
           ) : null}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 12 }}>
             <div style={{ display: 'grid', gap: 10 }}>
               <RatingSelector label="Home team stars" value={homeRandomTeamRating} onChange={onChangeHomeRandomTeamRating} />
               <ClubMatchPreview clubs={homeRandomClubChoices} emptyMessage="No home-team matches for this star rating." />

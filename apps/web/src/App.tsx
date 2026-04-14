@@ -391,38 +391,6 @@ export function App() {
     }
   }
 
-  async function saveActiveGameNightGamers(
-    gameNightId: string,
-    activeGamerIds: string[],
-  ): Promise<void> {
-    if (!bootstrap) return
-    setBusy('saving-active-gamers')
-    setError(null)
-    try {
-      const response = await apiJson<{
-        activeGamers: RoomBootstrapResponse['activeGameNightGamers']
-      }>(`/api/rooms/${bootstrap.room.id}/game-nights/${gameNightId}/active-gamers`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ activeGamerIds }),
-      })
-      startTransition(() => {
-        setBootstrap((current) =>
-          current
-            ? {
-                ...current,
-                activeGameNightGamers: response.activeGamers,
-              }
-            : current,
-        )
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(null)
-    }
-  }
-
   async function createGame(
     gameNightId: string,
     request: CreateCurrentGameRequest,
@@ -684,7 +652,6 @@ export function App() {
             onRefreshSquadAssets={() => refreshSquadAssets(bootstrap.room.id)}
             onSaveRoomSettings={() => saveRoomSettings(bootstrap.room.id)}
             onChangeRoomSquadPlatform={setRoomSquadPlatform}
-            onSaveActiveGameNightGamers={saveActiveGameNightGamers}
             onStartGameNight={startGameNight}
             onToggleGamer={toggleGamer}
             onUpdateGamerDetails={updateGamerDetails}
