@@ -4,7 +4,7 @@ import {
   type EaSquadPreviewResponse,
   type SquadPlatform,
 } from '@fc26/shared'
-import { ClubAvatar, ClubIdentity } from './FcClubPanel.jsx'
+import { ClubAvatar } from './FcClubPanel.jsx'
 
 const LOCAL_TOOL_URL_KEY = 'fc26:ea-preview-base-url'
 
@@ -205,15 +205,13 @@ export function EaPremierLeagueLivePanel({
                 key={club.id}
                 style={{
                   borderRadius: 22,
-                  padding: 16,
-                  minHeight: 240,
+                  padding: 18,
+                  minHeight: 220,
                   display: 'grid',
                   alignContent: 'space-between',
-                  gap: 14,
-                  background: club.foundInSquad
-                    ? 'linear-gradient(180deg, rgba(3,7,18,0.18) 0%, rgba(255,255,255,0.08) 100%)'
-                    : 'linear-gradient(180deg, rgba(30,41,59,0.34) 0%, rgba(148,163,184,0.18) 100%)',
-                  border: `1px solid ${club.foundInSquad ? 'rgba(34,197,94,0.42)' : 'rgba(148,163,184,0.38)'}`,
+                  gap: 16,
+                  background: 'linear-gradient(180deg, rgba(3,7,18,0.18) 0%, rgba(255,255,255,0.08) 100%)',
+                  border: '1px solid rgba(34,197,94,0.42)',
                 }}
               >
                 <div
@@ -224,19 +222,7 @@ export function EaPremierLeagueLivePanel({
                     gap: 10,
                   }}
                 >
-                  <span
-                    style={{
-                      fontSize: 11,
-                      padding: '6px 8px',
-                      borderRadius: 999,
-                      background: club.foundInSquad ? 'rgba(34,197,94,0.18)' : 'rgba(148,163,184,0.18)',
-                      border: `1px solid ${club.foundInSquad ? 'rgba(34,197,94,0.36)' : 'rgba(148,163,184,0.34)'}`,
-                      letterSpacing: '0.12em',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    {club.foundInSquad ? 'Found in EA squad' : 'Needs alias check'}
-                  </span>
+                  <span />
                   <span style={{ fontSize: 12, opacity: 0.7 }}>{club.country ?? preview.leagueName}</span>
                 </div>
 
@@ -244,16 +230,13 @@ export function EaPremierLeagueLivePanel({
                   <ClubAvatar club={club} size={92} />
                   <div style={{ textAlign: 'center' }}>
                     <strong style={{ display: 'block', fontSize: 26, lineHeight: 1.05 }}>{club.name}</strong>
-                    <span style={{ display: 'block', marginTop: 6, fontSize: 13, opacity: 0.72 }}>
-                      {club.exactTeamName ?? club.shortName}
-                    </span>
                   </div>
                 </div>
 
                 <div
                   style={{
                     display: 'grid',
-                    gap: 10,
+                    gap: 12,
                     borderRadius: 18,
                     background: 'rgba(255,255,255,0.08)',
                     border: '1px solid rgba(255,255,255,0.08)',
@@ -263,15 +246,10 @@ export function EaPremierLeagueLivePanel({
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
                       gap: 8,
                     }}
                   >
-                    <RatingBox
-                      label="OVR"
-                      value={club.overallRating}
-                      delta={club.ratingDelta.overall}
-                    />
                     <RatingBox
                       label="ATT"
                       value={club.attackRating}
@@ -289,34 +267,15 @@ export function EaPremierLeagueLivePanel({
                     />
                   </div>
 
-                  {(club.matchdayOverallRating !== null ||
-                    club.matchdayAttackRating !== null ||
-                    club.matchdayMidfieldRating !== null ||
-                    club.matchdayDefenseRating !== null) ? (
-                    <div
-                      style={{
-                        display: 'grid',
-                        gap: 4,
-                        fontSize: 12,
-                        opacity: 0.76,
-                      }}
-                    >
-                      <span>Live form: OVR {formatNullableValue(club.matchdayOverallRating)} · ATT {formatNullableValue(club.matchdayAttackRating)} · MID {formatNullableValue(club.matchdayMidfieldRating)} · DEF {formatNullableValue(club.matchdayDefenseRating)}</span>
-                    </div>
-                  ) : null}
-
-                  <ClubIdentity
-                    club={club}
-                    subtitle={
-                      club.matchTerm
-                        ? `Matched as "${club.matchTerm}"`
-                        : club.exactTeamName
-                          ? 'Matched directly from the FC 26 team table'
-                          : 'No direct match term found yet'
-                    }
-                    size={38}
-                    nameStyle={{ fontSize: 16 }}
-                  />
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: 'rgba(226,232,240,0.58)',
+                      textAlign: 'right',
+                    }}
+                  >
+                    Updated: {new Date(preview.fetchedAt).toLocaleString()}
+                  </div>
                 </div>
               </article>
             ))}
@@ -336,9 +295,6 @@ function RatingBox({
   value: number | null
   delta: number | null
 }) {
-  const deltaTone = delta === null || delta === 0 ? '#e5e7eb' : delta > 0 ? '#22c55e' : '#f87171'
-  const deltaText = delta === null || delta === 0 ? '→' : delta > 0 ? `↑ ${delta}` : `↓ ${Math.abs(delta)}`
-
   return (
     <div
       style={{
@@ -352,27 +308,42 @@ function RatingBox({
       <div style={{ fontSize: 11, opacity: 0.68, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
         {label}
       </div>
-      <strong style={{ display: 'block', marginTop: 8, fontSize: 24, lineHeight: 1 }}>
-        {formatNullableValue(value)}
-      </strong>
-      <span
+      <div
         style={{
+          marginTop: 8,
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          marginTop: 8,
-          minWidth: 42,
-          borderRadius: 999,
-          padding: '4px 8px',
-          fontSize: 11,
-          fontWeight: 700,
-          color: '#052e16',
-          background: deltaTone,
+          gap: 6,
         }}
       >
-        {deltaText}
-      </span>
+        <strong style={{ fontSize: 24, lineHeight: 1 }}>
+          {formatNullableValue(value)}
+        </strong>
+        <DeltaTriangle delta={delta} />
+      </div>
     </div>
+  )
+}
+
+function DeltaTriangle({ delta }: { delta: number | null }) {
+  if (delta === null || delta === 0) return null
+  const isUp = delta > 0
+
+  return (
+    <span
+      aria-label={isUp ? 'increased' : 'decreased'}
+      title={isUp ? `Increased by ${delta}` : `Decreased by ${Math.abs(delta)}`}
+      style={{
+        width: 0,
+        height: 0,
+        borderLeft: '5px solid transparent',
+        borderRight: '5px solid transparent',
+        borderBottom: isUp ? '8px solid #22c55e' : undefined,
+        borderTop: isUp ? undefined : '8px solid #ef4444',
+        display: 'inline-block',
+      }}
+    />
   )
 }
 
