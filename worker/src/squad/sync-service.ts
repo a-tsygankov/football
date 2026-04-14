@@ -68,7 +68,7 @@ export class SquadSyncService {
         version: snapshot.version,
         sourceKind: config.sourceKind,
         sourceUrl: snapshot.sourceUrl,
-        platform: config.sourceKind === 'ea-rosterupdate-json' ? config.platform : null,
+        platform: configPlatformOrNull(config),
         releasedAt: snapshot.releasedAt,
         previousVersion: latestBefore?.version ?? null,
         clubCount: existing.clubCount,
@@ -209,6 +209,16 @@ export class SquadSyncService {
   }
 }
 
+function configPlatformOrNull(config: SquadSyncConfig): string | null {
+  if (
+    config.sourceKind === 'ea-rosterupdate-json' ||
+    config.sourceKind === 'ea-rosterupdate-binary'
+  ) {
+    return config.platform
+  }
+  return null
+}
+
 function summarizeConfig(config: SquadSyncConfig): Record<string, unknown> {
   switch (config.sourceKind) {
     case 'json-snapshot':
@@ -219,6 +229,11 @@ function summarizeConfig(config: SquadSyncConfig): Record<string, unknown> {
       return {
         discoveryUrl: config.discoveryUrl,
         snapshotUrlTemplate: config.snapshotUrlTemplate,
+        platform: config.platform,
+      }
+    case 'ea-rosterupdate-binary':
+      return {
+        discoveryUrl: config.discoveryUrl,
         platform: config.platform,
       }
   }

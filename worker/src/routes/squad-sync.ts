@@ -83,5 +83,11 @@ function summarizeSquadSyncConfig(
         snapshotUrlTemplate: config.snapshotUrlTemplate,
         platform: config.platform,
       }
+    case 'ea-rosterupdate-binary':
+      return {
+        sourceKind: config.sourceKind,
+        discoveryUrl: config.discoveryUrl,
+        platform: config.platform,
+      }
   }
 }

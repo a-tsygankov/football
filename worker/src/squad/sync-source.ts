@@ -1,7 +1,12 @@
 import { z } from 'zod'
 import {
+  buildEaContentUrl,
   extractRosterUpdatePlatformMetadata,
+  readEaSquadTables,
+  unpackEaRosterBinary,
   type Club,
+  type EaLeagueRecord,
+  type EaTeamRecord,
   type FcPlayer,
   type ILogger,
   type RosterUpdatePlatformMetadata,
@@ -69,6 +74,9 @@ export function buildSquadSnapshotSource(
   if (config.sourceKind === 'json-snapshot') {
     return new JsonSnapshotSource(fetchImpl, config.sourceUrl, logger)
   }
+  if (config.sourceKind === 'ea-rosterupdate-binary') {
+    return new EaRosterupdateBinarySnapshotSource(fetchImpl, config, logger)
+  }
   return new EaRosterupdateJsonSnapshotSource(fetchImpl, config, logger)
 }
 
@@ -96,6 +104,67 @@ class JsonSnapshotSource implements ISquadSnapshotSource {
       hasPlayersByClubId: Boolean(payload.playersByClubId),
     })
     return normalizeSnapshotPayload(payload, this.sourceUrl)
+  }
+}
+
+class EaRosterupdateBinarySnapshotSource implements ISquadSnapshotSource {
+  constructor(
+    private readonly fetchImpl: typeof fetch,
+    private readonly config: Extract<SquadSyncConfig, { sourceKind: 'ea-rosterupdate-binary' }>,
+    private readonly logger?: ILogger,
+  ) {}
+
+  async getLatestSnapshot(): Promise<SquadSnapshot> {
+    this.logger?.info('squad-sync', 'fetching roster discovery xml', {
+      discoveryUrl: this.config.discoveryUrl,
+      platform: this.config.platform,
+    })
+    const discoveryResponse = await this.fetchImpl(this.config.discoveryUrl)
+    if (!discoveryResponse.ok) {
+      throw new Error(
+        `rosterupdate fetch failed with status ${discoveryResponse.status}`,
+      )
+    }
+    const xml = await discoveryResponse.text()
+    const metadata = extractRosterUpdatePlatformMetadata(xml, this.config.platform)
+    if (!metadata.squadLocation) {
+      throw new Error(
+        `roster discovery did not advertise a squad binary for platform ${this.config.platform}`,
+      )
+    }
+    const squadUrl = buildEaContentUrl(this.config.discoveryUrl, metadata.squadLocation)
+    this.logger?.info('squad-sync', 'fetching ea squad binary', {
+      squadUrl,
+      expectedVersion: metadata.squadVersion,
+    })
+    const squadResponse = await this.fetchImpl(squadUrl)
+    if (!squadResponse.ok) {
+      throw new Error(
+        `ea squad binary fetch failed with status ${squadResponse.status}`,
+      )
+    }
+    const rawBytes = new Uint8Array(await squadResponse.arrayBuffer())
+    const unpackedBytes = unpackEaRosterBinary(rawBytes)
+    const tables = readEaSquadTables(unpackedBytes)
+    this.logger?.info('squad-sync', 'ea squad binary parsed', {
+      squadUrl,
+      version: metadata.squadVersion,
+      teamCount: tables.teams.length,
+      leagueCount: tables.leagues.length,
+      leagueLinkCount: tables.leagueTeamLinks.length,
+    })
+    const clubs = mapEaTablesToClubs(tables)
+    return {
+      version: metadata.squadVersion,
+      releasedAt: null,
+      sourceUrl: squadUrl,
+      notes: `EA roster binary, platform ${this.config.platform}`,
+      clubs,
+      // EA tables don't expose individual fc_player attributes; the asset
+      // refresh service backfills logos later. Players stay empty until a
+      // future source path provides them.
+      players: [],
+    }
   }
 }
 
@@ -224,9 +293,72 @@ function applyTemplate(
   )
 }
 
+const PENDING_LOGO_PREFIX = 'pending:club:'
+
+/**
+ * Convert raw EA squad tables into the normalised `Club[]` shape stored in R2.
+ * Logos and league badges aren't part of the EA binary — the asset refresh
+ * service backfills them via SportsDB after ingestion. Until then we emit a
+ * stable `pending:club:{id}` placeholder so the schema's `min(1)` invariant
+ * still holds and downstream consumers can detect the placeholder.
+ */
+export function mapEaTablesToClubs(tables: {
+  readonly teams: ReadonlyArray<EaTeamRecord>
+  readonly leagues: ReadonlyArray<EaLeagueRecord>
+  readonly leagueTeamLinks: ReadonlyArray<{ teamId: number; leagueId: number }>
+}): Club[] {
+  const leagueById = new Map(tables.leagues.map((league) => [league.leagueId, league]))
+  const leagueIdByTeam = new Map(
+    tables.leagueTeamLinks.map((link) => [link.teamId, link.leagueId]),
+  )
+  const seen = new Set<number>()
+  const clubs: Club[] = []
+  for (const team of tables.teams) {
+    if (seen.has(team.teamId)) continue
+    seen.add(team.teamId)
+    const leagueId = leagueIdByTeam.get(team.teamId) ?? 0
+    const league = leagueId ? leagueById.get(leagueId) ?? null : null
+    clubs.push({
+      id: team.teamId,
+      name: team.teamName,
+      shortName: deriveShortName(team.teamName),
+      leagueId,
+      leagueName: league?.leagueName ?? 'Unknown',
+      leagueLogoUrl: null,
+      nationId: 0,
+      overallRating: clampRating(team.overallRating),
+      attackRating: clampRating(team.attackRating),
+      midfieldRating: clampRating(team.midfieldRating),
+      defenseRating: clampRating(team.defenseRating),
+      avatarUrl: null,
+      logoUrl: `${PENDING_LOGO_PREFIX}${team.teamId}`,
+      starRating: deriveStarRating(team.overallRating),
+    })
+  }
+  return clubs
+}
+
+function deriveShortName(name: string): string {
+  const trimmed = name.trim()
+  if (trimmed.length === 0) return 'CLB'
+  return trimmed.slice(0, 3).toUpperCase()
+}
+
+function clampRating(value: number): number {
+  if (!Number.isFinite(value)) return 1
+  return Math.max(1, Math.min(99, Math.trunc(value)))
+}
+
+function deriveStarRating(overall: number): number {
+  if (!Number.isFinite(overall)) return 1
+  const rounded = Math.round(overall / 20)
+  return Math.max(1, Math.min(5, rounded))
+}
+
 export const __TEST_ONLY__ = {
   normalizeSnapshotPayload,
   normalizeSnapshotPayloadWithDefaults,
   flattenPlayersByClubId,
   applyTemplate,
+  PENDING_LOGO_PREFIX,
 }

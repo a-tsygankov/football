@@ -307,7 +307,11 @@ describe('room routes', () => {
     }
   })
 
-  it('retrieves squad clubs and players from settings', async () => {
+  it('resolves the EA binary URL from the discovery xml during squad retrieval', async () => {
+    // The default sync source now reads the EA roster binary directly. We don't
+    // hand-roll a valid EA binary fixture here (the parser has its own tests);
+    // instead we verify the route hits the discovery URL, then the binary URL
+    // resolved from the dbMajorLoc, and surfaces parser failures as 502.
     const app = buildTestApp()
     const createRes = await app.fetch(
       new Request('http://localhost/api/rooms', {
@@ -321,60 +325,19 @@ describe('room routes', () => {
     const created = (await createRes.json()) as RoomBootstrapResponse
 
     const originalFetch = globalThis.fetch
+    const fetchCalls: string[] = []
     globalThis.fetch = (async (input) => {
       const url = String(input)
-      if (
-        url ===
-        'https://eafc26.content.easports.com/fc/fltOnlineAssets/26E4D4D6-8DBB-4A9A-BD99-9C47D3AA341D/2026/fc/fclive/genxtitle/rosterupdate.xml'
-      ) {
+      fetchCalls.push(url)
+      if (url.endsWith('/rosterupdate.xml')) {
         return new Response(
-          '<root><squadInfo platform="PS5"><dbMajor>fc26-r12</dbMajor></squadInfo></root>',
-          {
-            headers: { 'content-type': 'application/xml' },
-          },
+          '<root><squadInfo platform="PS5"><dbMajor>fc26-r12</dbMajor><dbMajorLoc>fc/fclive/squads/r12.bin</dbMajorLoc></squadInfo></root>',
+          { headers: { 'content-type': 'application/xml' } },
         )
       }
-      if (url === 'https://YOUR-SNAPSHOT-HOST/PS5/fc26-r12.json') {
-        return Response.json({
-          version: 'fc26-r12',
-          releasedAt: 1_710_000_000_000,
-          clubs: [
-            {
-              id: 1,
-              name: 'Arsenal',
-              shortName: 'ARS',
-              leagueId: 13,
-              leagueName: 'Premier League',
-              nationId: 14,
-              overallRating: 84,
-              attackRating: 84,
-              midfieldRating: 84,
-              defenseRating: 82,
-              avatarUrl: null,
-              logoUrl: 'https://placeholder.example/arsenal.png',
-              starRating: 4,
-            },
-          ],
-          players: [
-            {
-              id: 100,
-              clubId: 1,
-              name: 'Bukayo Saka',
-              avatarUrl: null,
-              position: 'RW',
-              nationId: 14,
-              overall: 89,
-              attributes: {
-                pace: 90,
-                shooting: 84,
-                passing: 83,
-                dribbling: 90,
-                defending: 60,
-                physical: 72,
-              },
-            },
-          ],
-        })
+      if (url.endsWith('/squads/r12.bin')) {
+        // Garbage bytes — the parser will reject, the route should respond 502.
+        return new Response(new Uint8Array([0, 1, 2, 3, 4]).buffer, { status: 200 })
       }
       throw new Error(`unexpected URL ${url}`)
     }) as typeof fetch
@@ -390,11 +353,11 @@ describe('room routes', () => {
         env,
         execCtx(),
       )
-      expect(retrieveRes.status).toBe(200)
-      const body = (await retrieveRes.json()) as RetrieveRoomSquadsResponse
-      expect(body.result.status).toBe('ingested')
-      expect((await app.squadVersions.latest())?.version).toBe('fc26-r12')
-      expect(await app.squadStorage.getPlayersForClub('fc26-r12', 1)).toHaveLength(1)
+      expect(retrieveRes.status).toBe(502)
+      expect(fetchCalls).toEqual([
+        'https://eafc26.content.easports.com/fc/fltOnlineAssets/26E4D4D6-8DBB-4A9A-BD99-9C47D3AA341D/2026/fc/fclive/genxtitle/rosterupdate.xml',
+        'https://eafc26.content.easports.com/fc/fltOnlineAssets/26E4D4D6-8DBB-4A9A-BD99-9C47D3AA341D/2026/fc/fclive/squads/r12.bin',
+      ])
     } finally {
       globalThis.fetch = originalFetch
     }

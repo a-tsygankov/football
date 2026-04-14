@@ -8,6 +8,7 @@ export const DEFAULT_EA_ROSTERUPDATE_URL =
 export type SquadSyncSourceKind =
   | 'json-snapshot'
   | 'ea-rosterupdate-json'
+  | 'ea-rosterupdate-binary'
 
 export interface JsonSnapshotSquadSyncConfig {
   readonly sourceKind: 'json-snapshot'
@@ -23,9 +24,22 @@ export interface EaRosterupdateJsonSquadSyncConfig {
   readonly retentionCount: number
 }
 
+/**
+ * Reads the EA roster binary directly from the location advertised in the
+ * roster discovery XML. Same flow the local EA preview uses, just in the
+ * worker. No external snapshot host required.
+ */
+export interface EaRosterupdateBinarySquadSyncConfig {
+  readonly sourceKind: 'ea-rosterupdate-binary'
+  readonly discoveryUrl: string
+  readonly platform: SquadPlatform
+  readonly retentionCount: number
+}
+
 export type SquadSyncConfig =
   | JsonSnapshotSquadSyncConfig
   | EaRosterupdateJsonSquadSyncConfig
+  | EaRosterupdateBinarySquadSyncConfig
 
 export function resolveSquadSyncConfig(
   overrides: {
@@ -54,6 +68,16 @@ export function resolveSquadSyncConfig(
       discoveryUrl:
         SQUAD_APP_CONFIG.sync.discoveryUrl.trim() || DEFAULT_EA_ROSTERUPDATE_URL,
       snapshotUrlTemplate,
+      platform: overrides.platform ?? resolvePlatform(SQUAD_APP_CONFIG.sync.defaultPlatform),
+      retentionCount,
+    }
+  }
+
+  if (sourceKind === 'ea-rosterupdate-binary') {
+    return {
+      sourceKind,
+      discoveryUrl:
+        SQUAD_APP_CONFIG.sync.discoveryUrl.trim() || DEFAULT_EA_ROSTERUPDATE_URL,
       platform: overrides.platform ?? resolvePlatform(SQUAD_APP_CONFIG.sync.defaultPlatform),
       retentionCount,
     }

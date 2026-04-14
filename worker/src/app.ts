@@ -73,6 +73,16 @@ export function buildApp(options: BuildAppOptions = {}): Hono<AppContext> {
   app.onError((err, c) => {
     c.get('logger').error('system', 'unhandled error', {
       error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack ?? null : null,
+      name: err instanceof Error ? err.name : null,
+      cause:
+        err instanceof Error && err.cause
+          ? err.cause instanceof Error
+            ? err.cause.message
+            : String(err.cause)
+          : null,
+      method: c.req.method,
+      path: c.req.path,
     })
     return c.json({ error: 'internal_error' }, 500)
   })

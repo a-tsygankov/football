@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildSquadSnapshotSource, extractRosterUpdatePlatformMetadata } from './sync-source.js'
+import {
+  __TEST_ONLY__,
+  buildSquadSnapshotSource,
+  extractRosterUpdatePlatformMetadata,
+  mapEaTablesToClubs,
+} from './sync-source.js'
 
 const snapshotPayload = {
   version: 'fc26-r12',
@@ -141,5 +146,116 @@ describe('squad sync source', () => {
       'https://ea.example/rosterupdate.xml',
       'https://snapshots.example/PS5/fc26-r12.json',
     ])
+  })
+
+  it('maps raw EA squad tables into normalised clubs with placeholder logos', () => {
+    const clubs = mapEaTablesToClubs({
+      teams: [
+        {
+          teamId: 11,
+          teamName: 'Manchester City',
+          overallRating: 88,
+          attackRating: 87,
+          midfieldRating: 89,
+          defenseRating: 86,
+          matchdayOverallRating: 88,
+          matchdayAttackRating: 87,
+          matchdayMidfieldRating: 89,
+          matchdayDefenseRating: 86,
+        },
+        {
+          teamId: 12,
+          teamName: 'Loose Team',
+          overallRating: 60,
+          attackRating: 60,
+          midfieldRating: 60,
+          defenseRating: 60,
+          matchdayOverallRating: 60,
+          matchdayAttackRating: 60,
+          matchdayMidfieldRating: 60,
+          matchdayDefenseRating: 60,
+        },
+      ],
+      leagues: [{ leagueId: 13, leagueName: 'Premier League' }],
+      leagueTeamLinks: [{ teamId: 11, leagueId: 13 }],
+    })
+
+    expect(clubs).toHaveLength(2)
+    expect(clubs[0]).toEqual({
+      id: 11,
+      name: 'Manchester City',
+      shortName: 'MAN',
+      leagueId: 13,
+      leagueName: 'Premier League',
+      leagueLogoUrl: null,
+      nationId: 0,
+      overallRating: 88,
+      attackRating: 87,
+      midfieldRating: 89,
+      defenseRating: 86,
+      avatarUrl: null,
+      logoUrl: `${__TEST_ONLY__.PENDING_LOGO_PREFIX}11`,
+      starRating: 4,
+    })
+    // Unaffiliated team falls back to leagueId 0 / 'Unknown'.
+    expect(clubs[1]?.leagueId).toBe(0)
+    expect(clubs[1]?.leagueName).toBe('Unknown')
+    expect(clubs[1]?.starRating).toBe(3)
+  })
+
+  it('reads the EA roster binary from the location advertised in discovery xml', async () => {
+    const fetchCalls: Array<string> = []
+    const source = buildSquadSnapshotSource(
+      {
+        sourceKind: 'ea-rosterupdate-binary',
+        discoveryUrl:
+          'https://eafc26.content.easports.com/fc/fltOnlineAssets/26E/2026/fc/fclive/genxtitle/rosterupdate.xml',
+        platform: 'PS5',
+        retentionCount: 12,
+      },
+      async (input) => {
+        const url = typeof input === 'string' ? input : input.url
+        fetchCalls.push(url)
+        if (url.endsWith('rosterupdate.xml')) {
+          return new Response(
+            `
+              <squadInfoSet>
+                <squadInfo platform="PS5">
+                  <dbMajor>fc26-r99</dbMajor>
+                  <dbMajorLoc>fc/fclive/squads/r99.bin</dbMajorLoc>
+                </squadInfo>
+              </squadInfoSet>
+            `,
+            { status: 200, headers: { 'content-type': 'application/xml' } },
+          )
+        }
+        // Garbage binary — we only verify the URL resolution + error path here;
+        // the parser has its own tests that cover real binaries.
+        return new Response(new Uint8Array([0, 1, 2, 3]).buffer, { status: 200 })
+      },
+    )
+
+    await expect(source.getLatestSnapshot()).rejects.toThrow()
+    expect(fetchCalls).toEqual([
+      'https://eafc26.content.easports.com/fc/fltOnlineAssets/26E/2026/fc/fclive/genxtitle/rosterupdate.xml',
+      'https://eafc26.content.easports.com/fc/fltOnlineAssets/26E/2026/fc/fclive/squads/r99.bin',
+    ])
+  })
+
+  it('surfaces a clear error when the EA discovery xml fails', async () => {
+    const source = buildSquadSnapshotSource(
+      {
+        sourceKind: 'ea-rosterupdate-binary',
+        discoveryUrl:
+          'https://eafc26.content.easports.com/fc/fltOnlineAssets/26E/2026/fc/fclive/genxtitle/rosterupdate.xml',
+        platform: 'PS5',
+        retentionCount: 12,
+      },
+      async () => new Response('forbidden', { status: 403 }),
+    )
+
+    await expect(source.getLatestSnapshot()).rejects.toThrow(
+      /rosterupdate fetch failed with status 403/,
+    )
   })
 })

@@ -1147,7 +1147,7 @@ function buildPersistedEvent<TPayload extends GameRecordedEvent | GameInterrupte
     eventType: payload.type,
     payload,
     schemaVersion: payload.schemaVersion,
-    correlationId: c.get('correlationId'),
+    correlationId: c.get('correlationId') ?? null,
     occurredAt,
     recordedAt,
   }
@@ -1241,6 +1241,12 @@ function summarizeSquadSyncConfig(
         sourceKind: config.sourceKind,
         discoveryUrl: config.discoveryUrl,
         snapshotUrlTemplate: config.snapshotUrlTemplate,
+        platform: config.platform,
+      }
+    case 'ea-rosterupdate-binary':
+      return {
+        sourceKind: config.sourceKind,
+        discoveryUrl: config.discoveryUrl,
         platform: config.platform,
       }
   }

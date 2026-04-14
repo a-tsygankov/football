@@ -85,14 +85,32 @@ function LiveTab({ entries }: { entries: ReadonlyArray<LogEntry> }) {
   return (
     <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
       {entries.map((e) => (
-        <li key={e.id} style={{ padding: '2px 0', display: 'flex', gap: 8 }}>
-          <span style={{ opacity: 0.6, minWidth: 64 }}>{formatLocal(Date.parse(e.ts), {
-            hour: '2-digit', minute: '2-digit', second: '2-digit',
-          })}</span>
-          <LevelBadge level={e.level} />
-          <span style={{ opacity: 0.7, minWidth: 64 }}>{e.source}</span>
-          <span style={{ opacity: 0.7, minWidth: 72 }}>[{e.category}]</span>
-          <span style={{ flex: 1 }}>{e.message}</span>
+        <li key={e.id} style={{ padding: '2px 0' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span style={{ opacity: 0.6, minWidth: 64 }}>{formatLocal(Date.parse(e.ts), {
+              hour: '2-digit', minute: '2-digit', second: '2-digit',
+            })}</span>
+            <LevelBadge level={e.level} />
+            <span style={{ opacity: 0.7, minWidth: 64 }}>{e.source}</span>
+            <span style={{ opacity: 0.7, minWidth: 72 }}>[{e.category}]</span>
+            <span style={{ flex: 1 }}>{e.message}</span>
+          </div>
+          {(e.level === 'warn' || e.level === 'error') && e.context && Object.keys(e.context).length > 0 ? (
+            <pre
+              style={{
+                margin: '2px 0 4px 64px',
+                padding: '6px 8px',
+                background: '#1e293b',
+                borderRadius: 4,
+                color: '#fca5a5',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                fontSize: 11,
+              }}
+            >
+              {JSON.stringify(e.context, null, 2)}
+            </pre>
+          ) : null}
         </li>
       ))}
     </ul>
