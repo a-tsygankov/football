@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { App } from './App.jsx'
 
 function roomIdFromScoreboardUrl(url: string): string | null {
@@ -887,27 +887,30 @@ describe('App shell', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /Scoreboard View/i })).toBeInTheDocument(),
     )
-    expect(screen.getByRole('heading', { name: 'Scoreboard' })).toBeInTheDocument()
+    const scoreboardSection = screen.getByRole('heading', { name: 'Scoreboard' }).closest('section')
+    expect(scoreboardSection).not.toBeNull()
+    const scoreboard = within(scoreboardSection!)
+
     expect(
-      screen.getByText(/Best gamers and gamer teams\. Pair standings only count results earned together\./i),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        (_content, node) => node?.tagName === 'ARTICLE' && node.textContent?.includes('9 pts') === true,
+      scoreboard.getByText(
+        /Best gamers and gamer teams\. Pair standings only count results earned together\./i,
       ),
     ).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /Ignore team games/i }))
-    expect(screen.getByText(/Individual standings count only 1 vs 1 results\./i)).toBeInTheDocument()
     expect(
-      screen.getByText(
-        (_content, node) => node?.tagName === 'ARTICLE' && node.textContent?.includes('6 pts') === true,
-      ),
+      scoreboard.getByText(/9 pts • 3-0-1 • 4 games • Win rate 75% • GD \+5/i),
     ).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /Gamer teams/i }))
-    expect(screen.getByText(/Alice \+ Bob|Bob \+ Alice/)).toBeInTheDocument()
-    expect(screen.getByText(/Win rate 67%/i)).toBeInTheDocument()
+    fireEvent.click(scoreboard.getByRole('button', { name: /Ignore team games/i }))
+    expect(
+      scoreboard.getByText(/Individual standings count only 1 vs 1 results\./i),
+    ).toBeInTheDocument()
+    expect(
+      scoreboard.getByText(/6 pts • 2-0-0 • 2 games • Win rate 100% • GD \+3/i),
+    ).toBeInTheDocument()
+
+    fireEvent.click(scoreboard.getByRole('button', { name: /Gamer teams/i }))
+    expect(scoreboard.getByText(/Alice \+ Bob|Bob \+ Alice/)).toBeInTheDocument()
+    expect(scoreboard.getByText(/2-0-1 • 3 games • Win rate 67% • GD \+3/i)).toBeInTheDocument()
   })
 
   it('records the active game result and returns to game creation', async () => {
