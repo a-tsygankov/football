@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   compareLeagueNames,
-  resolveEaTeamStarRating10,
+  starRating10FromOverall,
   type Club,
   type CreateCurrentGameRequest,
   GAME_FORMATS,
@@ -129,11 +129,11 @@ export function GameCreationPanel({
     [internationalClubs, randomLeagueId, randomTeamCollection, squadClubs],
   )
   const homeRandomClubChoices = useMemo(
-    () => randomClubPool.filter((club) => resolveEaTeamStarRating10(null, club.overallRating) === homeRandomTeamRating),
+    () => randomClubPool.filter((club) => starRating10FromOverall(club.overallRating) === homeRandomTeamRating),
     [homeRandomTeamRating, randomClubPool],
   )
   const awayRandomClubChoices = useMemo(
-    () => randomClubPool.filter((club) => resolveEaTeamStarRating10(null, club.overallRating) === awayRandomTeamRating),
+    () => randomClubPool.filter((club) => starRating10FromOverall(club.overallRating) === awayRandomTeamRating),
     [awayRandomTeamRating, randomClubPool],
   )
 

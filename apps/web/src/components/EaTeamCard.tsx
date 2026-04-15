@@ -1,5 +1,5 @@
 import type { Club } from '@fc26/shared'
-import { resolveEaTeamStarRating10 } from '@fc26/shared'
+import { starRating10FromOverall } from '@fc26/shared'
 import { ClubAvatar } from './FcClubPanel.jsx'
 
 /**
@@ -107,7 +107,7 @@ export function EaTeamCard({
   selected = false,
 }: EaTeamCardProps) {
   const tokens = SIZE_TOKENS[size]
-  const starRating10 = resolveEaTeamStarRating10(club.starRating ?? null, club.overallRating)
+  const starRating10 = starRating10FromOverall(club.overallRating)
   const nameFontSize =
     club.name.length >= 22
       ? tokens.nameFontSizeLong

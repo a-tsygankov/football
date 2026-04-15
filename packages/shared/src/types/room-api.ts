@@ -159,6 +159,12 @@ export interface RefreshRoomSquadAssetsResponse {
 
 export interface RetrieveRoomSquadsResponse {
   result: SquadSyncResult
+  /**
+   * Outcome of the asset refresh that runs automatically after a successful
+   * ingest. `null` means the refresh was attempted but threw — the user can
+   * still retry it from Settings via the standalone refresh endpoint.
+   */
+  assetsResult: SquadAssetRefreshResult | null
 }
 
 export interface ResetRoomSquadsResponse {

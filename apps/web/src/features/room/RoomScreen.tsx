@@ -107,6 +107,20 @@ export function RoomScreen({
     document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
+  // After a successful game-creation request the panel content swaps from the
+  // creation form to `CurrentGameCard`. On phones that swap happens off-screen
+  // because the form lives below the fold, so move the viewport to the live
+  // section once bootstrap has the new `currentGame`.
+  async function handleCreateGame(
+    gameNightId: string,
+    request: CreateCurrentGameRequest,
+  ): Promise<void> {
+    await onCreateGame(gameNightId, request)
+    // Wait for the bootstrap state update + DOM commit before scrolling, so
+    // the `CurrentGameCard` is what receives the focus.
+    requestAnimationFrame(() => scrollToSection('fc26-game-live-section'))
+  }
+
   return (
     <>
       <ActiveRoomHeader
@@ -162,7 +176,7 @@ export function RoomScreen({
             squadClubs={squadBrowser.teams.clubs}
             squadLeagues={squadBrowser.teams.leagues}
             squadLoading={squadBrowser.teams.loading}
-            onCreateGame={onCreateGame}
+            onCreateGame={handleCreateGame}
             onInterruptGame={onInterruptGame}
             onRecordGameResult={onRecordGameResult}
           />

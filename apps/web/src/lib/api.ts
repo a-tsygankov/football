@@ -28,9 +28,16 @@ const ROOM_SESSION_STORAGE_KEY = 'fc26:last-room-session'
  * in production), so we prepend `API_BASE` for any path that starts with
  * `/api/`. Absolute URLs (legacy SportsDB CDN) and `data:` URIs pass through
  * unchanged.
+ *
+ * Squad ingest writes a `pending:club:{id}` sentinel into `Club.logoUrl` to
+ * satisfy the shared schema's `min(1)` invariant until the asset refresh
+ * service backfills a real URL. We treat any `pending:` value as missing so
+ * `<img>` doesn't try to load the sentinel and `AvatarImage` falls straight
+ * through to the silhouette fallback.
  */
 export function resolveAssetUrl(value: string | null | undefined): string | null | undefined {
   if (!value) return value
+  if (value.startsWith('pending:')) return null
   if (value.startsWith('/api/')) return `${API_BASE}${value}`
   return value
 }

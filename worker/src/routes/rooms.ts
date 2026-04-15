@@ -347,7 +347,35 @@ roomRoutes.post('/rooms/:roomId/settings/squads/retrieve', async (c) => {
       502,
     )
   }
-  return c.json({ result } satisfies RetrieveRoomSquadsResponse)
+
+  // Fresh ingests write the `pending:club:{id}` sentinel into every club's
+  // logoUrl (the shared schema requires a non-empty string). Chain the asset
+  // refresh now so the user doesn't need a second click, and — more
+  // importantly — so no UI renders the sentinel placeholder. A refresh
+  // failure here is non-fatal: the ingest already succeeded, and the user
+  // can retry via `POST .../squad-assets/refresh`.
+  let assetsResult: RetrieveRoomSquadsResponse['assetsResult'] = null
+  try {
+    const assetService = new SquadAssetRefreshService({
+      config: resolveSquadAssetRefreshConfig(SQUAD_APP_CONFIG.assets),
+      fetchImpl: getFetchImpl(),
+      logger: c.get('logger'),
+      squadStorage: c.get('deps').squadStorage,
+      squadVersions: c.get('deps').squadVersions,
+    })
+    assetsResult = await assetService.refreshLogos()
+  } catch (error) {
+    c.get('logger').warn(
+      'squad-sync',
+      'chained asset refresh failed; retrieve succeeded',
+      {
+        roomId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    )
+  }
+
+  return c.json({ result, assetsResult } satisfies RetrieveRoomSquadsResponse)
 })
 
 roomRoutes.post('/rooms/:roomId/settings/squads/reset', async (c) => {

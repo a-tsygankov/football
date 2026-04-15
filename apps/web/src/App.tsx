@@ -152,14 +152,25 @@ export function App() {
         `/api/rooms/${roomId}/settings/squads/retrieve`,
         { method: 'POST' },
       )
-      const { result } = response
-      setNotice(
+      const { result, assetsResult } = response
+      const ingestNotice =
         result.status === 'ingested'
           ? `Fetched squad clubs and players for ${result.version}${result.platform ? ` on ${SQUAD_PLATFORMS[result.platform as SquadPlatform]?.label ?? result.platform}` : ''}. Stored ${result.clubCount} clubs and ${result.playerCount} players.`
           : result.status === 'noop'
             ? `Squad version ${result.version ?? 'unknown'} is already stored.`
-            : 'Squad retrieval is disabled because no upstream source is configured.',
-      )
+            : 'Squad retrieval is disabled because no upstream source is configured.'
+      // Append the chained asset-refresh outcome so the user understands why
+      // some logos may still be missing (typically national/international
+      // sides SportsDB can't match).
+      const assetsNotice =
+        assetsResult === null
+          ? ' Logo refresh failed — retry from Settings.'
+          : assetsResult.status === 'refreshed'
+            ? ` Logos: matched ${assetsResult.matchedClubCount} clubs, ${assetsResult.matchedLeagueCount} leagues; ${assetsResult.unmatchedClubs.length} unmatched.`
+            : assetsResult.status === 'noop'
+              ? ' Logos already up to date.'
+              : ''
+      setNotice(`${ingestNotice}${assetsNotice}`)
       void apiJson<WorkerVersionInfo>('/api/version')
         .then((value) => setWorker(value))
         .catch(() => undefined)

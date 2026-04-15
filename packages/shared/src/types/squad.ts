@@ -29,7 +29,12 @@ export interface Club {
   readonly avatarUrl: string | null
   /** R2 public URL — stable across versions because keyed by club id. */
   readonly logoUrl: string
-  /** Math.round(overallRating / 20). */
+  /**
+   * Star rating on the 0–10 half-star scale (0 = no stars, 10 = five full
+   * stars). Derived from `overallRating` via `starRating10FromOverall` at
+   * ingest; persisted alongside the club so consumers don't need to
+   * re-derive. See `packages/shared/src/squad/stars.ts` for the table.
+   */
   readonly starRating: number
 }
 

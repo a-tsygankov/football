@@ -90,7 +90,13 @@ export function TeamsPanel({
                   style={{
                     display: 'grid',
                     gap: 14,
-                    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                    // When nothing is selected the detail column is empty, so
+                    // we let the club grid take the full panel width and only
+                    // split into a 2-column layout once the detail column has
+                    // content to render.
+                    gridTemplateColumns: showTeamDetail
+                      ? 'minmax(0, 1fr) minmax(0, 1fr)'
+                      : 'minmax(0, 1fr)',
                     alignItems: 'start',
                   }}
                 >
@@ -98,7 +104,11 @@ export function TeamsPanel({
                     style={{
                       display: 'grid',
                       gap: 10,
-                      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                      // 3 columns fills the phone screen better — the
+                      // EaTeamCard compact size already scales to narrow
+                      // tracks without clipping the star meter or ATT/MID/DEF
+                      // rating boxes.
+                      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
                     }}
                   >
                     {teams.filteredClubs.length === 0 ? (

@@ -1,7 +1,7 @@
 import { startTransition, useEffect, useMemo, useState } from 'react'
 import {
   SQUAD_PLATFORMS,
-  resolveEaTeamStarRating10,
+  starRating10FromOverall,
   type EaSquadPreviewResponse,
   type SquadPlatform,
 } from '@fc26/shared'
@@ -202,7 +202,7 @@ export function EaPremierLeagueLivePanel({
             }}
           >
             {preview.clubs.map((club) => {
-              const starRating10 = resolveEaTeamStarRating10(club.starRating, club.overallRating)
+              const starRating10 = starRating10FromOverall(club.overallRating)
 
               return (
               <article

@@ -3,6 +3,7 @@ import {
   buildEaContentUrl,
   extractRosterUpdatePlatformMetadata,
   readEaSquadTables,
+  starRating10FromOverall,
   unpackEaRosterBinary,
   type Club,
   type EaLeagueRecord,
@@ -28,7 +29,7 @@ const clubSchema = z.object({
   defenseRating: z.number().int().min(1).max(99),
   avatarUrl: z.string().nullable(),
   logoUrl: z.string().min(1),
-  starRating: z.number().int().min(1).max(5),
+  starRating: z.number().int().min(0).max(10),
 }) satisfies z.ZodType<Club>
 
 const fcPlayerSchema = z.object({
@@ -332,7 +333,7 @@ export function mapEaTablesToClubs(tables: {
       defenseRating: clampRating(team.defenseRating),
       avatarUrl: null,
       logoUrl: `${PENDING_LOGO_PREFIX}${team.teamId}`,
-      starRating: deriveStarRating(team.overallRating),
+      starRating: starRating10FromOverall(team.overallRating) ?? 0,
     })
   }
   return clubs
@@ -347,12 +348,6 @@ function deriveShortName(name: string): string {
 function clampRating(value: number): number {
   if (!Number.isFinite(value)) return 1
   return Math.max(1, Math.min(99, Math.trunc(value)))
-}
-
-function deriveStarRating(overall: number): number {
-  if (!Number.isFinite(overall)) return 1
-  const rounded = Math.round(overall / 20)
-  return Math.max(1, Math.min(5, rounded))
 }
 
 export const __TEST_ONLY__ = {

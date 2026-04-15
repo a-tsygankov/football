@@ -25,7 +25,7 @@ const snapshotPayload = {
       defenseRating: 87,
       avatarUrl: null,
       logoUrl: 'https://cdn.example/logos/1.png',
-      starRating: 5,
+      starRating: 10,
     },
   ],
   playersByClubId: {
@@ -195,12 +195,12 @@ describe('squad sync source', () => {
       defenseRating: 86,
       avatarUrl: null,
       logoUrl: `${__TEST_ONLY__.PENDING_LOGO_PREFIX}11`,
-      starRating: 4,
+      starRating: 10,
     })
     // Unaffiliated team falls back to leagueId 0 / 'Unknown'.
     expect(clubs[1]?.leagueId).toBe(0)
     expect(clubs[1]?.leagueName).toBe('Unknown')
-    expect(clubs[1]?.starRating).toBe(3)
+    expect(clubs[1]?.starRating).toBe(2)
   })
 
   it('reads the EA roster binary from the location advertised in discovery xml', async () => {

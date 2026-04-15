@@ -1,8 +1,10 @@
 export { diffSquads } from './diff.js'
 export type { DiffSquadsInput } from './diff.js'
 export {
-  deriveTeamStarRating10FromOverall,
-  resolveEaTeamStarRating10,
+  MAX_STAR_RATING_10,
+  MIN_STAR_RATING_10,
+  overallRangeForStarRating10,
+  starRating10FromOverall,
 } from './stars.js'
 export { compareLeagueNames, getLeagueSortPriority } from './league-order.js'
 export {
