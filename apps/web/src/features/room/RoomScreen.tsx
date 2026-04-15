@@ -198,6 +198,8 @@ export function RoomScreen({
         squadPanelError={squadBrowser.squadPanelError}
         squadVersions={squadBrowser.squadVersions}
         teams={squadBrowser.teams}
+        settingsUnlocked={settingsUnlocked}
+        roomSquadPlatform={roomSquadPlatform}
       />
 
       <ChangesPanel

@@ -1139,17 +1139,14 @@ describe('App shell', () => {
     const teamsSection = screen.getByRole('heading', { name: 'Teams' }).closest('section')
     expect(teamsSection).not.toBeNull()
     const teams = within(teamsSection!)
-    // Teams panel now starts with no league selected — pick Premier League so
-    // the club grid renders. This matches the "no default" spec from the
-    // Teams rework.
-    await waitFor(() =>
-      expect(teams.getByRole('option', { name: 'Premier League' })).toBeInTheDocument(),
-    )
-    const leagueSelect = teams.getAllByRole('combobox').find((element) =>
-      within(element).queryByRole('option', { name: 'Premier League' }),
-    )
-    expect(leagueSelect).toBeDefined()
-    fireEvent.change(leagueSelect!, { target: { value: '100' } })
+    // Teams panel now starts with no league selected — tap the Premier
+    // League pill so the club grid renders. The select-based dropdown was
+    // replaced by horizontally-scrollable `LeaguePills` for a compact UX,
+    // so we drive it via the tab role the pills expose.
+    const premierLeaguePill = await teams.findByRole('tab', {
+      name: /Premier League/i,
+    })
+    fireEvent.click(premierLeaguePill)
     await waitFor(() => expect(teams.getAllByText('Arsenal').length).toBeGreaterThan(0))
     // There's no longer a default selected club — we have to click Arsenal
     // before the player list populates.

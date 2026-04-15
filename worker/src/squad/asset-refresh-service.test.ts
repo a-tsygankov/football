@@ -412,6 +412,151 @@ describe('SquadAssetRefreshService', () => {
     expect(allLeaguesCalls).toBe(2)
   })
 
+  it('continues the refresh when a per-club searchteams.php hits 429', async () => {
+    // The free-tier SportsDB key 429s on per-club `searchteams.php`. Previously
+    // that aborted the whole refresh; now the first 429 trips a circuit
+    // breaker and the rest of the flow (league discovery cache + Wikipedia
+    // backstop + badge byte caching) completes. Verified by seeding a league
+    // that doesn't match at all — every club falls to the per-club search,
+    // the first returns 429, subsequent ones are skipped, and the refresh
+    // returns with those clubs in the unmatched list.
+    const squadStorage = new InMemorySquadStorage()
+    const squadVersions = new InMemorySquadVersionRepository()
+    await squadVersions.insert(version('fc26-r10', 1_000))
+    const altach: Club = {
+      ...clubOne,
+      id: 99,
+      name: 'Altach',
+      shortName: 'ALT',
+      leagueName: 'Obscure League',
+      logoUrl: `${PENDING_LOGO_PREFIX}99`,
+    }
+    const rapid: Club = {
+      ...clubOne,
+      id: 100,
+      name: 'Rapid Wien',
+      shortName: 'RAP',
+      leagueName: 'Obscure League',
+      logoUrl: `${PENDING_LOGO_PREFIX}100`,
+    }
+    await squadStorage.putClubs('fc26-r10', [altach, rapid])
+
+    let searchCount = 0
+    let wikipediaCount = 0
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.endsWith('/all_leagues.php')) {
+        return Response.json({
+          leagues: [{ idLeague: '4328', strSport: 'Soccer', strLeague: 'Unrelated' }],
+        })
+      }
+      if (url.includes('/search_all_teams.php?l=')) {
+        return Response.json({ teams: [] })
+      }
+      if (url.includes('/searchteams.php?t=')) {
+        searchCount += 1
+        return new Response('{"error":"throttled"}', { status: 429 })
+      }
+      if (url.includes('/page/summary/')) {
+        wikipediaCount += 1
+        // Wikipedia returns 404 so the club truly stays unmatched.
+        return new Response('{"type":"https://mediawiki.org/wiki/HyperSwitch/errors/not_found"}', {
+          status: 404,
+        })
+      }
+      throw new Error(`unexpected URL ${url}`)
+    }
+
+    const service = new SquadAssetRefreshService({
+      config: {
+        providerBaseUrl: 'https://assets.example/api',
+        leagueAliases: {},
+        wikipediaBaseUrl: 'https://wiki.example/api/rest_v1',
+      },
+      fetchImpl,
+      logger: new WorkerLogger('test-asset-refresh-club-429'),
+      squadStorage,
+      squadVersions,
+    })
+
+    // The refresh as a whole should not throw.
+    const result = await service.refreshLogos()
+    // First per-club search trips the breaker; the second is skipped.
+    expect(searchCount).toBe(1)
+    // Wikipedia then gets its turn for both unmatched clubs.
+    expect(wikipediaCount).toBeGreaterThanOrEqual(1)
+    // Both clubs remain unmatched (Wikipedia also returned 404).
+    expect(result.unmatchedClubs).toEqual(['Altach', 'Rapid Wien'])
+    expect(result.matchedClubCount).toBe(0)
+  })
+
+  it('falls back to Wikipedia when SportsDB can not match a club', async () => {
+    // Some clubs (lower leagues, women's sides, newly promoted) are missing
+    // from SportsDB but have a Wikipedia article. The service should use
+    // Wikipedia's `originalimage` as the logo source and cache the bytes in
+    // R2 so the UI renders a real crest.
+    const squadStorage = new InMemorySquadStorage()
+    const squadVersions = new InMemorySquadVersionRepository()
+    await squadVersions.insert(version('fc26-r10', 1_000))
+    const obscure: Club = {
+      ...clubOne,
+      id: 77,
+      name: 'SV Ried',
+      shortName: 'RIE',
+      leagueName: 'Austrian Bundesliga',
+      logoUrl: `${PENDING_LOGO_PREFIX}77`,
+    }
+    await squadStorage.putClubs('fc26-r10', [obscure])
+
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.endsWith('/all_leagues.php')) {
+        return Response.json({
+          leagues: [{ idLeague: '4328', strSport: 'Soccer', strLeague: 'Unrelated' }],
+        })
+      }
+      if (url.includes('/search_all_teams.php?l=')) {
+        return Response.json({ teams: [] })
+      }
+      if (url.includes('/searchteams.php?t=')) {
+        return Response.json({ teams: [] })
+      }
+      if (url.includes('/page/summary/')) {
+        return Response.json({
+          title: 'SV Ried',
+          originalimage: { source: 'https://upload.wikimedia.example/sv-ried.png' },
+        })
+      }
+      if (url === 'https://upload.wikimedia.example/sv-ried.png') {
+        return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        })
+      }
+      throw new Error(`unexpected URL ${url}`)
+    }
+
+    const service = new SquadAssetRefreshService({
+      config: {
+        providerBaseUrl: 'https://assets.example/api',
+        leagueAliases: {},
+        wikipediaBaseUrl: 'https://wiki.example/api/rest_v1',
+      },
+      fetchImpl,
+      logger: new WorkerLogger('test-asset-refresh-wiki'),
+      squadStorage,
+      squadVersions,
+    })
+
+    const result = await service.refreshLogos()
+    expect(result.matchedClubCount).toBe(1)
+    expect(result.unmatchedClubs).toEqual([])
+    const cached = await squadStorage.getLogoBytes(77)
+    expect(cached?.sourceUrl).toBe('https://upload.wikimedia.example/sv-ried.png')
+    const updated = await squadStorage.getClubs('fc26-r10')
+    expect(updated?.[0]?.logoUrl).toBe('/api/squads/logos/77')
+  })
+
   it('propagates provider errors so the route can surface them', async () => {
     // The free-tier SportsDB key gets 429s under burst load. The service
     // surfaces those as exceptions; the /squad-assets/refresh route catches
