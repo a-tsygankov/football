@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { compareLeagueNames, getLeagueSortPriority } from './league-order.js'
+import {
+  compareLeagueNames,
+  getLeagueSortPriority,
+  isNonCompetitiveLeagueName,
+} from './league-order.js'
 
 describe('league-order', () => {
   it("ranks men's international competitions above every domestic league", () => {
@@ -70,6 +74,45 @@ describe('league-order', () => {
     expect(getLeagueSortPriority('2. Bundesliga')).toBeGreaterThan(
       getLeagueSortPriority('Bundesliga'),
     )
+  })
+
+  describe('isNonCompetitiveLeagueName', () => {
+    it('flags EA specialty buckets (classic / legends / icons / heroes / TOTS)', () => {
+      // These are the buckets EA ships for historic XIs, FUT card
+      // events and legendary players — NOT real domestic leagues.
+      // Ingest uses this to keep them from stealing a team's home
+      // league via `leagueTeamLinks` overrides.
+      expect(isNonCompetitiveLeagueName('FUT Classic XI')).toBe(true)
+      expect(isNonCompetitiveLeagueName('Premier League Classics')).toBe(true)
+      expect(isNonCompetitiveLeagueName('Legends')).toBe(true)
+      expect(isNonCompetitiveLeagueName('FUT Icons')).toBe(true)
+      expect(isNonCompetitiveLeagueName('Icons')).toBe(true)
+      expect(isNonCompetitiveLeagueName('Heroes')).toBe(true)
+      expect(isNonCompetitiveLeagueName('Historic Teams')).toBe(true)
+      expect(isNonCompetitiveLeagueName('All-Stars')).toBe(true)
+      expect(isNonCompetitiveLeagueName('TOTS 2026')).toBe(true)
+      expect(isNonCompetitiveLeagueName('Team of the Year')).toBe(true)
+      expect(isNonCompetitiveLeagueName('FUT Ultimate Team Heroes')).toBe(true)
+    })
+
+    it('does not flag real domestic leagues', () => {
+      // Regression guard: the regex must not match Premier League /
+      // La Liga / Serie A on substring accidents. Note "Rest of
+      // World" must NOT match any specialty pattern either.
+      expect(isNonCompetitiveLeagueName('Premier League')).toBe(false)
+      expect(isNonCompetitiveLeagueName('Serie A Enilive')).toBe(false)
+      expect(isNonCompetitiveLeagueName('LaLiga EA Sports')).toBe(false)
+      expect(isNonCompetitiveLeagueName('Bundesliga')).toBe(false)
+      expect(isNonCompetitiveLeagueName('Ligue 1 McDonalds')).toBe(false)
+      expect(isNonCompetitiveLeagueName('Rest of World')).toBe(false)
+      expect(isNonCompetitiveLeagueName('Major League Soccer')).toBe(false)
+    })
+
+    it('returns false for blank / nullish input', () => {
+      expect(isNonCompetitiveLeagueName('')).toBe(false)
+      expect(isNonCompetitiveLeagueName(null)).toBe(false)
+      expect(isNonCompetitiveLeagueName(undefined)).toBe(false)
+    })
   })
 
   it('compareLeagueNames sorts by priority then name', () => {

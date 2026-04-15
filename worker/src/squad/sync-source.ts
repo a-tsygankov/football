@@ -5,6 +5,7 @@ import {
   canonicaliseClubs,
   canonicaliseLeagueIds,
   extractRosterUpdatePlatformMetadata,
+  isNonCompetitiveLeagueName,
   readEaSquadTables,
   remapPlayerClubIds,
   starRating10FromOverall,
@@ -328,15 +329,34 @@ export function mapEaTablesToClubs(tables: {
   readonly leagueTeamLinks: ReadonlyArray<{ teamId: number; leagueId: number }>
 }): Club[] {
   const leagueById = new Map(tables.leagues.map((league) => [league.leagueId, league]))
-  const leagueIdByTeam = new Map(
-    tables.leagueTeamLinks.map((link) => [link.teamId, link.leagueId]),
-  )
+  // Accumulate EVERY `leagueTeamLinks` entry per teamId. EA's roster
+  // binary legitimately ships teams that belong to more than one
+  // league — a club's home league plus one or more specialty buckets
+  // (Classics, Legends, Icons, Heroes, TOTS/TOTW). Using a plain
+  // `new Map(entries)` silently picked the last occurrence, which
+  // randomly placed historical/classic teams into real domestic
+  // leagues (observed bug: Premier League ballooning to 35 clubs
+  // including classic XIs and "Zlatan FC", while La Liga lost real
+  // members). Keep the full link order so `resolveTeamLeagueId` can
+  // pick a non-competitive league only when no real league exists.
+  const leagueIdsByTeam = new Map<number, number[]>()
+  for (const link of tables.leagueTeamLinks) {
+    const list = leagueIdsByTeam.get(link.teamId)
+    if (list) {
+      if (!list.includes(link.leagueId)) list.push(link.leagueId)
+    } else {
+      leagueIdsByTeam.set(link.teamId, [link.leagueId])
+    }
+  }
   const seen = new Set<number>()
   const clubs: Club[] = []
   for (const team of tables.teams) {
     if (seen.has(team.teamId)) continue
     seen.add(team.teamId)
-    const leagueId = leagueIdByTeam.get(team.teamId) ?? 0
+    const leagueId = resolveTeamLeagueId(
+      leagueIdsByTeam.get(team.teamId) ?? [],
+      leagueById,
+    )
     const league = leagueId ? leagueById.get(leagueId) ?? null : null
     // EA ships a handful of Serie A clubs under fake names (Lombardia FC =
     // Inter, Milano FC = AC Milan, …) because of Konami's eFootball
@@ -372,6 +392,37 @@ export function mapEaTablesToClubs(tables: {
   // no downstream references to rewrite at ingest time.
   const leagueCanonical = canonicaliseLeagueIds(clubs)
   return canonicaliseClubs(leagueCanonical).clubs
+}
+
+/**
+ * Pick the league a team semantically belongs to when the EA binary
+ * links it to more than one league. Policy:
+ *
+ *   1. Prefer the first league whose name does NOT match EA's
+ *      non-competitive / specialty patterns (Classics, Legends, Icons,
+ *      Heroes, TOTS/TOTW, FUT Ultimate Team). A team that's linked to
+ *      both "Premier League" and "Premier League Classics" is a
+ *      Premier League team whose classic XI happens to also exist.
+ *   2. If every linked league is non-competitive, fall back to the
+ *      first link — those clubs really are specialty-only (Zlatan FC,
+ *      classic XIs, icon teams). They keep their specialty leagueId so
+ *      downstream sorting places them after the priority leagues
+ *      rather than stealing a slot in the Premier League view.
+ *   3. If the team has no links at all, return 0 (Unknown) — matches
+ *      the previous fallback behaviour for unaffiliated teams.
+ */
+function resolveTeamLeagueId(
+  linkedLeagueIds: ReadonlyArray<number>,
+  leagueById: ReadonlyMap<number, EaLeagueRecord>,
+): number {
+  if (linkedLeagueIds.length === 0) return 0
+  for (const leagueId of linkedLeagueIds) {
+    const league = leagueById.get(leagueId)
+    if (league && !isNonCompetitiveLeagueName(league.leagueName)) {
+      return leagueId
+    }
+  }
+  return linkedLeagueIds[0] ?? 0
 }
 
 function deriveShortName(name: string): string {

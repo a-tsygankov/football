@@ -6,7 +6,11 @@ export {
   overallRangeForStarRating10,
   starRating10FromOverall,
 } from './stars.js'
-export { compareLeagueNames, getLeagueSortPriority } from './league-order.js'
+export {
+  compareLeagueNames,
+  getLeagueSortPriority,
+  isNonCompetitiveLeagueName,
+} from './league-order.js'
 export { CLUB_NAME_ALIASES, canonicaliseClubName } from './club-aliases.js'
 export type { ClubAlias } from './club-aliases.js'
 export { canonicaliseLeagueIds } from './canonicalise-leagues.js'

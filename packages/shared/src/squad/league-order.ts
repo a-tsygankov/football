@@ -9,6 +9,34 @@ const WOMENS_LEAGUE_PATTERNS = [
   /\bnwsl\b/i,
 ]
 
+// Patterns that mark a "league" as non-competitive — EA's specialty
+// buckets for historic / classic / legend / icon squads (Zlatan FC,
+// classic XIs, hero teams, TOTS/TOTW cards, etc.). These are NOT real
+// leagues; they're cosmetic groupings of individual legends and classic
+// squads. We detect them so they:
+//   1. Never merge with a real domestic league even if normalised names
+//      happen to coincide (`canonicaliseLeagueIds`).
+//   2. Don't steal a team from its real league when EA ships
+//      `leagueTeamLinks` with multiple entries (`mapEaTablesToClubs`).
+// Kept as exported helpers so the ingest pipeline and league view can
+// agree on the definition.
+const NON_COMPETITIVE_LEAGUE_PATTERNS = [
+  /\bclassics?\b/i,
+  /\blegends?\b/i,
+  /\bicons?\b/i,
+  /\bheroes?\b/i,
+  /\bhistoric(al)?\b/i,
+  /\bretro\b/i,
+  /\ball[\s-]?stars?\b/i,
+  /\bremix\b/i,
+  /\btots\b/i,
+  /\btotw\b/i,
+  /\btoty\b/i,
+  /\bteam of the (year|week|season|tournament)\b/i,
+  /\bfut\b/i,
+  /\bultimate team\b/i,
+]
+
 // Patterns that indicate a (men's) international competition. Anything that
 // matches one of these — and is NOT also a women's competition — sorts above
 // every domestic league.
@@ -80,6 +108,21 @@ function normalizeLeagueName(name: string): string {
 
 function isWomensLeague(rawName: string): boolean {
   return WOMENS_LEAGUE_PATTERNS.some((pattern) => pattern.test(rawName))
+}
+
+/**
+ * Returns true for EA's non-competitive specialty buckets (Classics,
+ * Legends, Icons, Heroes, TOTS/TOTW, FUT Ultimate Team squads). Called
+ * by the ingest pipeline to prevent these buckets from absorbing real
+ * teams — either via `canonicaliseLeagueIds` merging on a coincidental
+ * name match, or via a team's `leagueTeamLinks` pointing at both a real
+ * league and a specialty bucket (picking the non-competitive one would
+ * misrepresent the team's home league). Accepts the *raw* EA league
+ * name — no normalisation required.
+ */
+export function isNonCompetitiveLeagueName(name: string | null | undefined): boolean {
+  if (!name) return false
+  return NON_COMPETITIVE_LEAGUE_PATTERNS.some((pattern) => pattern.test(name))
 }
 
 export function getLeagueSortPriority(name: string): number {

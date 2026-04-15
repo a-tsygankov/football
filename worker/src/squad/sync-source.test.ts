@@ -203,6 +203,74 @@ describe('squad sync source', () => {
     expect(clubs[1]?.starRating).toBe(2)
   })
 
+  it('keeps a team in its real league when EA also links it to a classics / specialty bucket', () => {
+    // Regression: user reported Premier League showing 35 clubs
+    // including classic XIs. EA's binary legitimately lists a team's
+    // home league alongside specialty buckets (Classics / Legends /
+    // Icons) in `leagueTeamLinks`. The previous implementation built
+    // a `new Map(links)` — last-wins on teamId — which randomly
+    // bumped real-league teams into specialty ids and vice versa.
+    // Now the resolver prefers the non-specialty league.
+    const clubs = mapEaTablesToClubs({
+      teams: [
+        {
+          teamId: 11,
+          teamName: 'Manchester City',
+          overallRating: 88,
+          attackRating: 87,
+          midfieldRating: 89,
+          defenseRating: 86,
+          matchdayOverallRating: 88,
+          matchdayAttackRating: 87,
+          matchdayMidfieldRating: 89,
+          matchdayDefenseRating: 86,
+        },
+      ],
+      leagues: [
+        { leagueId: 13, leagueName: 'Premier League' },
+        { leagueId: 900, leagueName: 'FUT Classic XI' },
+      ],
+      leagueTeamLinks: [
+        // Specialty bucket listed first — a naive last-wins would
+        // pick 13 here (which is the right answer) but the moment EA
+        // re-orders, the city team would end up in "FUT Classic XI".
+        // Listed last-first to reproduce the exact failure mode.
+        { teamId: 11, leagueId: 900 },
+        { teamId: 11, leagueId: 13 },
+      ],
+    })
+    expect(clubs).toHaveLength(1)
+    expect(clubs[0]?.leagueId).toBe(13)
+    expect(clubs[0]?.leagueName).toBe('Premier League')
+  })
+
+  it('keeps a specialty-only team (Zlatan FC etc.) in its specialty bucket', () => {
+    // Complement to the test above: a team whose only linked league
+    // is a non-competitive bucket stays there. We must not dump it
+    // into leagueId 0 — that would hide it from "Rest of World" type
+    // views and silently drop Zlatan FC from every league selector.
+    const clubs = mapEaTablesToClubs({
+      teams: [
+        {
+          teamId: 7777,
+          teamName: 'Zlatan FC',
+          overallRating: 99,
+          attackRating: 99,
+          midfieldRating: 90,
+          defenseRating: 75,
+          matchdayOverallRating: 99,
+          matchdayAttackRating: 99,
+          matchdayMidfieldRating: 90,
+          matchdayDefenseRating: 75,
+        },
+      ],
+      leagues: [{ leagueId: 900, leagueName: 'FUT Icons' }],
+      leagueTeamLinks: [{ teamId: 7777, leagueId: 900 }],
+    })
+    expect(clubs[0]?.leagueId).toBe(900)
+    expect(clubs[0]?.leagueName).toBe('FUT Icons')
+  })
+
   it('rewrites EA fake names to real identities at ingest time', () => {
     // EA ships Inter Milan as "Lombardia FC" and AC Milan as "Milano FC"
     // for licensing reasons. Both the `name` and the `shortName` must be

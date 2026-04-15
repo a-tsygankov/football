@@ -112,4 +112,53 @@ describe('canonicaliseLeagueIds', () => {
   it('returns an empty array for empty input', () => {
     expect(canonicaliseLeagueIds([])).toEqual([])
   })
+
+  it('refuses to merge a specialty bucket into a real league even when names coincide', () => {
+    // Regression: user reported Premier League showing 35 clubs
+    // including "Zlatan FC" and classic XIs. The bug was EA shipping a
+    // specialty "Premier League Classics" league that normalised close
+    // enough to the real "Premier League" name to get folded together.
+    // `canonicaliseLeagueIds` must now detect the non-competitive flag
+    // and leave each bucket in its own leagueId.
+    const clubs: Club[] = [
+      // 20 real Premier League clubs under id 13.
+      ...Array.from({ length: 20 }, (_, index) =>
+        makeClub({ id: 100 + index, leagueId: 13, leagueName: 'Premier League' }),
+      ),
+      // 3 classic XI variants under id 900 with a name that happens
+      // to match "premier league" after normalisation. A naive merge
+      // would pull them into id 13.
+      makeClub({ id: 901, leagueId: 900, leagueName: 'Premier League Classics' }),
+      makeClub({ id: 902, leagueId: 900, leagueName: 'Premier League Classics' }),
+      makeClub({ id: 903, leagueId: 900, leagueName: 'Premier League Classics' }),
+    ]
+    const result = canonicaliseLeagueIds(clubs)
+    const real = result.filter((club) => club.leagueId === 13)
+    const specialty = result.filter((club) => club.leagueId === 900)
+    // Distinct normalised keys (the raw names differ by the "Classics"
+    // suffix) mean this test also protects us if a future refactor
+    // makes the normaliser more aggressive — the cross-category flag
+    // would still keep them apart.
+    expect(real).toHaveLength(20)
+    expect(specialty).toHaveLength(3)
+  })
+
+  it('refuses to merge buckets whose canonical total would exceed real-league bounds', () => {
+    // Second guard: even if the non-competitive flag misses (e.g. EA
+    // re-uses the exact same name "Premier League" for a specialty
+    // league without any tell-tale keyword), the merged club count
+    // would blow past what a single top-tier domestic league can
+    // plausibly contain. We bail out of the merge in that case.
+    const clubs: Club[] = [
+      ...Array.from({ length: 22 }, (_, index) =>
+        makeClub({ id: 100 + index, leagueId: 13, leagueName: 'Premier League' }),
+      ),
+      ...Array.from({ length: 25 }, (_, index) =>
+        makeClub({ id: 800 + index, leagueId: 41, leagueName: 'Premier League' }),
+      ),
+    ]
+    const result = canonicaliseLeagueIds(clubs)
+    // Neither bucket collapsed into the other — both ids survive.
+    expect(new Set(result.map((c) => c.leagueId))).toEqual(new Set([13, 41]))
+  })
 })

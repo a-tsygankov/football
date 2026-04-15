@@ -1,4 +1,16 @@
 import type { Club } from '../types/squad.js'
+import { isNonCompetitiveLeagueName } from './league-order.js'
+
+// Upper bound on plausible domestic-league club counts. Real top-tier
+// leagues sit in the 18-24 range (Bundesliga 18, Ligue 1 18, Premier
+// League 20, Serie A 20, La Liga 20, MLS 30). If merging two same-named
+// buckets would push the canonical past this threshold, we assume the
+// buckets are actually different real-world competitions that coincide
+// in name (e.g. a specialty "Premier League Classics" bucket that EA
+// spelled identically to the real Premier League), and we refuse the
+// merge. 40 is intentionally generous so the MLS-sized outlier still
+// fits even when EA ships a 2-id console/handheld variant.
+const MAX_MERGED_LEAGUE_SIZE = 40
 
 /**
  * Deduplicate leagues that share the same human name but ship with multiple
@@ -33,6 +45,12 @@ export function canonicaliseLeagueIds(clubs: ReadonlyArray<Club>): Club[] {
   interface LeagueBucket {
     readonly countsById: Map<number, number>
     readonly nameByLeagueId: Map<number, string>
+    // Whether the raw league name for this id matches EA's
+    // non-competitive "specialty" bucket patterns (Classic/Legends/
+    // Icons/Heroes/TOTS/…). Tracked per leagueId so that when two
+    // same-name buckets exist — one real league, one specialty —
+    // we refuse to merge across the boundary.
+    readonly nonCompetitiveByLeagueId: Map<number, boolean>
   }
   const bucketByName = new Map<string, LeagueBucket>()
   for (const club of clubs) {
@@ -40,12 +58,20 @@ export function canonicaliseLeagueIds(clubs: ReadonlyArray<Club>): Club[] {
     if (!key) continue
     let bucket = bucketByName.get(key)
     if (!bucket) {
-      bucket = { countsById: new Map(), nameByLeagueId: new Map() }
+      bucket = {
+        countsById: new Map(),
+        nameByLeagueId: new Map(),
+        nonCompetitiveByLeagueId: new Map(),
+      }
       bucketByName.set(key, bucket)
     }
     bucket.countsById.set(club.leagueId, (bucket.countsById.get(club.leagueId) ?? 0) + 1)
     if (!bucket.nameByLeagueId.has(club.leagueId)) {
       bucket.nameByLeagueId.set(club.leagueId, club.leagueName)
+      bucket.nonCompetitiveByLeagueId.set(
+        club.leagueId,
+        isNonCompetitiveLeagueName(club.leagueName),
+      )
     }
   }
 
@@ -59,6 +85,24 @@ export function canonicaliseLeagueIds(clubs: ReadonlyArray<Club>): Club[] {
   for (const bucket of bucketByName.values()) {
     if (bucket.countsById.size <= 1) {
       // Already canonical — skip so we don't needlessly rebuild the club.
+      continue
+    }
+    // Refuse to merge across the "specialty / real league" boundary.
+    // If EA ships a "Premier League Classics" bucket whose name
+    // happens to normalise to "premier league" (or some future
+    // spelling we can't predict), we must not fold its classic
+    // squads into the real Premier League roster.
+    const nonCompetitiveFlags = new Set(bucket.nonCompetitiveByLeagueId.values())
+    if (nonCompetitiveFlags.size > 1) {
+      continue
+    }
+    // Sanity cap: if the merged total would exceed any plausible
+    // real-league size (see MAX_MERGED_LEAGUE_SIZE), the two same-
+    // named buckets are almost certainly different competitions
+    // that happen to share a spelling. Leave them separate.
+    let totalCount = 0
+    for (const count of bucket.countsById.values()) totalCount += count
+    if (totalCount > MAX_MERGED_LEAGUE_SIZE) {
       continue
     }
     let canonicalLeagueId: number | null = null
