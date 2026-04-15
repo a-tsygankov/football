@@ -11,7 +11,12 @@ import type {
 } from './domain.js'
 import type { GameResult } from './events.js'
 import type { RoomId } from './ids.js'
-import type { SquadAssetRefreshResult, SquadResetResult, SquadSyncResult } from './squad.js'
+import type {
+  SquadAssetRefreshResult,
+  SquadRepairResult,
+  SquadResetResult,
+  SquadSyncResult,
+} from './squad.js'
 
 export interface RoomSessionInfo {
   roomId: RoomId
@@ -175,4 +180,8 @@ export interface RetrieveRoomSquadsResponse {
 
 export interface ResetRoomSquadsResponse {
   result: SquadResetResult
+}
+
+export interface RepairRoomSquadsResponse {
+  result: SquadRepairResult
 }

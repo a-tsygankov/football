@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid'
 import {
+  canonicaliseLeagueIds,
   type CreateCurrentGameRequest,
   type CreateGamerRequest,
   type CreateRoomRequest,
@@ -29,8 +30,10 @@ import {
   mulberry32,
   normalizeNameStem,
   type RefreshRoomSquadAssetsResponse,
+  type RepairRoomSquadsResponse,
   type ResetRoomSquadsResponse,
   type RetrieveRoomSquadsResponse,
+  type SquadRepairResult,
   ROOM_SESSION_HEADER,
   type RecordCurrentGameResultRequest,
   type Room,
@@ -298,6 +301,13 @@ roomRoutes.post('/rooms/:roomId/settings/squad-assets/refresh', async (c) => {
   const session = await requireRoomSession(c, roomId)
   if (!session) return c.json({ error: 'unauthorized' }, 401)
 
+  // `?mode=hard` forces re-resolution of every club, ignoring the pending
+  // sentinel gate. Any other value (missing, 'soft', typo) falls back to
+  // the default soft refresh so a mistake in the URL doesn't silently torch
+  // the provider quota.
+  const modeParam = c.req.query('mode')
+  const mode: 'soft' | 'hard' = modeParam === 'hard' ? 'hard' : 'soft'
+
   const service = new SquadAssetRefreshService({
     config: resolveSquadAssetRefreshConfig(SQUAD_APP_CONFIG.assets),
     fetchImpl: getFetchImpl(),
@@ -306,16 +316,79 @@ roomRoutes.post('/rooms/:roomId/settings/squad-assets/refresh', async (c) => {
     squadVersions: c.get('deps').squadVersions,
   })
   try {
-    const result = await service.refreshLogos()
+    const result = await service.refreshLogos({ mode })
     return c.json({ result } satisfies RefreshRoomSquadAssetsResponse)
   } catch (error) {
     // The TheSportsDB free tier rate-limits aggressively. Surface that as a
     // 502 with a structured body rather than a 500 unhandled error so the UI
     // can render "rate limited, try again later" instead of a generic crash.
     const message = error instanceof Error ? error.message : String(error)
-    c.get('logger').warn('squad-sync', `squad asset refresh failed: ${message}`, { roomId })
+    c.get('logger').warn('squad-sync', `squad asset refresh failed: ${message}`, { roomId, mode })
     return c.json({ error: 'asset_refresh_failed', message }, 502)
   }
+})
+
+/**
+ * One-shot stored-squad repair.
+ *
+ * Walks every retained squad version and rewrites its `clubs.json` so that
+ * leagues which ship with multiple EA `leagueId` values (console vs.
+ * handheld variants, regional editions) collapse onto the id with the most
+ * clubs in that snapshot. This is the dual of the ingest-side
+ * canonicalisation — future ingests stay clean on their own, so after a
+ * successful run this route becomes a no-op.
+ *
+ * Intentionally idempotent: running twice costs one R2 list + one R2 get
+ * per version and writes nothing on the second pass, so exposing it from
+ * the Settings UI is safe even if the user keeps pressing the button.
+ */
+roomRoutes.post('/rooms/:roomId/settings/squads/repair', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const deps = c.get('deps')
+  const versions = await deps.squadVersions.list()
+  c.get('logger').info('squad-sync', 'stored squad repair requested', {
+    roomId,
+    versionCount: versions.length,
+  })
+  let rewrittenVersionCount = 0
+  let rewrittenClubCount = 0
+  const collapsedRawLeagueIds = new Set<number>()
+  for (const version of versions) {
+    const clubs = await deps.squadStorage.getClubs(version.version)
+    if (!clubs || clubs.length === 0) continue
+    const canonical = canonicaliseLeagueIds(clubs)
+    let versionChanged = false
+    let versionRewrittenClubs = 0
+    for (let i = 0; i < clubs.length; i += 1) {
+      const before = clubs[i]!
+      const after = canonical[i]!
+      if (before.leagueId === after.leagueId && before.leagueName === after.leagueName) continue
+      versionChanged = true
+      versionRewrittenClubs += 1
+      collapsedRawLeagueIds.add(before.leagueId)
+    }
+    if (versionChanged) {
+      await deps.squadStorage.putClubs(version.version, canonical)
+      rewrittenVersionCount += 1
+      rewrittenClubCount += versionRewrittenClubs
+      c.get('logger').info('squad-sync', 'stored squad repaired version', {
+        version: version.version,
+        rewrittenClubs: versionRewrittenClubs,
+      })
+    }
+  }
+  const result: SquadRepairResult = {
+    status: rewrittenVersionCount > 0 ? 'repaired' : 'noop',
+    versionCount: versions.length,
+    rewrittenVersionCount,
+    rewrittenClubCount,
+    collapsedLeagueCount: collapsedRawLeagueIds.size,
+  }
+  c.get('logger').info('squad-sync', 'stored squad repair finished', { roomId, ...result })
+  return c.json({ result } satisfies RepairRoomSquadsResponse)
 })
 
 roomRoutes.post('/rooms/:roomId/settings/squads/retrieve', async (c) => {

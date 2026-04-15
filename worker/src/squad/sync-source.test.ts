@@ -203,6 +203,55 @@ describe('squad sync source', () => {
     expect(clubs[1]?.starRating).toBe(2)
   })
 
+  it('rewrites EA fake names to real identities at ingest time', () => {
+    // EA ships Inter Milan as "Lombardia FC" and AC Milan as "Milano FC"
+    // for licensing reasons. Both the `name` and the `shortName` must be
+    // rewritten so downstream consumers (UI, scoreboard, asset discovery)
+    // see canonical identities without having to know about the trick.
+    const clubs = mapEaTablesToClubs({
+      teams: [
+        {
+          teamId: 44,
+          teamName: 'Lombardia FC',
+          overallRating: 85,
+          attackRating: 85,
+          midfieldRating: 85,
+          defenseRating: 83,
+          matchdayOverallRating: 85,
+          matchdayAttackRating: 85,
+          matchdayMidfieldRating: 85,
+          matchdayDefenseRating: 83,
+        },
+        {
+          teamId: 45,
+          teamName: 'Milano FC',
+          overallRating: 83,
+          attackRating: 82,
+          midfieldRating: 83,
+          defenseRating: 82,
+          matchdayOverallRating: 83,
+          matchdayAttackRating: 82,
+          matchdayMidfieldRating: 83,
+          matchdayDefenseRating: 82,
+        },
+      ],
+      leagues: [{ leagueId: 31, leagueName: 'Serie A' }],
+      leagueTeamLinks: [
+        { teamId: 44, leagueId: 31 },
+        { teamId: 45, leagueId: 31 },
+      ],
+    })
+    expect(clubs[0]?.name).toBe('Inter Milan')
+    expect(clubs[0]?.shortName).toBe('INT')
+    expect(clubs[1]?.name).toBe('AC Milan')
+    expect(clubs[1]?.shortName).toBe('MIL')
+    // The rewrite must not affect the id, league membership, or ratings —
+    // only the human-facing name and shortName.
+    expect(clubs[0]?.id).toBe(44)
+    expect(clubs[0]?.leagueId).toBe(31)
+    expect(clubs[0]?.overallRating).toBe(85)
+  })
+
   it('reads the EA roster binary from the location advertised in discovery xml', async () => {
     const fetchCalls: Array<string> = []
     const source = buildSquadSnapshotSource(

@@ -206,17 +206,71 @@ export interface SquadSyncResult {
 export interface SquadAssetRefreshResult {
   readonly status: 'refreshed' | 'noop'
   readonly versionCount: number
+  /** Total distinct clubs considered across all stored squad versions. */
   readonly clubCount: number
+  /** Clubs whose stored record was rewritten (new logo / league name / badge). */
   readonly updatedClubCount: number
+  /** Total clubs for which we resolved *any* logo URL this run. */
   readonly matchedClubCount: number
   readonly matchedLeagueCount: number
   readonly unmatchedClubs: ReadonlyArray<string>
   readonly unmatchedLeagues: ReadonlyArray<string>
+  /**
+   * How many pending clubs this refresh actually needed to resolve. Non-
+   * pending clubs short-circuit the discovery phase entirely. Useful when
+   * investigating "nothing loaded" — if this is 0 on a fresh run, ingest
+   * already wrote real URLs and the asset refresh is a no-op by design.
+   */
+  readonly pendingClubCount: number
+  /**
+   * Per-source counters for logo resolution. `sportsdbLeague` is the
+   * primary league-wide discovery match, `sportsdbFallback` is the per-
+   * club `searchteams.php` rescue for clubs the league match missed, and
+   * `wikipedia` is the Wikipedia REST API backstop for clubs SportsDB
+   * can't resolve at all. Together they sum to `matchedClubCount`.
+   */
+  readonly matchBreakdown: {
+    readonly sportsdbLeague: number
+    readonly sportsdbFallback: number
+    readonly wikipedia: number
+  }
+  /**
+   * R2 byte-cache counters. `downloaded` = fresh CDN fetch, `alreadyCached`
+   * = source URL matched the previous download so the network round-trip
+   * was skipped, `failed` = CDN returned non-OK or the body was empty.
+   * Logos don't change often, so `alreadyCached` should climb fast on
+   * repeat refreshes.
+   */
+  readonly byteCacheBreakdown: {
+    readonly downloaded: number
+    readonly alreadyCached: number
+    readonly failed: number
+  }
 }
 
 export interface SquadResetResult {
   readonly status: 'reset' | 'noop'
   readonly deletedVersionCount: number
+}
+
+/**
+ * Outcome of a one-shot stored-squad repair pass. Rewrites every retained
+ * version's `clubs.json` so that leagues which ship with multiple EA
+ * `leagueId` values (console vs. handheld variants, regional editions)
+ * collapse onto the id with the most clubs in that snapshot. Intended as a
+ * migration step after shipping the ingest-side canonicalisation — once run,
+ * future ingests stay clean on their own.
+ */
+export interface SquadRepairResult {
+  readonly status: 'repaired' | 'noop'
+  /** Total stored squad versions considered. */
+  readonly versionCount: number
+  /** Versions whose `clubs.json` was rewritten. */
+  readonly rewrittenVersionCount: number
+  /** Total clubs whose `leagueId` / `leagueName` was rewritten across all versions. */
+  readonly rewrittenClubCount: number
+  /** Leagues collapsed into a canonical id across all versions (de-duped by raw id). */
+  readonly collapsedLeagueCount: number
 }
 
 export interface EaSquadPreviewClub {

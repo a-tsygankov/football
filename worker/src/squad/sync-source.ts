@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import {
   buildEaContentUrl,
+  canonicaliseClubName,
+  canonicaliseLeagueIds,
   extractRosterUpdatePlatformMetadata,
   readEaSquadTables,
   starRating10FromOverall,
@@ -259,12 +261,18 @@ function normalizeSnapshotPayloadWithDefaults(
       throw new Error(`player ${player.id} references unknown club ${player.clubId}`)
     }
   }
+  // Collapse leagues that share a name but come with multiple raw EA
+  // leagueIds (console-vs-handheld variants, regional editions, …).
+  // Without this the `leagues` view derived in the worker would render
+  // the same league three or four times. Applied here so both source
+  // paths (JSON snapshot + EA binary) get consistent behaviour.
+  const canonicalClubs = canonicaliseLeagueIds(payload.clubs)
   return {
     version: payload.version,
     releasedAt: payload.releasedAt ?? defaults.fallbackReleasedAt,
     sourceUrl: payload.sourceUrl ?? defaults.fallbackSourceUrl,
     notes: payload.notes ?? defaults.fallbackNotes,
-    clubs: payload.clubs,
+    clubs: canonicalClubs,
     players,
   }
 }
@@ -318,10 +326,18 @@ export function mapEaTablesToClubs(tables: {
     seen.add(team.teamId)
     const leagueId = leagueIdByTeam.get(team.teamId) ?? 0
     const league = leagueId ? leagueById.get(leagueId) ?? null : null
+    // EA ships a handful of Serie A clubs under fake names (Lombardia FC =
+    // Inter, Milano FC = AC Milan, …) because of Konami's eFootball
+    // exclusivity. Rewrite to the real identity here, before the record
+    // ever reaches storage — every downstream consumer (UI, diff, asset
+    // discovery) sees the canonical name. See `club-aliases.ts`.
+    const alias = canonicaliseClubName(team.teamName)
+    const canonicalName = alias?.name ?? team.teamName
+    const canonicalShortName = alias?.shortName ?? deriveShortName(team.teamName)
     clubs.push({
       id: team.teamId,
-      name: team.teamName,
-      shortName: deriveShortName(team.teamName),
+      name: canonicalName,
+      shortName: canonicalShortName,
       leagueId,
       leagueName: league?.leagueName ?? 'Unknown',
       leagueLogoUrl: null,
@@ -335,7 +351,11 @@ export function mapEaTablesToClubs(tables: {
       starRating: starRating10FromOverall(team.overallRating) ?? 0,
     })
   }
-  return clubs
+  // Collapse leagues that share a name across multiple EA leagueIds. The
+  // JSON-source path does this inside `normalizeSnapshotPayload`; the
+  // binary path skips that function, so we apply it here to keep both
+  // ingests producing the same canonical shape.
+  return canonicaliseLeagueIds(clubs)
 }
 
 function deriveShortName(name: string): string {

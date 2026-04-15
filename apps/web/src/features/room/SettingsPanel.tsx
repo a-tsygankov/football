@@ -20,6 +20,7 @@ export function SettingsPanel({
   roomSquadPlatform,
   onChangeRoomSquadPlatform,
   onRefreshSquadAssets,
+  onRepairSquads,
   onResetSquadData,
   onRetrieveSquadData,
   onSaveRoomSettings,
@@ -29,7 +30,8 @@ export function SettingsPanel({
   latestSquadVersion: string | null
   roomSquadPlatform: SquadPlatform
   onChangeRoomSquadPlatform: (value: SquadPlatform) => void
-  onRefreshSquadAssets: () => Promise<void>
+  onRefreshSquadAssets: (mode?: 'soft' | 'hard') => Promise<void>
+  onRepairSquads: () => Promise<void>
   onResetSquadData: () => Promise<void>
   onRetrieveSquadData: () => Promise<void>
   onSaveRoomSettings: () => Promise<void>
@@ -101,15 +103,56 @@ export function SettingsPanel({
               ? 'Retrieving clubs and players...'
               : 'Retrieve club and player data'}
           </button>
+          {/* Soft refresh: the default button. Only resolves clubs that
+              still carry the pending-logo sentinel, so repeat presses after a
+              successful run are free (no provider hits at all). */}
           <button
             type="button"
             disabled={busy !== null || !latestSquadVersion}
-            onClick={() => void onRefreshSquadAssets()}
+            onClick={() => void onRefreshSquadAssets('soft')}
             style={secondaryButtonStyle}
           >
             {busy === 'refreshing-squad-assets'
-              ? 'Refreshing logos...'
-              : 'Refresh squad logos'}
+              ? 'Refreshing missing logos...'
+              : 'Refresh missing logos'}
+          </button>
+          {/* Hard refresh: re-resolves every club regardless of current
+              logoUrl. Behind a confirm() because it burns provider quota on
+              clubs that already have good crests — use it only after fixing
+              an aliasing bug or when the cached URLs point at a dead CDN. */}
+          <button
+            type="button"
+            disabled={busy !== null || !latestSquadVersion}
+            onClick={() => {
+              const ok = window.confirm(
+                'Re-fetch logos for every club, including clubs that already have a crest? This burns SportsDB quota and can take a minute.',
+              )
+              if (ok) void onRefreshSquadAssets('hard')
+            }}
+            style={{
+              ...secondaryButtonStyle,
+              background: '#fff7ed',
+              borderColor: '#fed7aa',
+              color: '#9a3412',
+            }}
+          >
+            {busy === 'hard-refreshing-squad-assets'
+              ? 'Re-fetching all logos...'
+              : 'Re-fetch all logos'}
+          </button>
+          {/* Repair stored squads: one-shot migration that collapses
+              duplicate league ids (console vs. handheld EA variants) onto a
+              canonical leagueId across every stored version. Idempotent — a
+              second press on clean data returns a noop. No confirm needed. */}
+          <button
+            type="button"
+            disabled={busy !== null || !latestSquadVersion}
+            onClick={() => void onRepairSquads()}
+            style={secondaryButtonStyle}
+          >
+            {busy === 'repairing-squad-data'
+              ? 'Repairing stored squads...'
+              : 'Repair stored squads'}
           </button>
           <button
             type="button"

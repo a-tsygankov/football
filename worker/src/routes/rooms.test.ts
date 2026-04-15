@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ROOM_SESSION_HEADER,
   type RefreshRoomSquadAssetsResponse,
+  type RepairRoomSquadsResponse,
   type ResetRoomSquadsResponse,
   type RetrieveRoomSquadsResponse,
   type RoomBootstrapResponse,
@@ -463,6 +464,123 @@ describe('room routes', () => {
     expect(await app.squadVersions.latest()).toBeNull()
     expect(await app.squadStorage.getLatestVersion()).toBeNull()
     expect(await app.squadStorage.getClubs('fc26-r10')).toBeNull()
+  })
+
+  it('repairs duplicate leagueIds in stored squad versions and is idempotent', async () => {
+    const app = buildTestApp()
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Repair Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const created = (await createRes.json()) as RoomBootstrapResponse
+    // Simulate the pre-fix state: the same human league was ingested under
+    // two different EA leagueIds (console vs. handheld), so two clubs share
+    // 'Premier League' as their leagueName but carry different leagueIds.
+    // The canonical id is 13 because it has the larger club count.
+    await app.squadVersions.insert({
+      version: 'fc26-r11',
+      releasedAt: null,
+      ingestedAt: 1_000,
+      clubsBytes: 1,
+      clubCount: 3,
+      playerCount: 0,
+      sourceUrl: 'https://example.com',
+      notes: null,
+    })
+    await app.squadStorage.putClubs('fc26-r11', [
+      {
+        id: 1,
+        name: 'Arsenal',
+        shortName: 'ARS',
+        leagueId: 13,
+        leagueName: 'Premier League',
+        nationId: 14,
+        overallRating: 84,
+        attackRating: 84,
+        midfieldRating: 84,
+        defenseRating: 82,
+        avatarUrl: null,
+        logoUrl: '',
+        starRating: 4,
+      },
+      {
+        id: 2,
+        name: 'Chelsea',
+        shortName: 'CHE',
+        leagueId: 13,
+        leagueName: 'Premier League',
+        nationId: 14,
+        overallRating: 83,
+        attackRating: 83,
+        midfieldRating: 83,
+        defenseRating: 80,
+        avatarUrl: null,
+        logoUrl: '',
+        starRating: 4,
+      },
+      {
+        id: 3,
+        name: 'Liverpool',
+        shortName: 'LIV',
+        leagueId: 999,
+        leagueName: 'Premier League',
+        nationId: 14,
+        overallRating: 85,
+        attackRating: 85,
+        midfieldRating: 85,
+        defenseRating: 82,
+        avatarUrl: null,
+        logoUrl: '',
+        starRating: 4,
+      },
+    ])
+
+    const firstRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${created.room.id}/settings/squads/repair`, {
+        method: 'POST',
+        headers: {
+          [ROOM_SESSION_HEADER]: created.session.token!,
+        },
+      }),
+      env,
+      execCtx(),
+    )
+    expect(firstRes.status).toBe(200)
+    const firstBody = (await firstRes.json()) as RepairRoomSquadsResponse
+    expect(firstBody.result.status).toBe('repaired')
+    expect(firstBody.result.versionCount).toBe(1)
+    expect(firstBody.result.rewrittenVersionCount).toBe(1)
+    expect(firstBody.result.rewrittenClubCount).toBe(1)
+    expect(firstBody.result.collapsedLeagueCount).toBe(1)
+
+    const storedAfterRepair = await app.squadStorage.getClubs('fc26-r11')
+    expect(storedAfterRepair).not.toBeNull()
+    for (const club of storedAfterRepair!) {
+      expect(club.leagueId).toBe(13)
+    }
+
+    // Second run must be a no-op — nothing left to collapse.
+    const secondRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${created.room.id}/settings/squads/repair`, {
+        method: 'POST',
+        headers: {
+          [ROOM_SESSION_HEADER]: created.session.token!,
+        },
+      }),
+      env,
+      execCtx(),
+    )
+    expect(secondRes.status).toBe(200)
+    const secondBody = (await secondRes.json()) as RepairRoomSquadsResponse
+    expect(secondBody.result.status).toBe('noop')
+    expect(secondBody.result.rewrittenVersionCount).toBe(0)
+    expect(secondBody.result.rewrittenClubCount).toBe(0)
+    expect(secondBody.result.collapsedLeagueCount).toBe(0)
   })
 
   it('rejects a wrong PIN and accepts the correct one', async () => {

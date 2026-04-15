@@ -8,6 +8,7 @@ import {
   type InterruptCurrentGameRequest,
   type RecordCurrentGameResultRequest,
   type RefreshRoomSquadAssetsResponse,
+  type RepairRoomSquadsResponse,
   type ResetRoomSquadsResponse,
   type ResolveCurrentGameResponse,
   type RetrieveRoomSquadsResponse,
@@ -118,19 +119,27 @@ export function App() {
     }
   }
 
-  async function refreshSquadAssets(roomId: string): Promise<void> {
-    setBusy('refreshing-squad-assets')
+  async function refreshSquadAssets(
+    roomId: string,
+    mode: 'soft' | 'hard' = 'soft',
+  ): Promise<void> {
+    // Two busy states so the "Refresh missing logos" button can stay lit on a
+    // soft run while the "Re-fetch all logos" button stays lit on a hard run.
+    // They share the same notice/error lanes though — only one is ever in
+    // flight at a time because both set `busy`.
+    setBusy(mode === 'hard' ? 'hard-refreshing-squad-assets' : 'refreshing-squad-assets')
     setError(null)
     setNotice(null)
     try {
+      const query = mode === 'hard' ? '?mode=hard' : ''
       const response = await apiJson<RefreshRoomSquadAssetsResponse>(
-        `/api/rooms/${roomId}/settings/squad-assets/refresh`,
+        `/api/rooms/${roomId}/settings/squad-assets/refresh${query}`,
         { method: 'POST' },
       )
       const { result } = response
       setNotice(
         result.status === 'refreshed'
-          ? `Logos refreshed across ${result.versionCount} stored squad versions. Matched ${result.matchedClubCount} clubs and ${result.matchedLeagueCount} leagues.`
+          ? `Logos ${mode === 'hard' ? 're-fetched' : 'refreshed'} across ${result.versionCount} stored squad versions. Matched ${result.matchedClubCount} clubs and ${result.matchedLeagueCount} leagues.`
           : 'No stored squad logos needed updating.',
       )
       void apiJson<WorkerVersionInfo>('/api/version')
@@ -207,6 +216,31 @@ export function App() {
         )
       })
       setNotice(`Room squad platform saved as ${SQUAD_PLATFORMS[response.room.squadPlatform].label}.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function repairSquadData(roomId: string): Promise<void> {
+    // One-shot migration for stored squad versions that were ingested before
+    // the league-canonicalisation fix landed. Safe to run repeatedly —
+    // after the first successful pass it becomes a no-op.
+    setBusy('repairing-squad-data')
+    setError(null)
+    setNotice(null)
+    try {
+      const response = await apiJson<RepairRoomSquadsResponse>(
+        `/api/rooms/${roomId}/settings/squads/repair`,
+        { method: 'POST' },
+      )
+      const { result } = response
+      setNotice(
+        result.status === 'repaired'
+          ? `Collapsed ${result.collapsedLeagueCount} duplicate league id${result.collapsedLeagueCount === 1 ? '' : 's'} across ${result.rewrittenVersionCount} stored squad version${result.rewrittenVersionCount === 1 ? '' : 's'} (${result.rewrittenClubCount} clubs rewritten).`
+          : 'No duplicate leagues were present to repair.',
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -658,9 +692,10 @@ export function App() {
             onLeaveRoom={leaveRoom}
             onRecordGameResult={recordGameResult}
             onRefresh={() => refreshRoom(bootstrap.room.id)}
+            onRepairSquads={() => repairSquadData(bootstrap.room.id)}
             onResetSquadData={() => resetSquadData(bootstrap.room.id)}
             onRetrieveSquadData={() => retrieveSquadData(bootstrap.room.id)}
-            onRefreshSquadAssets={() => refreshSquadAssets(bootstrap.room.id)}
+            onRefreshSquadAssets={(mode) => refreshSquadAssets(bootstrap.room.id, mode)}
             onSaveRoomSettings={() => saveRoomSettings(bootstrap.room.id)}
             onChangeRoomSquadPlatform={setRoomSquadPlatform}
             onStartGameNight={startGameNight}

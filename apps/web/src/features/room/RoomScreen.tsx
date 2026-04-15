@@ -42,6 +42,7 @@ export function RoomScreen({
   onLeaveRoom,
   onRecordGameResult,
   onRefresh,
+  onRepairSquads,
   onResetSquadData,
   onRetrieveSquadData,
   onRefreshSquadAssets,
@@ -78,9 +79,10 @@ export function RoomScreen({
     request: RecordCurrentGameResultRequest,
   ) => Promise<void>
   onRefresh: () => Promise<void>
+  onRepairSquads: () => Promise<void>
   onResetSquadData: () => Promise<void>
   onRetrieveSquadData: () => Promise<void>
-  onRefreshSquadAssets: () => Promise<void>
+  onRefreshSquadAssets: (mode?: 'soft' | 'hard') => Promise<void>
   onSaveRoomSettings: () => Promise<void>
   onChangeRoomSquadPlatform: (value: SquadPlatform) => void
   onStartGameNight: () => Promise<void>
@@ -217,6 +219,7 @@ export function RoomScreen({
           roomSquadPlatform={roomSquadPlatform}
           onChangeRoomSquadPlatform={onChangeRoomSquadPlatform}
           onRefreshSquadAssets={onRefreshSquadAssets}
+          onRepairSquads={onRepairSquads}
           onResetSquadData={onResetSquadData}
           onRetrieveSquadData={onRetrieveSquadData}
           onSaveRoomSettings={onSaveRoomSettings}

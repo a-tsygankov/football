@@ -557,6 +557,145 @@ describe('SquadAssetRefreshService', () => {
     expect(updated?.[0]?.logoUrl).toBe('/api/squads/logos/77')
   })
 
+  it('soft mode skips clubs that already carry a real logo', async () => {
+    // A repeat refresh after a successful run should not hit the provider at
+    // all for clubs whose logoUrl is already resolved. Mix a pending club in
+    // the same league to force discovery; the resolved club must not be
+    // re-matched even though discovery runs.
+    const squadStorage = new InMemorySquadStorage()
+    const squadVersions = new InMemorySquadVersionRepository()
+    await squadVersions.insert(version('fc26-r10', 1_000))
+    const resolved: Club = { ...clubOne, logoUrl: '/api/squads/logos/1' }
+    const pending: Club = { ...clubTwo, logoUrl: `${PENDING_LOGO_PREFIX}2` }
+    await squadStorage.putClubs('fc26-r10', [resolved, pending])
+
+    const badgeFetches: string[] = []
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.endsWith('/all_leagues.php')) {
+        return Response.json({
+          leagues: [{ idLeague: '4328', strSport: 'Soccer', strLeague: 'English Premier League' }],
+        })
+      }
+      if (url.includes('/search_all_teams.php?l=')) {
+        return Response.json({
+          teams: [
+            {
+              idTeam: '133604',
+              idLeague: '4328',
+              strTeam: 'Arsenal',
+              strLeague: 'English Premier League',
+              strBadge: 'https://assets.example/teams/arsenal.png',
+            },
+            {
+              idTeam: '133610',
+              idLeague: '4328',
+              strTeam: 'Chelsea',
+              strLeague: 'English Premier League',
+              strBadge: 'https://assets.example/teams/chelsea.png',
+            },
+          ],
+        })
+      }
+      if (url.includes('/lookupleague.php?id=4328')) {
+        return Response.json({ leagues: [{ idLeague: '4328', strLeague: 'EPL' }] })
+      }
+      if (url.startsWith('https://assets.example/teams/')) {
+        badgeFetches.push(url)
+        return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        })
+      }
+      throw new Error(`unexpected URL ${url}`)
+    }
+
+    const service = new SquadAssetRefreshService({
+      config: {
+        providerBaseUrl: 'https://assets.example/api',
+        leagueAliases: { 'Premier League': 'English Premier League' },
+      },
+      fetchImpl,
+      logger: new WorkerLogger('test-asset-refresh-soft'),
+      squadStorage,
+      squadVersions,
+    })
+
+    const result = await service.refreshLogos()
+    // Only the pending Chelsea badge was downloaded; resolved Arsenal was skipped.
+    expect(badgeFetches).toEqual(['https://assets.example/teams/chelsea.png'])
+    expect(result.matchedClubCount).toBe(1)
+    expect(result.matchBreakdown.sportsdbLeague).toBe(1)
+  })
+
+  it('hard mode re-resolves clubs even when every logo is already real', async () => {
+    // Hard mode is the user's escape hatch after fixing an aliasing bug. The
+    // pending-count short-circuit must not fire, and the per-club gate must
+    // not skip the already-resolved club.
+    const squadStorage = new InMemorySquadStorage()
+    const squadVersions = new InMemorySquadVersionRepository()
+    await squadVersions.insert(version('fc26-r10', 1_000))
+    const resolved: Club = { ...clubOne, logoUrl: '/api/squads/logos/1' }
+    await squadStorage.putClubs('fc26-r10', [resolved])
+
+    let allLeaguesCalls = 0
+    let badgeFetches = 0
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      if (url.endsWith('/all_leagues.php')) {
+        allLeaguesCalls += 1
+        return Response.json({
+          leagues: [{ idLeague: '4328', strSport: 'Soccer', strLeague: 'English Premier League' }],
+        })
+      }
+      if (url.includes('/search_all_teams.php?l=')) {
+        return Response.json({
+          teams: [
+            {
+              idTeam: '133604',
+              idLeague: '4328',
+              strTeam: 'Arsenal',
+              strLeague: 'English Premier League',
+              strBadge: 'https://assets.example/teams/arsenal.png',
+            },
+          ],
+        })
+      }
+      if (url.includes('/lookupleague.php?id=4328')) {
+        return Response.json({ leagues: [{ idLeague: '4328', strLeague: 'EPL' }] })
+      }
+      if (url.startsWith('https://assets.example/teams/')) {
+        badgeFetches += 1
+        return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        })
+      }
+      throw new Error(`unexpected URL ${url}`)
+    }
+
+    const service = new SquadAssetRefreshService({
+      config: {
+        providerBaseUrl: 'https://assets.example/api',
+        leagueAliases: { 'Premier League': 'English Premier League' },
+      },
+      fetchImpl,
+      logger: new WorkerLogger('test-asset-refresh-hard'),
+      squadStorage,
+      squadVersions,
+    })
+
+    // First, soft mode: nothing should happen (short-circuit).
+    await service.refreshLogos({ mode: 'soft' })
+    expect(allLeaguesCalls).toBe(0)
+
+    // Hard mode: discovery runs and the badge is refetched.
+    const result = await service.refreshLogos({ mode: 'hard' })
+    expect(allLeaguesCalls).toBe(1)
+    expect(badgeFetches).toBe(1)
+    expect(result.matchedClubCount).toBe(1)
+  })
+
   it('propagates provider errors so the route can surface them', async () => {
     // The free-tier SportsDB key gets 429s under burst load. The service
     // surfaces those as exceptions; the /squad-assets/refresh route catches

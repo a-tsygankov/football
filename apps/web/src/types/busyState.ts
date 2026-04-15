@@ -10,6 +10,8 @@ export type BusyState =
   | 'interrupting-game'
   | 'saving-room-settings'
   | 'refreshing-squad-assets'
+  | 'hard-refreshing-squad-assets'
   | 'retrieving-squad-data'
   | 'resetting-squad-data'
+  | 'repairing-squad-data'
   | null

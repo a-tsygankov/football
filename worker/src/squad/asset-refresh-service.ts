@@ -84,6 +84,43 @@ export class ProviderRateLimitError extends Error {
  */
 const PER_CLUB_SEARCH_BUDGET = 20
 
+/**
+ * Any single upstream HTTP call that takes longer than this gets a WARN log
+ * line. SportsDB and Wikipedia normally respond in <500ms; anything north
+ * of 2.5s usually means the provider is degraded or we're hitting cold TCP
+ * on Cloudflare's edge. Logging it gives ops a breadcrumb for "why did the
+ * refresh take 90 seconds?" without spraying every request with timing
+ * noise.
+ */
+const SLOW_REQUEST_THRESHOLD_MS = 2500
+
+/**
+ * Wall-clock threshold for a WARN line on `refreshLogos()` itself. Most
+ * refreshes complete in single-digit seconds when the JSON cache is hot;
+ * anything past a minute is worth a callout so a dev running under
+ * `wrangler dev` notices without having to stare at the timestamps.
+ */
+const SLOW_REFRESH_THRESHOLD_MS = 60_000
+
+/**
+ * Mode for {@link SquadAssetRefreshService.refreshLogos}.
+ *
+ * - `soft` (default): only resolve clubs whose stored `logoUrl` is still the
+ *   `pending:club:{id}` sentinel (or empty). Clubs that already carry a real
+ *   logo are skipped entirely — no discovery call, no byte download. This is
+ *   what a user pressing "Refresh missing logos" expects.
+ * - `hard`: re-resolve every club regardless of current `logoUrl`. The R2
+ *   byte-cache still short-circuits per-club when `sourceUrl` hasn't changed,
+ *   so repeated hard refreshes are cheap unless the provider has moved the
+ *   badge URL. Use this after fixing an aliasing bug or to force a refresh
+ *   through a stale cache.
+ */
+export type RefreshLogosMode = 'soft' | 'hard'
+
+export interface RefreshLogosOptions {
+  readonly mode?: RefreshLogosMode
+}
+
 export class SquadAssetRefreshService {
   private readonly now: () => number
 
@@ -91,22 +128,16 @@ export class SquadAssetRefreshService {
     this.now = options.now ?? (() => Date.now())
   }
 
-  async refreshLogos(): Promise<SquadAssetRefreshResult> {
+  async refreshLogos(options: RefreshLogosOptions = {}): Promise<SquadAssetRefreshResult> {
+    const mode: RefreshLogosMode = options.mode ?? 'soft'
+    const startedAt = this.now()
     const versions = await this.options.squadVersions.list()
     this.options.logger.info('squad-sync', 'starting squad asset refresh', {
       storedVersions: versions.length,
+      mode,
     })
     if (versions.length === 0) {
-      return {
-        status: 'noop',
-        versionCount: 0,
-        clubCount: 0,
-        updatedClubCount: 0,
-        matchedClubCount: 0,
-        matchedLeagueCount: 0,
-        unmatchedClubs: [],
-        unmatchedLeagues: [],
-      }
+      return emptyResult()
     }
 
     const clubsByVersion = new Map<string, ReadonlyArray<Club>>()
@@ -117,41 +148,44 @@ export class SquadAssetRefreshService {
       }
     }
     if (clubsByVersion.size === 0) {
-      return {
-        status: 'noop',
-        versionCount: versions.length,
-        clubCount: 0,
-        updatedClubCount: 0,
-        matchedClubCount: 0,
-        matchedLeagueCount: 0,
-        unmatchedClubs: [],
-        unmatchedLeagues: [],
-      }
+      return { ...emptyResult(), versionCount: versions.length }
     }
 
     const representativeClubs = dedupeRepresentativeClubs([...clubsByVersion.values()].flat())
+    const pendingClubCount = representativeClubs.filter((club) =>
+      isPendingLogoUrl(club.logoUrl),
+    ).length
 
-    // Skip the entire discovery phase when no club still carries a `pending:`
-    // sentinel. The provider (TheSportsDB free tier) rate-limits aggressively
-    // (~30 req/min on key "123"), so an unconditional refresh on every
-    // retrieve quickly trips 429s. The badge-bytes cache short-circuits the
-    // CDN download path, but discovery JSON would still hit the provider —
-    // which is the actual cause of the 429s users were seeing. If everything
-    // is already resolved, there's nothing to discover.
-    const hasPendingClub = representativeClubs.some((club) => isPendingLogoUrl(club.logoUrl))
-    if (!hasPendingClub) {
+    this.options.logger.info('squad-sync', 'squad asset refresh scope', {
+      versionCount: clubsByVersion.size,
+      clubCount: representativeClubs.length,
+      pendingClubCount,
+      // Counting already-resolved clubs separately helps distinguish "ingest
+      // already did the work" from "we have nothing to resolve because
+      // everything failed" — the two look identical from the summary line.
+      resolvedClubCount: representativeClubs.length - pendingClubCount,
+    })
+
+    // Soft mode: skip the entire discovery phase when no club still carries a
+    // `pending:` sentinel. The provider (TheSportsDB free tier) rate-limits
+    // aggressively (~30 req/min on key "123"), so an unconditional refresh
+    // on every retrieve quickly trips 429s. The badge-bytes cache short-
+    // circuits the CDN download path, but discovery JSON would still hit the
+    // provider — which is the actual cause of the 429s users were seeing.
+    // If everything is already resolved, there's nothing to discover.
+    //
+    // Hard mode explicitly opts out of the short-circuit so a user can force
+    // a full re-resolution after fixing an aliasing bug or seeding a fresh
+    // alias map.
+    if (mode === 'soft' && pendingClubCount === 0) {
       this.options.logger.info('squad-sync', 'squad asset refresh skipped — nothing pending', {
         clubCount: representativeClubs.length,
       })
       return {
-        status: 'noop',
+        ...emptyResult(),
         versionCount: clubsByVersion.size,
         clubCount: representativeClubs.length,
-        updatedClubCount: 0,
-        matchedClubCount: 0,
-        matchedLeagueCount: 0,
-        unmatchedClubs: [],
-        unmatchedLeagues: [],
+        pendingClubCount: 0,
       }
     }
 
@@ -160,6 +194,10 @@ export class SquadAssetRefreshService {
     const leagueDetailsCache = new Map<string, AssetMatchContext>()
     const teamListCache = new Map<string, ReadonlyArray<SportsDbTeam>>()
     const clubLogoById = new Map<number, string>()
+    // Tracks which source resolved each club — used to emit a per-source
+    // breakdown at the end so ops can see at a glance whether SportsDB is
+    // carrying the load or if we're leaning on Wikipedia / missing coverage.
+    const clubLogoSourceById = new Map<number, 'sportsdbLeague' | 'sportsdbFallback' | 'wikipedia'>()
     const leagueMetaByKey = new Map<string, AssetMatchContext>()
     const unmatchedClubs: string[] = []
     const unmatchedLeagues = new Set<string>()
@@ -193,9 +231,18 @@ export class SquadAssetRefreshService {
         }
       }
 
+      // Snapshot counters so we can log a per-league delta at the end of
+      // this iteration. Lets ops see "Premier League: 20/20 matched via
+      // SportsDB, 0 fallback, 0 miss" vs "Obscure League: 0/12 matched,
+      // 12 unmatched" at a glance.
+      const beforeLeagueMatched = clubLogoById.size
+      const beforeSportsDbLeague = countBySource(clubLogoSourceById, 'sportsdbLeague')
+      const beforeSportsDbFallback = countBySource(clubLogoSourceById, 'sportsdbFallback')
+
       if (!bestTeams || bestScore <= 0) {
         unmatchedLeagues.add(leagueName)
         for (const club of leagueClubs) {
+          if (!shouldResolveClubLogo(club, mode)) continue
           const fallback = await this.tryFallbackSearch(club, sportsDbFallbackState)
           if (!fallback) {
             unmatchedClubs.push(club.name)
@@ -203,6 +250,7 @@ export class SquadAssetRefreshService {
           }
           if (fallback.team.strBadge) {
             clubLogoById.set(club.id, fallback.team.strBadge)
+            clubLogoSourceById.set(club.id, 'sportsdbFallback')
           }
           const leagueMeta = fallback.team.idLeague
             ? await this.fetchLeagueContext(fallback.team.idLeague, leagueDetailsCache)
@@ -211,6 +259,13 @@ export class SquadAssetRefreshService {
             leagueMetaByKey.set(buildLeagueKey(club.leagueId, club.leagueName), leagueMeta)
           }
         }
+        this.logLeagueOutcome(leagueName, leagueClubs.length, {
+          sportsdbLeague: 0,
+          sportsdbFallback:
+            countBySource(clubLogoSourceById, 'sportsdbFallback') - beforeSportsDbFallback,
+          matched: clubLogoById.size - beforeLeagueMatched,
+          sportsDbLeagueHit: false,
+        })
         continue
       }
 
@@ -226,15 +281,18 @@ export class SquadAssetRefreshService {
       }
 
       for (const club of leagueClubs) {
+        if (!shouldResolveClubLogo(club, mode)) continue
         const team = pickBestTeamMatch(club, bestTeams)
         if (team?.strBadge) {
           clubLogoById.set(club.id, team.strBadge)
+          clubLogoSourceById.set(club.id, 'sportsdbLeague')
           continue
         }
 
         const fallback = await this.tryFallbackSearch(club, sportsDbFallbackState)
         if (fallback?.team.strBadge) {
           clubLogoById.set(club.id, fallback.team.strBadge)
+          clubLogoSourceById.set(club.id, 'sportsdbFallback')
           const fallbackLeagueMeta = fallback.team.idLeague
             ? await this.fetchLeagueContext(fallback.team.idLeague, leagueDetailsCache)
             : null
@@ -245,6 +303,15 @@ export class SquadAssetRefreshService {
           unmatchedClubs.push(club.name)
         }
       }
+
+      this.logLeagueOutcome(leagueName, leagueClubs.length, {
+        sportsdbLeague:
+          countBySource(clubLogoSourceById, 'sportsdbLeague') - beforeSportsDbLeague,
+        sportsdbFallback:
+          countBySource(clubLogoSourceById, 'sportsdbFallback') - beforeSportsDbFallback,
+        matched: clubLogoById.size - beforeLeagueMatched,
+        sportsDbLeagueHit: true,
+      })
     }
 
     // Wikipedia backstop: for any club the SportsDB passes couldn't resolve,
@@ -265,6 +332,7 @@ export class SquadAssetRefreshService {
           const url = resolvedByName.get(club.name)
           if (url && !clubLogoById.has(club.id)) {
             clubLogoById.set(club.id, url)
+            clubLogoSourceById.set(club.id, 'wikipedia')
           }
         }
         // Drop newly-resolved clubs from the unmatched list.
@@ -273,6 +341,13 @@ export class SquadAssetRefreshService {
           if (!resolvedByName.has(name)) unmatchedClubs.push(name)
         }
       }
+      this.options.logger.info('squad-sync', 'wikipedia fallback pass finished', {
+        unmatchedBefore: stillUnmatched.length,
+        resolved: resolvedByName.size,
+        remaining: unmatchedClubs.length,
+        rateLimited: wikipediaFallbackState.rateLimited,
+        budgetRemaining: wikipediaFallbackState.budget,
+      })
     }
 
     // Download the badge bytes for every newly matched logo and cache them in
@@ -280,12 +355,27 @@ export class SquadAssetRefreshService {
     // SportsDB outages). On success we rewrite Club.logoUrl to the worker
     // route; on failure we leave the SportsDB URL in place so the UI still
     // renders something.
+    //
+    // Logos essentially never change (EA team ids don't recycle; crest
+    // designs are stable across seasons), so on repeat refreshes almost
+    // every club should land in the `alreadyCached` bucket — if it doesn't,
+    // something is telling the service the source URL changed when it
+    // didn't. The per-run breakdown below makes that easy to spot.
     const cachedLogoUrlById = new Map<number, string>()
+    const byteCacheBreakdown = { downloaded: 0, alreadyCached: 0, failed: 0 }
     for (const [clubId, sourceUrl] of clubLogoById) {
       try {
         const cached = await this.cacheLogoBytes(clubId, sourceUrl)
-        if (cached) cachedLogoUrlById.set(clubId, cached)
+        if (cached) {
+          cachedLogoUrlById.set(clubId, cached.path)
+          if (cached.fromCache) {
+            byteCacheBreakdown.alreadyCached += 1
+          } else {
+            byteCacheBreakdown.downloaded += 1
+          }
+        }
       } catch (error) {
+        byteCacheBreakdown.failed += 1
         this.options.logger.warn('squad-sync', 'logo cache failed; keeping source url', {
           clubId,
           sourceUrl,
@@ -293,6 +383,10 @@ export class SquadAssetRefreshService {
         })
       }
     }
+    this.options.logger.info('squad-sync', 'logo byte-cache pass finished', {
+      ...byteCacheBreakdown,
+      total: clubLogoById.size,
+    })
 
     let updatedClubCount = 0
     let cachedLogoCount = 0
@@ -332,6 +426,11 @@ export class SquadAssetRefreshService {
       }
     }
 
+    const matchBreakdown = {
+      sportsdbLeague: countBySource(clubLogoSourceById, 'sportsdbLeague'),
+      sportsdbFallback: countBySource(clubLogoSourceById, 'sportsdbFallback'),
+      wikipedia: countBySource(clubLogoSourceById, 'wikipedia'),
+    }
     const result: SquadAssetRefreshResult = {
       status: updatedClubCount > 0 ? 'refreshed' : 'noop',
       versionCount: clubsByVersion.size,
@@ -341,9 +440,57 @@ export class SquadAssetRefreshService {
       matchedLeagueCount: leagueMetaByKey.size,
       unmatchedClubs: [...new Set(unmatchedClubs)].sort(),
       unmatchedLeagues: [...unmatchedLeagues].sort(),
+      pendingClubCount,
+      matchBreakdown,
+      byteCacheBreakdown,
     }
-    this.options.logger.info('squad-sync', 'squad asset refresh finished', result)
+    const elapsedMs = this.now() - startedAt
+    const summaryContext = { ...result, elapsedMs }
+    // Switch the final line to WARN when the whole run blew past the
+    // "something is off" threshold. The payload is identical either way so
+    // post-hoc grepping stays cheap; the level swap is what actually
+    // surfaces in a noisy log stream.
+    if (elapsedMs >= SLOW_REFRESH_THRESHOLD_MS) {
+      this.options.logger.warn(
+        'squad-sync',
+        `squad asset refresh finished (slow: ${formatDuration(elapsedMs)})`,
+        summaryContext,
+      )
+    } else {
+      this.options.logger.info('squad-sync', 'squad asset refresh finished', summaryContext)
+    }
     return result
+  }
+
+  /**
+   * Tight per-league log line. Separate from the final summary because a
+   * league-by-league breakdown is what ops ask for when a specific
+   * competition doesn't have logos — "Premier League: 20/20 matched" makes
+   * the "looked fine to me" league distinguishable from the failing ones
+   * at a glance, without digging through the unmatched array.
+   */
+  private logLeagueOutcome(
+    leagueName: string,
+    clubCount: number,
+    breakdown: {
+      sportsdbLeague: number
+      sportsdbFallback: number
+      matched: number
+      sportsDbLeagueHit: boolean
+    },
+  ): void {
+    this.options.logger.info('squad-sync', 'league logo resolution outcome', {
+      leagueName,
+      clubCount,
+      matched: breakdown.matched,
+      sportsdbLeague: breakdown.sportsdbLeague,
+      sportsdbFallback: breakdown.sportsdbFallback,
+      unmatched: clubCount - breakdown.matched,
+      // Distinguishes "SportsDB didn't match this league at all" (the
+      // fallback-only path) from "SportsDB matched the league but not
+      // every club inside it" — useful when diagnosing a 0/N league.
+      sportsDbLeagueHit: breakdown.sportsDbLeagueHit,
+    })
   }
 
   private async fetchAllLeagues(): Promise<ReadonlyArray<SportsDbLeagueSummary>> {
@@ -404,11 +551,19 @@ export class SquadAssetRefreshService {
    * If the bytes are already cached and the source URL matches the previous
    * download, we skip the network round-trip entirely.
    */
-  private async cacheLogoBytes(clubId: number, sourceUrl: string): Promise<string | null> {
+  private async cacheLogoBytes(
+    clubId: number,
+    sourceUrl: string,
+  ): Promise<{ readonly path: string; readonly fromCache: boolean } | null> {
     const existing = await this.options.squadStorage.getLogoBytes(clubId)
     if (existing && existing.sourceUrl === sourceUrl) {
-      return clubLogoPublicPath(clubId)
+      // Source URL unchanged since the last download — the bytes in R2 are
+      // still the crest we want. Skipping the re-download is the whole
+      // point of the cache; it also means repeat refreshes cost ~0 on the
+      // CDN side and complete in single-digit ms per club.
+      return { path: clubLogoPublicPath(clubId), fromCache: true }
     }
+    const downloadStartedAt = this.now()
     const response = await this.options.fetchImpl(sourceUrl)
     if (!response.ok) {
       throw new Error(`logo fetch failed with status ${response.status}`)
@@ -418,12 +573,25 @@ export class SquadAssetRefreshService {
     if (bytes.byteLength === 0) {
       throw new Error('logo fetch returned an empty body')
     }
+    const downloadElapsedMs = this.now() - downloadStartedAt
+    if (downloadElapsedMs >= SLOW_REQUEST_THRESHOLD_MS) {
+      // Parity with `cachedJsonFetch` — a single crest shouldn't take
+      // several seconds to come down from the CDN, and when it does it's
+      // usually the source URL pointing at a slow Wikipedia thumbnail
+      // server rather than SportsDB's CDN.
+      this.options.logger.warn('squad-sync', 'slow logo download', {
+        clubId,
+        sourceUrl,
+        elapsedMs: downloadElapsedMs,
+        byteLength: bytes.byteLength,
+      })
+    }
     await this.options.squadStorage.putLogoBytes(clubId, bytes, {
       contentType,
       sourceUrl,
       sourceEtag: response.headers.get('etag'),
     })
-    return clubLogoPublicPath(clubId)
+    return { path: clubLogoPublicPath(clubId), fromCache: false }
   }
 
   private async searchTeamByClub(
@@ -589,7 +757,20 @@ export class SquadAssetRefreshService {
     if (cached && this.now() - cached.cachedAt < SPORTSDB_CACHE_TTL_MS) {
       return cached.value
     }
+    const startedAt = this.now()
     const fresh = await fetchJson<T>(this.options.fetchImpl, url)
+    const elapsedMs = this.now() - startedAt
+    if (elapsedMs >= SLOW_REQUEST_THRESHOLD_MS) {
+      // Per-call slow warning. We flag these so a dev scanning the log
+      // stream can spot which upstream endpoint is the culprit when a
+      // refresh drags — `elapsedMs` + `url` is enough to locate the
+      // regression in the provider without extra tooling.
+      this.options.logger.warn('squad-sync', 'slow upstream request', {
+        url,
+        cacheKey,
+        elapsedMs,
+      })
+    }
     await this.options.squadStorage.putCachedJson(cacheKey, fresh, this.now())
     return fresh
   }
@@ -797,6 +978,87 @@ function looksLikeClubCrestImage(url: string): boolean {
   }
   if (lower.endsWith('.pdf')) return false
   return true
+}
+
+/**
+ * Per-club gate for logo resolution.
+ *
+ * - `soft` mode: skip clubs that already carry a real logo. That's the whole
+ *   point of soft refresh — don't burn provider quota re-matching teams we
+ *   already have crests for. Empty/null/pending sentinel still qualifies.
+ * - `hard` mode: always resolve. The R2 byte cache will short-circuit the
+ *   actual download per-club when `sourceUrl` hasn't changed, so the cost
+ *   is the discovery JSON (which is R2-cached with a 7-day TTL anyway).
+ */
+function shouldResolveClubLogo(
+  club: { readonly logoUrl: string | null | undefined },
+  mode: RefreshLogosMode,
+): boolean {
+  if (mode === 'hard') return true
+  const url = club.logoUrl ?? ''
+  return url.length === 0 || isPendingLogoUrl(url)
+}
+
+/**
+ * Baseline zero-value `SquadAssetRefreshResult`. Used at the early-return
+ * points in `refreshLogos()` so the shape stays consistent across "no
+ * versions", "no clubs", and "nothing pending" branches without sprinkling
+ * literal initialisers throughout the method. Callers spread-override the
+ * fields that actually have values for their branch.
+ */
+function emptyResult(): SquadAssetRefreshResult {
+  return {
+    status: 'noop',
+    versionCount: 0,
+    clubCount: 0,
+    updatedClubCount: 0,
+    matchedClubCount: 0,
+    matchedLeagueCount: 0,
+    unmatchedClubs: [],
+    unmatchedLeagues: [],
+    pendingClubCount: 0,
+    matchBreakdown: {
+      sportsdbLeague: 0,
+      sportsdbFallback: 0,
+      wikipedia: 0,
+    },
+    byteCacheBreakdown: {
+      downloaded: 0,
+      alreadyCached: 0,
+      failed: 0,
+    },
+  }
+}
+
+/**
+ * Tallies entries in `clubLogoSourceById` matching a given source. Used to
+ * snapshot counts before/after a league iteration (per-league delta log) and
+ * to build the final `matchBreakdown` summary.
+ */
+function countBySource(
+  map: ReadonlyMap<number, 'sportsdbLeague' | 'sportsdbFallback' | 'wikipedia'>,
+  source: 'sportsdbLeague' | 'sportsdbFallback' | 'wikipedia',
+): number {
+  let count = 0
+  for (const value of map.values()) {
+    if (value === source) count += 1
+  }
+  return count
+}
+
+/**
+ * Compact human-readable elapsed-time rendering for the summary WARN line.
+ * Keeps things readable in log aggregators: a 73-second refresh shows as
+ * "1m 13s" rather than "73000ms". Sub-second values still render with a
+ * decimal (rare — a refresh that fast skipped discovery entirely).
+ */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  const totalSeconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes === 0) return `${seconds}s`
+  return `${minutes}m ${seconds}s`
 }
 
 export const __TEST_ONLY__ = {
