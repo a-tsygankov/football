@@ -363,32 +363,20 @@ roomRoutes.post('/rooms/:roomId/settings/squads/retrieve', async (c) => {
     )
   }
 
-  // Fresh ingests write the `pending:club:{id}` sentinel into every club's
-  // logoUrl (the shared schema requires a non-empty string). Chain the asset
-  // refresh now so the user doesn't need a second click, and — more
-  // importantly — so no UI renders the sentinel placeholder. A refresh
-  // failure here is non-fatal: the ingest already succeeded, and the user
-  // can retry via `POST .../squad-assets/refresh`.
-  let assetsResult: RetrieveRoomSquadsResponse['assetsResult'] = null
-  try {
-    const assetService = new SquadAssetRefreshService({
-      config: resolveSquadAssetRefreshConfig(SQUAD_APP_CONFIG.assets),
-      fetchImpl: getFetchImpl(),
-      logger: c.get('logger'),
-      squadStorage: c.get('deps').squadStorage,
-      squadVersions: c.get('deps').squadVersions,
-    })
-    assetsResult = await assetService.refreshLogos()
-  } catch (error) {
-    c.get('logger').warn(
-      'squad-sync',
-      'chained asset refresh failed; retrieve succeeded',
-      {
-        roomId,
-        error: error instanceof Error ? error.message : String(error),
-      },
-    )
-  }
+  // Squad ingest used to chain `refreshLogos()` here so the user wouldn't
+  // need a second click. That worked when the rate-limit budget was forgiving,
+  // but TheSportsDB's free tier (key "123") caps bursts at ~30 req/min and
+  // routinely returns 429 on the very first discovery call after a fresh
+  // ingest — leaving every club stuck with the `pending:club:{id}` sentinel.
+  //
+  // Logos rarely change between roster updates, so it's wasteful to re-run
+  // discovery on every sync anyway. The UI now serves a generated SVG
+  // initials badge for any club without cached logo bytes (see the
+  // `/squads/logos/:clubId` route), so the visual is never broken. Real
+  // logos are fetched lazily via the explicit `Refresh logos` button in
+  // Settings, which is rate-limit-aware (R2-cached discovery JSON, badge
+  // bytes deduped by source URL).
+  const assetsResult: RetrieveRoomSquadsResponse['assetsResult'] = null
 
   return c.json({ result, assetsResult } satisfies RetrieveRoomSquadsResponse)
 })

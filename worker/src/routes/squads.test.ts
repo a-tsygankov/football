@@ -264,4 +264,63 @@ describe('squad routes', () => {
     )
     expect(res.status).toBe(400)
   })
+
+  it('GET /api/squads/logos/:clubId serves cached badge bytes when present', async () => {
+    const { app, squadStorage } = buildTestApp()
+    await squadStorage.putLogoBytes(1, new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+      contentType: 'image/png',
+      sourceUrl: 'https://cdn.example/badges/1.png',
+    })
+    const res = await app.fetch(
+      new Request('http://localhost/api/squads/logos/1'),
+      env,
+      execCtx(),
+    )
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('image/png')
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    expect(bytes).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47]))
+  })
+
+  it('GET /api/squads/logos/:clubId returns an SVG initials fallback when no bytes are cached', async () => {
+    // No squad version ingested at all — the route should still return a
+    // usable SVG using the numeric id, so callers never get a broken image.
+    const { app } = buildTestApp()
+    const res = await app.fetch(
+      new Request('http://localhost/api/squads/logos/42'),
+      env,
+      execCtx(),
+    )
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('image/svg+xml; charset=utf-8')
+    const body = await res.text()
+    expect(body.startsWith('<svg')).toBe(true)
+    expect(body).toContain('#42')
+  })
+
+  it('GET /api/squads/logos/:clubId uses club shortName for SVG initials when latest version has the club', async () => {
+    const { app, squadStorage, squadVersions } = buildTestApp()
+    await squadVersions.insert(makeVersion('fc26-r10', 1_000))
+    await squadStorage.putClubs('fc26-r10', [club])
+    const res = await app.fetch(
+      new Request('http://localhost/api/squads/logos/1'),
+      env,
+      execCtx(),
+    )
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('image/svg+xml; charset=utf-8')
+    const body = await res.text()
+    // Manchester City -> shortName 'MCI'
+    expect(body).toContain('MCI')
+  })
+
+  it('GET /api/squads/logos/:clubId rejects non-numeric club id', async () => {
+    const { app } = buildTestApp()
+    const res = await app.fetch(
+      new Request('http://localhost/api/squads/logos/not-a-number'),
+      env,
+      execCtx(),
+    )
+    expect(res.status).toBe(400)
+  })
 })

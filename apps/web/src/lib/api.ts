@@ -31,12 +31,18 @@ const ROOM_SESSION_STORAGE_KEY = 'fc26:last-room-session'
  *
  * Squad ingest writes a `pending:club:{id}` sentinel into `Club.logoUrl` to
  * satisfy the shared schema's `min(1)` invariant until the asset refresh
- * service backfills a real URL. We treat any `pending:` value as missing so
- * `<img>` doesn't try to load the sentinel and `AvatarImage` falls straight
- * through to the silhouette fallback.
+ * service backfills a real URL. We rewrite the sentinel to the worker logo
+ * route (`/api/squads/logos/{id}`) so `<img>` always has something to load
+ * — the route serves cached badge bytes when a Refresh has succeeded, and a
+ * deterministic generated SVG (initials on a hashed colour) otherwise. That
+ * way the UI is never blank while waiting for the optional logo refresh.
  */
 export function resolveAssetUrl(value: string | null | undefined): string | null | undefined {
   if (!value) return value
+  if (value.startsWith('pending:club:')) {
+    const clubId = value.slice('pending:club:'.length)
+    return `${API_BASE}/api/squads/logos/${clubId}`
+  }
   if (value.startsWith('pending:')) return null
   if (value.startsWith('/api/')) return `${API_BASE}${value}`
   return value
