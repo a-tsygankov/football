@@ -19,6 +19,22 @@ import { logger } from './logger.js'
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '') as string
 const ROOM_SESSION_STORAGE_KEY = 'fc26:last-room-session'
 
+/**
+ * Resolve an `<img src>` value coming from the worker.
+ *
+ * The asset refresh service writes worker-relative paths (e.g.
+ * `/api/squads/logos/123`) into `Club.logoUrl` once a logo has been cached
+ * to R2. The browser would resolve those against its own origin (github.io
+ * in production), so we prepend `API_BASE` for any path that starts with
+ * `/api/`. Absolute URLs (legacy SportsDB CDN) and `data:` URIs pass through
+ * unchanged.
+ */
+export function resolveAssetUrl(value: string | null | undefined): string | null | undefined {
+  if (!value) return value
+  if (value.startsWith('/api/')) return `${API_BASE}${value}`
+  return value
+}
+
 export interface ApiError extends Error {
   status: number
   code?: string

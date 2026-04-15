@@ -165,11 +165,34 @@ export class SquadAssetRefreshService {
       }
     }
 
+    // Download the badge bytes for every newly matched logo and cache them in
+    // R2 so the public site can serve from the same origin (and survive
+    // SportsDB outages). On success we rewrite Club.logoUrl to the worker
+    // route; on failure we leave the SportsDB URL in place so the UI still
+    // renders something.
+    const cachedLogoUrlById = new Map<number, string>()
+    for (const [clubId, sourceUrl] of clubLogoById) {
+      try {
+        const cached = await this.cacheLogoBytes(clubId, sourceUrl)
+        if (cached) cachedLogoUrlById.set(clubId, cached)
+      } catch (error) {
+        this.options.logger.warn('squad-sync', 'logo cache failed; keeping source url', {
+          clubId,
+          sourceUrl,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
     let updatedClubCount = 0
+    let cachedLogoCount = 0
     for (const [version, clubs] of clubsByVersion) {
       let changed = false
       const updatedClubs = clubs.map((club) => {
-        const nextLogoUrl = clubLogoById.get(club.id) ?? club.logoUrl
+        const refreshedSource = clubLogoById.get(club.id)
+        const cachedUrl = cachedLogoUrlById.get(club.id)
+        const nextLogoUrl = cachedUrl ?? refreshedSource ?? club.logoUrl
+        if (cachedUrl) cachedLogoCount += 1
         const leagueMeta = leagueMetaByKey.get(buildLeagueKey(club.leagueId, club.leagueName))
         const nextLeagueLogoUrl = leagueMeta?.leagueLogoUrl ?? club.leagueLogoUrl ?? null
         const nextLeagueName = leagueMeta?.leagueName ?? club.leagueName
@@ -194,6 +217,7 @@ export class SquadAssetRefreshService {
         this.options.logger.info('squad-sync', 'club assets refreshed for version', {
           version,
           clubCount: updatedClubs.length,
+          cachedLogoCount,
         })
       }
     }
@@ -256,6 +280,37 @@ export class SquadAssetRefreshService {
     } satisfies AssetMatchContext
     cache.set(leagueId, next)
     return next
+  }
+
+  /**
+   * Downloads a logo from its CDN URL and stores the bytes in R2 under
+   * `squads/logos/{clubId}`. Returns the worker-relative URL that should be
+   * written into `Club.logoUrl`, or `null` if the download failed (callers
+   * keep the original source URL in that case).
+   *
+   * If the bytes are already cached and the source URL matches the previous
+   * download, we skip the network round-trip entirely.
+   */
+  private async cacheLogoBytes(clubId: number, sourceUrl: string): Promise<string | null> {
+    const existing = await this.options.squadStorage.getLogoBytes(clubId)
+    if (existing && existing.sourceUrl === sourceUrl) {
+      return clubLogoPublicPath(clubId)
+    }
+    const response = await this.options.fetchImpl(sourceUrl)
+    if (!response.ok) {
+      throw new Error(`logo fetch failed with status ${response.status}`)
+    }
+    const contentType = response.headers.get('content-type') ?? 'image/png'
+    const bytes = await response.arrayBuffer()
+    if (bytes.byteLength === 0) {
+      throw new Error('logo fetch returned an empty body')
+    }
+    await this.options.squadStorage.putLogoBytes(clubId, bytes, {
+      contentType,
+      sourceUrl,
+      sourceEtag: response.headers.get('etag'),
+    })
+    return clubLogoPublicPath(clubId)
   }
 
   private async searchTeamByClub(
@@ -399,6 +454,14 @@ function normalizeText(value: string): string {
 
 function buildLeagueKey(leagueId: number, leagueName: string): string {
   return `${leagueId}:${normalizeText(leagueName)}`
+}
+
+/**
+ * Worker-relative URL for the cached logo. The web app prepends API_BASE
+ * before assigning to `<img src>` (see `apps/web/src/lib/api.ts`).
+ */
+export function clubLogoPublicPath(clubId: number): string {
+  return `/api/squads/logos/${clubId}`
 }
 
 export const __TEST_ONLY__ = {

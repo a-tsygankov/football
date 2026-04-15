@@ -173,7 +173,6 @@ export function RoomScreen({
 
       <TeamsPanel
         latestSquadVersion={latestSquadVersion}
-        roomSquadPlatform={roomSquadPlatform}
         squadPanelError={squadBrowser.squadPanelError}
         squadVersions={squadBrowser.squadVersions}
         teams={squadBrowser.teams}

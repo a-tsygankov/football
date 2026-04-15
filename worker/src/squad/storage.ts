@@ -55,6 +55,30 @@ export interface ISquadStorage {
 
   /** Removes every key under `squads/{version}/`. Used by retention pruning. */
   deleteVersion(version: string): Promise<void>
+
+  /**
+   * Stores the binary logo bytes for a club. Logos are version-independent
+   * (one club id has one logo across all squad versions) so they live under
+   * `squads/logos/{clubId}` instead of `squads/{version}/...`. The optional
+   * etag lets the asset refresh service skip re-downloading unchanged badges
+   * on subsequent runs.
+   */
+  putLogoBytes(
+    clubId: number,
+    bytes: ArrayBuffer | Uint8Array,
+    metadata: {
+      readonly contentType: string
+      readonly sourceUrl?: string | null
+      readonly sourceEtag?: string | null
+    },
+  ): Promise<void>
+  /** Returns cached logo bytes (with content type) for a club, or null. */
+  getLogoBytes(clubId: number): Promise<{
+    readonly bytes: ArrayBuffer
+    readonly contentType: string
+    readonly sourceUrl: string | null
+    readonly sourceEtag: string | null
+  } | null>
 }
 
 export function squadKeys(version: string) {
@@ -67,4 +91,13 @@ export function squadKeys(version: string) {
       `squads/${version}/diff-from-${fromVersion}.json`,
     versionPrefix: `squads/${version}/`,
   } as const
+}
+
+/**
+ * Build the R2 key for a club's cached logo bytes. Logos are
+ * version-independent, so this lives outside the `squads/{version}/` tree.
+ * Exported so tests and the asset-refresh service can assert / purge keys.
+ */
+export function clubLogoKey(clubId: number): string {
+  return `squads/logos/${clubId}`
 }

@@ -78,6 +78,28 @@ squadRoutes.get('/squads/:version/players/:clubId', async (c) => {
   return c.json({ version, clubId, players })
 })
 
+squadRoutes.get('/squads/logos/:clubId', async (c) => {
+  const clubIdRaw = c.req.param('clubId')
+  const clubId = Number.parseInt(clubIdRaw, 10)
+  if (!Number.isFinite(clubId) || clubId <= 0) {
+    return c.json({ error: 'invalid_club_id', clubId: clubIdRaw }, 400)
+  }
+  const cached = await c.get('deps').squadStorage.getLogoBytes(clubId)
+  if (!cached) {
+    return c.json({ error: 'not_found', clubId }, 404)
+  }
+  return new Response(cached.bytes, {
+    status: 200,
+    headers: {
+      'content-type': cached.contentType,
+      // Logos never change once cached for a given clubId — they're keyed
+      // off the immutable EA team id. Aggressive caching keeps repeat loads
+      // off the worker entirely.
+      'cache-control': 'public, max-age=86400, stale-while-revalidate=604800',
+    },
+  })
+})
+
 squadRoutes.get('/squads/:version/diff', async (c) => {
   const version = c.req.param('version')
   const fromVersion = c.req.query('from')

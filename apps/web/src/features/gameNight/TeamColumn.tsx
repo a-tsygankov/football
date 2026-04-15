@@ -1,5 +1,5 @@
 import type { Club, Gamer } from '@fc26/shared'
-import { ClubIdentity } from '../../components/FcClubPanel.jsx'
+import { EaTeamCard } from '../../components/EaTeamCard.jsx'
 import { GamerIdentity } from '../../components/GamerPanel.jsx'
 import { GamerTeamIdentity } from '../../components/GamerTeamPanel.jsx'
 
@@ -31,11 +31,7 @@ export function TeamColumn({
       <strong style={{ display: 'block', marginBottom: 10 }}>{title}</strong>
       {club ? (
         <div style={{ marginBottom: 10 }}>
-          <ClubIdentity
-            club={club}
-            subtitle={`${club.leagueName} • ATT ${club.attackRating} • MID ${club.midfieldRating} • DEF ${club.defenseRating}`}
-            size={44}
-          />
+          <EaTeamCard club={club} size="medium" />
         </div>
       ) : null}
       {members.length > 1 ? (

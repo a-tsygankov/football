@@ -13,11 +13,13 @@ import {
   inferGameFormat,
   listStrategies,
 } from '@fc26/shared'
+import { EaTeamCard } from '../../components/EaTeamCard.jsx'
 import { Field } from '../../components/Field.jsx'
 import { GamerIdentity } from '../../components/GamerPanel.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
 import { Panel } from '../../components/Panel.jsx'
-import { RatingSelector, StarRow } from '../../components/RatingSelector.jsx'
+import { RatingSelector } from '../../components/RatingSelector.jsx'
+import { useLinkedPair } from '../../hooks/useLinkedPair.js'
 import {
   compactButtonStyle,
   inputStyle,
@@ -73,16 +75,31 @@ export function GameCreationPanel({
     Record<string, 'home' | 'away' | 'bench'>
   >({})
   const [teamAssignmentMode, setTeamAssignmentMode] = useState<'none' | 'manual' | 'random'>('none')
-  const [homeTeamCollection, setHomeTeamCollection] = useState<'league' | 'international'>('league')
-  const [awayTeamCollection, setAwayTeamCollection] = useState<'league' | 'international'>('league')
-  const [homeLeagueId, setHomeLeagueId] = useState<number | 'all'>('all')
-  const [awayLeagueId, setAwayLeagueId] = useState<number | 'all'>('all')
+  // Home/away collection, league filter, and random-rating controls start
+  // linked. The link breaks the moment the user independently touches the
+  // second control of a pair — see `useLinkedPair` for the full semantics.
+  const {
+    home: homeTeamCollection,
+    away: awayTeamCollection,
+    setHome: setHomeTeamCollection,
+    setAway: setAwayTeamCollection,
+  } = useLinkedPair<'league' | 'international'>('league')
+  const {
+    home: homeLeagueId,
+    away: awayLeagueId,
+    setHome: setHomeLeagueId,
+    setAway: setAwayLeagueId,
+  } = useLinkedPair<number | 'all'>('all')
   const [manualHomeClubId, setManualHomeClubId] = useState<number | null>(null)
   const [manualAwayClubId, setManualAwayClubId] = useState<number | null>(null)
   const [randomTeamCollection, setRandomTeamCollection] = useState<'all' | 'league' | 'international'>('all')
   const [randomLeagueId, setRandomLeagueId] = useState<number | 'all'>('all')
-  const [homeRandomTeamRating, setHomeRandomTeamRating] = useState(8)
-  const [awayRandomTeamRating, setAwayRandomTeamRating] = useState(8)
+  const {
+    home: homeRandomTeamRating,
+    away: awayRandomTeamRating,
+    setHome: setHomeRandomTeamRating,
+    setAway: setAwayRandomTeamRating,
+  } = useLinkedPair<number>(8)
 
   useEffect(() => {
     setRandomStrategyId(bootstrap.room.defaultSelectionStrategy)
@@ -616,12 +633,12 @@ function ManualTeamPicker({
           </select>
         </Field>
       ) : null}
-      <ClubScroller clubs={clubs} selectedClubId={selectedClubId} onChangeClubId={onChangeClubId} />
+      <ClubGrid clubs={clubs} selectedClubId={selectedClubId} onChangeClubId={onChangeClubId} />
     </div>
   )
 }
 
-function ClubScroller({
+function ClubGrid({
   clubs,
   selectedClubId,
   onChangeClubId,
@@ -634,43 +651,25 @@ function ClubScroller({
     return <InlineNotice tone="info" message="No FC teams match this filter." />
   }
 
+  // 2-column EA-styled grid — matches the Teams panel picker so users see the
+  // same card whether they're browsing or assigning a team to a matchup.
   return (
     <div
       style={{
-        display: 'flex',
-        gap: 8,
-        overflowX: 'auto',
-        paddingBottom: 4,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+        gap: 10,
       }}
     >
-      {clubs.map((club) => {
-        const star10 = resolveEaTeamStarRating10(null, club.overallRating)
-        return (
-          <button
-            key={club.id}
-            type="button"
-            onClick={() => onChangeClubId(club.id)}
-            style={{
-              minWidth: 150,
-              textAlign: 'left',
-              borderRadius: 16,
-              padding: 10,
-              background: selectedClubId === club.id ? '#ecfdf5' : '#ffffff',
-              border: `1px solid ${selectedClubId === club.id ? '#22c55e' : '#d1fae5'}`,
-              color: '#052e16',
-              display: 'grid',
-              gap: 6,
-            }}
-          >
-            <strong style={{ fontSize: 14, lineHeight: 1.15 }}>{club.name}</strong>
-            <span style={{ fontSize: 12, opacity: 0.72 }}>{club.leagueName}</span>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-              <StarRow rating10={star10 ?? 0} />
-              <span style={{ fontSize: 12, opacity: 0.72 }}>OVR {club.overallRating}</span>
-            </div>
-          </button>
-        )
-      })}
+      {clubs.map((club) => (
+        <EaTeamCard
+          key={club.id}
+          club={club}
+          size="compact"
+          selected={selectedClubId === club.id}
+          onSelect={() => onChangeClubId(club.id)}
+        />
+      ))}
     </div>
   )
 }

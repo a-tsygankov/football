@@ -1,158 +1,138 @@
-import type { SquadPlatform, SquadVersion } from '@fc26/shared'
-import { ClubIdentity } from '../../components/FcClubPanel.jsx'
+import type { SquadVersion } from '@fc26/shared'
+import { EaTeamCard } from '../../components/EaTeamCard.jsx'
 import { FcPlayerIdentity } from '../../components/EntityIdentity.jsx'
-import { EaPremierLeagueLivePanel } from '../../components/EaPremierLeagueLivePanel.jsx'
+// EaPremierLeagueLivePanel is intentionally not imported here while the local
+// EA preview is hidden. The component file is kept so we can re-enable the
+// preview later without restoring the implementation from scratch.
 import { Field } from '../../components/Field.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
 import { Panel } from '../../components/Panel.jsx'
-import {
-  compactButtonStyle,
-  inputStyle,
-  primaryButtonStyle,
-} from '../../styles/controls.js'
+import { inputStyle } from '../../styles/controls.js'
 import type { SquadBrowserState } from './useSquadBrowser.js'
 
 export function TeamsPanel({
   latestSquadVersion,
-  roomSquadPlatform,
   squadPanelError,
   squadVersions,
   teams,
 }: {
   latestSquadVersion: string | null
-  roomSquadPlatform: SquadPlatform
   squadPanelError: string | null
   squadVersions: ReadonlyArray<SquadVersion>
   teams: SquadBrowserState['teams']
 }) {
+  const showTeamDetail =
+    teams.selectedClub !== null && teams.selectedClubPlayers.length > 0
+
   return (
     <section id="fc26-teams-section" style={{ marginTop: 18 }}>
       <Panel
         title="Teams"
-        subtitle="Browse stored FC clubs, league logos, and player avatars from the selected squad version."
+        subtitle="Pick a league to browse stored FC clubs from the selected squad version."
       >
         <div style={{ display: 'grid', gap: 14 }}>
-          <EaPremierLeagueLivePanel platform={roomSquadPlatform} />
           {!latestSquadVersion ? (
             <InlineNotice
               tone="warn"
-              message="Retrieve club and player data in Settings to unlock the stored Teams view. The live EA preview above does not store anything."
+              message="Retrieve club and player data in Settings to unlock the stored Teams view."
             />
           ) : (
             <div style={{ display: 'grid', gap: 14 }}>
               {squadPanelError ? <InlineNotice tone="warn" message={squadPanelError} /> : null}
-              <Field label="Squad version">
-                <select
-                  value={teams.version ?? latestSquadVersion}
-                  onChange={(event) => teams.setVersion(event.target.value)}
-                  style={inputStyle}
-                >
-                  {squadVersions.map((version) => (
-                    <option key={version.version} value={version.version}>
-                      {version.version}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() => teams.setSelectedLeagueId('all')}
-                  style={teams.selectedLeagueId === 'all' ? primaryButtonStyle : compactButtonStyle}
-                >
-                  All leagues
-                </button>
-                {teams.leagues.map((league) => (
-                  <button
-                    key={league.id}
-                    type="button"
-                    onClick={() => teams.setSelectedLeagueId(league.id)}
-                    style={
-                      teams.selectedLeagueId === league.id
-                        ? primaryButtonStyle
-                        : compactButtonStyle
-                    }
-                  >
-                    {league.name}
-                  </button>
-                ))}
-              </div>
               <div
                 style={{
                   display: 'grid',
-                  gap: 14,
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                  alignItems: 'start',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',
+                  gap: 12,
                 }}
               >
-                <div style={{ display: 'grid', gap: 10 }}>
-                  {teams.loading ? (
-                    <InlineNotice tone="info" message="Loading clubs and leagues..." />
-                  ) : teams.filteredClubs.length === 0 ? (
-                    <InlineNotice
-                      tone="info"
-                      message="No clubs match the selected league filter for this squad version."
-                    />
-                  ) : (
-                    teams.filteredClubs.map((club) => (
-                      <button
-                        key={club.id}
-                        type="button"
-                        onClick={() => teams.setSelectedClubId(club.id)}
-                        style={{
-                          textAlign: 'left',
-                          borderRadius: 18,
-                          padding: 14,
-                          background: teams.selectedClubId === club.id ? '#ecfdf5' : '#ffffff',
-                          border: `1px solid ${teams.selectedClubId === club.id ? '#22c55e' : '#d1fae5'}`,
-                          color: '#052e16',
-                        }}
-                      >
-                        <ClubIdentity
-                          club={club}
-                          subtitle={`${club.leagueName} • ${club.starRating} stars`}
-                          size={48}
-                          trailing={
-                            <div style={{ textAlign: 'right' }}>
-                              <div style={{ fontSize: 12, opacity: 0.62 }}>OVR</div>
-                              <strong style={{ fontSize: 18 }}>{club.overallRating}</strong>
-                            </div>
-                          }
-                          nameStyle={{ fontSize: 18 }}
-                        />
-                      </button>
-                    ))
-                  )}
-                </div>
+                <Field label="Squad version">
+                  <select
+                    value={teams.version ?? latestSquadVersion}
+                    onChange={(event) => teams.setVersion(event.target.value)}
+                    style={inputStyle}
+                  >
+                    {squadVersions.map((version) => (
+                      <option key={version.version} value={version.version}>
+                        {version.version}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="League">
+                  <select
+                    value={teams.selectedLeagueId === null ? '' : String(teams.selectedLeagueId)}
+                    onChange={(event) => {
+                      const raw = event.target.value
+                      teams.setSelectedLeagueId(raw === '' ? null : Number.parseInt(raw, 10))
+                    }}
+                    style={inputStyle}
+                  >
+                    <option value="">— Select a league —</option>
+                    {teams.leagues.map((league) => (
+                      <option key={league.id} value={league.id}>
+                        {league.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+
+              {teams.loading ? (
+                <InlineNotice tone="info" message="Loading clubs and leagues..." />
+              ) : teams.selectedLeagueId === null ? (
+                <InlineNotice
+                  tone="info"
+                  message="Pick a league above to load its FC teams."
+                />
+              ) : (
                 <div
                   style={{
-                    borderRadius: 18,
-                    padding: 14,
-                    background: '#ffffff',
-                    border: '1px solid #d1fae5',
                     display: 'grid',
-                    gap: 12,
+                    gap: 14,
+                    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                    alignItems: 'start',
                   }}
                 >
-                  {teams.selectedClub ? (
-                    <>
-                      <ClubIdentity
-                        club={teams.selectedClub}
-                        subtitle={`${teams.selectedClub.leagueName} • ATT ${teams.selectedClub.attackRating} • MID ${teams.selectedClub.midfieldRating} • DEF ${teams.selectedClub.defenseRating}`}
-                        size={60}
-                        trailing={
-                          <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: 12, opacity: 0.62 }}>Nation</div>
-                            <strong style={{ fontSize: 18 }}>{teams.selectedClub.nationId}</strong>
-                          </div>
-                        }
-                        nameStyle={{ fontSize: 22 }}
-                      />
+                  <div
+                    style={{
+                      display: 'grid',
+                      gap: 10,
+                      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                    }}
+                  >
+                    {teams.filteredClubs.length === 0 ? (
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <InlineNotice
+                          tone="info"
+                          message="No clubs match the selected league for this squad version."
+                        />
+                      </div>
+                    ) : (
+                      teams.filteredClubs.map((club) => (
+                        <EaTeamCard
+                          key={club.id}
+                          club={club}
+                          size="compact"
+                          selected={teams.selectedClubId === club.id}
+                          onSelect={() => teams.setSelectedClubId(club.id)}
+                        />
+                      ))
+                    )}
+                  </div>
+
+                  {/*
+                   * Detail column. Per spec we render NOTHING when the
+                   * selection is empty (no players returned) — the parent
+                   * hook clears `selectedClubId` silently, and we don't show
+                   * a "no players" message either.
+                   */}
+                  {showTeamDetail && teams.selectedClub ? (
+                    <div style={{ display: 'grid', gap: 12 }}>
+                      <EaTeamCard club={teams.selectedClub} size="medium" />
                       <div style={{ display: 'grid', gap: 10 }}>
                         {teams.playersLoading ? (
                           <InlineNotice tone="info" message="Loading club players..." />
-                        ) : teams.selectedClubPlayers.length === 0 ? (
-                          <InlineNotice tone="info" message="No stored players found for this club." />
                         ) : (
                           teams.selectedClubPlayers.map((player) => (
                             <article
@@ -179,12 +159,12 @@ export function TeamsPanel({
                           ))
                         )}
                       </div>
-                    </>
+                    </div>
                   ) : (
-                    <InlineNotice tone="info" message="Select a club to inspect its players." />
+                    <div />
                   )}
                 </div>
-              </div>
+              )}
             </div>
           )}
         </div>

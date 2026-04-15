@@ -1123,7 +1123,25 @@ describe('App shell', () => {
     const teamsSection = screen.getByRole('heading', { name: 'Teams' }).closest('section')
     expect(teamsSection).not.toBeNull()
     const teams = within(teamsSection!)
+    // Teams panel now starts with no league selected — pick Premier League so
+    // the club grid renders. This matches the "no default" spec from the
+    // Teams rework.
+    await waitFor(() =>
+      expect(teams.getByRole('option', { name: 'Premier League' })).toBeInTheDocument(),
+    )
+    const leagueSelect = teams.getAllByRole('combobox').find((element) =>
+      within(element).queryByRole('option', { name: 'Premier League' }),
+    )
+    expect(leagueSelect).toBeDefined()
+    fireEvent.change(leagueSelect!, { target: { value: '100' } })
     await waitFor(() => expect(teams.getAllByText('Arsenal').length).toBeGreaterThan(0))
+    // There's no longer a default selected club — we have to click Arsenal
+    // before the player list populates.
+    const arsenalCard = teams
+      .getAllByRole('button')
+      .find((button) => within(button).queryByText('Arsenal'))
+    expect(arsenalCard).toBeDefined()
+    fireEvent.click(arsenalCard!)
     await waitFor(() =>
       expect(screen.getByRole('img', { name: 'Bukayo Saka player avatar' })).toBeInTheDocument(),
     )

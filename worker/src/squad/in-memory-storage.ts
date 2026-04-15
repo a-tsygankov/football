@@ -1,5 +1,12 @@
 import type { Club, FcPlayer, SquadDiff, SquadVersion } from '@fc26/shared'
-import { type ISquadStorage, squadKeys } from './storage.js'
+import { clubLogoKey, type ISquadStorage, squadKeys } from './storage.js'
+
+interface LogoEntry {
+  readonly bytes: ArrayBuffer
+  readonly contentType: string
+  readonly sourceUrl: string | null
+  readonly sourceEtag: string | null
+}
 
 /**
  * In-memory implementation used by tests and by the dev shell when no R2
@@ -87,5 +94,34 @@ export class InMemorySquadStorage implements ISquadStorage {
     for (const key of [...this.entries.keys()]) {
       if (key.startsWith(prefix)) this.entries.delete(key)
     }
+  }
+
+  async putLogoBytes(
+    clubId: number,
+    bytes: ArrayBuffer | Uint8Array,
+    metadata: {
+      readonly contentType: string
+      readonly sourceUrl?: string | null
+      readonly sourceEtag?: string | null
+    },
+  ): Promise<void> {
+    const buffer =
+      bytes instanceof Uint8Array ? bytes.slice().buffer : bytes
+    this.entries.set(clubLogoKey(clubId), {
+      bytes: buffer,
+      contentType: metadata.contentType,
+      sourceUrl: metadata.sourceUrl ?? null,
+      sourceEtag: metadata.sourceEtag ?? null,
+    } satisfies LogoEntry)
+  }
+
+  async getLogoBytes(clubId: number): Promise<{
+    readonly bytes: ArrayBuffer
+    readonly contentType: string
+    readonly sourceUrl: string | null
+    readonly sourceEtag: string | null
+  } | null> {
+    const entry = this.entries.get(clubLogoKey(clubId)) as LogoEntry | undefined
+    return entry ?? null
   }
 }

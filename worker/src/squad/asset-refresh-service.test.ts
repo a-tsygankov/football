@@ -100,6 +100,14 @@ describe('SquadAssetRefreshService', () => {
           ],
         })
       }
+      if (url.startsWith('https://assets.example/teams/')) {
+        // Tiny PNG-ish payload — content doesn't matter, only the bytes round-trip.
+        const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
+        return new Response(bytes, {
+          status: 200,
+          headers: { 'content-type': 'image/png', etag: 'W/"badge"' },
+        })
+      }
       throw new Error(`unexpected URL ${url}`)
     }
 
@@ -130,17 +138,90 @@ describe('SquadAssetRefreshService', () => {
         ...clubOne,
         leagueName: 'English Premier League',
         leagueLogoUrl: 'https://assets.example/leagues/epl.png',
-        logoUrl: 'https://assets.example/teams/arsenal.png',
+        // Once the badge is fetched and cached in R2, Club.logoUrl points at
+        // the worker's cached-asset route so the public site can serve from
+        // the same origin and survive SportsDB outages.
+        logoUrl: '/api/squads/logos/1',
       },
       {
         ...clubTwo,
         leagueName: 'English Premier League',
         leagueLogoUrl: 'https://assets.example/leagues/epl.png',
-        logoUrl: 'https://assets.example/teams/chelsea.png',
+        logoUrl: '/api/squads/logos/2',
       },
     ])
     const updatedOlder = await squadStorage.getClubs('fc26-r10')
     expect(updatedOlder?.[0]?.leagueLogoUrl).toBe('https://assets.example/leagues/epl.png')
     expect(requests.some((url) => url.endsWith('/all_leagues.php'))).toBe(true)
+
+    // The badge bytes round-trip back through storage.
+    const cachedArsenal = await squadStorage.getLogoBytes(1)
+    expect(cachedArsenal?.contentType).toBe('image/png')
+    expect(new Uint8Array(cachedArsenal!.bytes)).toEqual(
+      new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+    )
+    expect(cachedArsenal?.sourceUrl).toBe('https://assets.example/teams/arsenal.png')
+  })
+
+  it('skips re-downloading a logo when the source URL still matches', async () => {
+    const squadStorage = new InMemorySquadStorage()
+    const squadVersions = new InMemorySquadVersionRepository()
+    await squadVersions.insert(version('fc26-r10', 1_000))
+    await squadStorage.putClubs('fc26-r10', [clubOne])
+    // Pre-cache the Arsenal logo with the source URL the next refresh will
+    // discover. The badge endpoint should not be hit on the second pass.
+    await squadStorage.putLogoBytes(1, new Uint8Array([1, 2, 3]), {
+      contentType: 'image/png',
+      sourceUrl: 'https://assets.example/teams/arsenal.png',
+    })
+
+    const requests: string[] = []
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input)
+      requests.push(url)
+      if (url.endsWith('/all_leagues.php')) {
+        return Response.json({
+          leagues: [
+            {
+              idLeague: '4328',
+              strSport: 'Soccer',
+              strLeague: 'English Premier League',
+            },
+          ],
+        })
+      }
+      if (url.includes('/search_all_teams.php?l=')) {
+        return Response.json({
+          teams: [
+            {
+              idTeam: '133604',
+              idLeague: '4328',
+              strTeam: 'Arsenal',
+              strLeague: 'English Premier League',
+              strBadge: 'https://assets.example/teams/arsenal.png',
+            },
+          ],
+        })
+      }
+      if (url.includes('/lookupleague.php?id=4328')) {
+        return Response.json({ leagues: [{ idLeague: '4328', strLeague: 'EPL' }] })
+      }
+      throw new Error(`unexpected URL ${url}`)
+    }
+
+    const service = new SquadAssetRefreshService({
+      config: {
+        providerBaseUrl: 'https://assets.example/api',
+        leagueAliases: { 'Premier League': 'English Premier League' },
+      },
+      fetchImpl,
+      logger: new WorkerLogger('test-asset-refresh-skip'),
+      squadStorage,
+      squadVersions,
+    })
+
+    await service.refreshLogos()
+    // Critically, no badge download was triggered.
+    expect(requests.some((url) => url.startsWith('https://assets.example/teams/'))).toBe(false)
   })
 })

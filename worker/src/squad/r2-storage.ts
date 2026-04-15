@@ -1,5 +1,5 @@
 import type { Club, FcPlayer, SquadDiff, SquadVersion } from '@fc26/shared'
-import { type ISquadStorage, squadKeys } from './storage.js'
+import { clubLogoKey, type ISquadStorage, squadKeys } from './storage.js'
 
 /**
  * R2-backed `ISquadStorage`. Each method maps to one R2 operation; we keep
@@ -96,6 +96,41 @@ export class R2SquadStorage implements ISquadStorage {
       JSON.stringify(diff),
       { httpMetadata: { contentType: 'application/json' } },
     )
+  }
+
+  async putLogoBytes(
+    clubId: number,
+    bytes: ArrayBuffer | Uint8Array,
+    metadata: {
+      readonly contentType: string
+      readonly sourceUrl?: string | null
+      readonly sourceEtag?: string | null
+    },
+  ): Promise<void> {
+    const customMetadata: Record<string, string> = {}
+    if (metadata.sourceUrl) customMetadata.sourceUrl = metadata.sourceUrl
+    if (metadata.sourceEtag) customMetadata.sourceEtag = metadata.sourceEtag
+    await this.bucket.put(clubLogoKey(clubId), bytes as ArrayBuffer, {
+      httpMetadata: { contentType: metadata.contentType },
+      customMetadata,
+    })
+  }
+
+  async getLogoBytes(clubId: number): Promise<{
+    readonly bytes: ArrayBuffer
+    readonly contentType: string
+    readonly sourceUrl: string | null
+    readonly sourceEtag: string | null
+  } | null> {
+    const obj = await this.bucket.get(clubLogoKey(clubId))
+    if (!obj) return null
+    const bytes = await obj.arrayBuffer()
+    return {
+      bytes,
+      contentType: obj.httpMetadata?.contentType ?? 'application/octet-stream',
+      sourceUrl: obj.customMetadata?.sourceUrl ?? null,
+      sourceEtag: obj.customMetadata?.sourceEtag ?? null,
+    }
   }
 
   async deleteVersion(version: string): Promise<void> {

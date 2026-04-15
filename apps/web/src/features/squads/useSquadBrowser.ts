@@ -22,8 +22,8 @@ export interface SquadBrowserState {
     leagues: ReadonlyArray<SquadLeague>
     clubs: ReadonlyArray<Club>
     filteredClubs: ReadonlyArray<Club>
-    selectedLeagueId: number | 'all'
-    setSelectedLeagueId: (value: number | 'all') => void
+    selectedLeagueId: number | null
+    setSelectedLeagueId: (value: number | null) => void
     selectedClubId: number | null
     setSelectedClubId: (value: number | null) => void
     selectedClub: Club | null
@@ -68,9 +68,14 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
   const [teamsVersion, setTeamsVersion] = useState<string | null>(latestSquadVersion)
   const [teamsLeagues, setTeamsLeagues] = useState<ReadonlyArray<SquadLeague>>([])
   const [teamsClubs, setTeamsClubs] = useState<ReadonlyArray<Club>>([])
-  const [selectedLeagueId, setSelectedLeagueId] = useState<number | 'all'>('all')
+  // `null` means "no league selected yet" — by design we render no clubs in
+  // that state to avoid drowning the user in the full team list on first paint.
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null)
   const [selectedClubId, setSelectedClubId] = useState<number | null>(null)
   const [selectedClubPlayers, setSelectedClubPlayers] = useState<ReadonlyArray<FcPlayer>>([])
+  // Tracks club ids whose latest fetch returned zero players so the auto-clear
+  // in the player effect only fires once per club (not on every re-render).
+  const [emptyClubIds, setEmptyClubIds] = useState<ReadonlySet<number>>(new Set())
   const [teamsLoading, setTeamsLoading] = useState(false)
   const [playersLoading, setPlayersLoading] = useState(false)
 
@@ -106,6 +111,7 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
       setTeamsLeagues([])
       setSelectedClubPlayers([])
       setSelectedClubId(null)
+      setEmptyClubIds(new Set())
       setChangesClubs([])
       setSquadDiff(null)
       setHistoryVersionClubs(new Map())
@@ -186,7 +192,12 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
         ])
         if (cancelled) return
         setTeamsClubs(clubsResponse.clubs)
-        setTeamsLeagues(leaguesResponse.leagues)
+        setTeamsLeagues(
+          [...leaguesResponse.leagues].sort((left, right) =>
+            compareLeagueNames(left.name, right.name),
+          ),
+        )
+        setEmptyClubIds(new Set())
       } catch (err) {
         if (cancelled) return
         setSquadPanelError(err instanceof Error ? err.message : String(err))
@@ -203,20 +214,20 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
   }, [teamsVersion])
 
   useEffect(() => {
-    if (selectedLeagueId === 'all') return
+    if (selectedLeagueId === null) return
     if (teamsLeagues.some((league) => league.id === selectedLeagueId)) return
-    setSelectedLeagueId('all')
+    // The chosen league disappeared (version change, etc.) — drop the
+    // selection rather than silently snap to "all" so the panel stays empty
+    // until the user picks again.
+    setSelectedLeagueId(null)
   }, [selectedLeagueId, teamsLeagues])
 
-  const filteredTeamsClubs = useMemo(
-    () =>
-      [...teamsClubs]
-        .filter((club) =>
-          selectedLeagueId === 'all' ? true : club.leagueId === selectedLeagueId,
-        )
-        .sort((left, right) => left.name.localeCompare(right.name)),
-    [selectedLeagueId, teamsClubs],
-  )
+  const filteredTeamsClubs = useMemo(() => {
+    if (selectedLeagueId === null) return []
+    return [...teamsClubs]
+      .filter((club) => club.leagueId === selectedLeagueId)
+      .sort((left, right) => left.name.localeCompare(right.name))
+  }, [selectedLeagueId, teamsClubs])
 
   useEffect(() => {
     if (filteredTeamsClubs.length === 0) {
@@ -225,7 +236,10 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
       return
     }
     if (selectedClubId && filteredTeamsClubs.some((club) => club.id === selectedClubId)) return
-    setSelectedClubId(filteredTeamsClubs[0]!.id)
+    // No auto-select on first paint — let the user pick. This avoids loading
+    // a club they didn't ask for and matches the "no selection by default"
+    // behaviour requested for the league dropdown.
+    setSelectedClubId(null)
   }, [filteredTeamsClubs, selectedClubId])
 
   useEffect(() => {
@@ -233,19 +247,37 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
       setSelectedClubPlayers([])
       return
     }
+    // Skip clubs we already learned have no players — the previous run set
+    // selectedClubId back to null, but a parent re-render could resurrect it
+    // for one frame and we don't want to refetch a known-empty club.
+    if (emptyClubIds.has(selectedClubId)) {
+      setSelectedClubPlayers([])
+      return
+    }
 
     let cancelled = false
     setPlayersLoading(true)
     setSquadPanelError(null)
+    const requestedClubId = selectedClubId
     void (async () => {
       try {
         const response = await apiJson<SquadPlayersResponse>(
-          `/api/squads/${teamsVersion}/players/${selectedClubId}`,
+          `/api/squads/${teamsVersion}/players/${requestedClubId}`,
         )
         if (cancelled) return
-        setSelectedClubPlayers(
-          [...response.players].sort((left, right) => right.overall - left.overall),
-        )
+        const sorted = [...response.players].sort((left, right) => right.overall - left.overall)
+        setSelectedClubPlayers(sorted)
+        if (sorted.length === 0) {
+          // "Ignore" the selection per spec — clear it silently and remember
+          // the club is empty so we don't bounce back if it's reselected.
+          setEmptyClubIds((current) => {
+            if (current.has(requestedClubId)) return current
+            const next = new Set(current)
+            next.add(requestedClubId)
+            return next
+          })
+          setSelectedClubId(null)
+        }
       } catch (err) {
         if (cancelled) return
         setSquadPanelError(err instanceof Error ? err.message : String(err))
@@ -258,7 +290,7 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
     return () => {
       cancelled = true
     }
-  }, [selectedClubId, teamsVersion])
+  }, [emptyClubIds, selectedClubId, teamsVersion])
 
   useEffect(() => {
     if (!changesToVersion) {

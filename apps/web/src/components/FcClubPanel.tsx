@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { Club } from '@fc26/shared'
+import { resolveAssetUrl } from '../lib/api.js'
 import { defaultAvatar } from '../lib/avatars.js'
 import { AvatarImage, IdentityLayout } from './entity-shared.jsx'
 
@@ -12,7 +13,7 @@ export function ClubAvatar({
 }) {
   return (
     <AvatarImage
-      src={club.logoUrl || club.avatarUrl}
+      src={resolveAssetUrl(club.logoUrl || club.avatarUrl)}
       fallbackSrc={defaultAvatar('club')}
       alt={`${club.name} club logo`}
       size={size}
