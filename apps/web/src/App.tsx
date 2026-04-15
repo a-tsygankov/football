@@ -236,11 +236,45 @@ export function App() {
         { method: 'POST' },
       )
       const { result } = response
-      setNotice(
-        result.status === 'repaired'
-          ? `Collapsed ${result.collapsedLeagueCount} duplicate league id${result.collapsedLeagueCount === 1 ? '' : 's'} across ${result.rewrittenVersionCount} stored squad version${result.rewrittenVersionCount === 1 ? '' : 's'} (${result.rewrittenClubCount} clubs rewritten).`
-          : 'No duplicate leagues were present to repair.',
-      )
+      if (result.status === 'repaired') {
+        // Build one sentence that surfaces every moving part of the
+        // migration. Users rarely run this twice in a row, so the extra
+        // detail is worth the longer notice — especially the history
+        // counts, because those are the bit that's invisible otherwise.
+        const parts: string[] = []
+        if (result.collapsedLeagueCount > 0) {
+          parts.push(
+            `collapsed ${result.collapsedLeagueCount} duplicate league id${result.collapsedLeagueCount === 1 ? '' : 's'}`,
+          )
+        }
+        if (result.collapsedClubCount > 0) {
+          parts.push(
+            `removed ${result.collapsedClubCount} duplicate club${result.collapsedClubCount === 1 ? '' : 's'}`,
+          )
+        }
+        if (result.rewrittenClubCount > 0) {
+          parts.push(
+            `rewrote ${result.rewrittenClubCount} club row${result.rewrittenClubCount === 1 ? '' : 's'}`,
+          )
+        }
+        if (result.rewrittenGameRowCount > 0) {
+          parts.push(
+            `updated ${result.rewrittenGameRowCount} game record${result.rewrittenGameRowCount === 1 ? '' : 's'}`,
+          )
+        }
+        if (result.rewrittenEventPayloadCount > 0) {
+          parts.push(
+            `updated ${result.rewrittenEventPayloadCount} historical event${result.rewrittenEventPayloadCount === 1 ? '' : 's'}`,
+          )
+        }
+        const headline =
+          parts.length > 0 ? parts.join(', ') : 'rewrote stored squad data'
+        setNotice(
+          `Repair done across ${result.rewrittenVersionCount} stored squad version${result.rewrittenVersionCount === 1 ? '' : 's'}: ${headline}.`,
+        )
+      } else {
+        setNotice('Stored squads were already canonical — nothing to repair.')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {

@@ -271,6 +271,30 @@ export interface SquadRepairResult {
   readonly rewrittenClubCount: number
   /** Leagues collapsed into a canonical id across all versions (de-duped by raw id). */
   readonly collapsedLeagueCount: number
+  /**
+   * Duplicate club rows removed from stored squad versions. Triggered
+   * when two rows with the same name end up under the same canonical
+   * leagueId — typically the console and handheld variants of a
+   * licensed club. The canonical row (highest overall rating, lowest id
+   * tiebreak) survives; the rest are dropped from `clubs.json` and any
+   * matching `players/{collapsedId}.json` shards are merged into the
+   * canonical club's shard.
+   */
+  readonly collapsedClubCount: number
+  /**
+   * `home_club_id` / `away_club_id` cells in the `games` table that
+   * pointed at a collapsed club and were rewritten to the canonical id.
+   * Sum of home+away updates so one reassigned game counts at most as
+   * two (home changed + away changed).
+   */
+  readonly rewrittenGameRowCount: number
+  /**
+   * `game_recorded` event payloads whose embedded `home.clubId` /
+   * `away.clubId` were rewritten. Rewriting history is a deliberate
+   * architectural exception, scoped to this one-shot migration — see
+   * the code comments on `remapClubIdsInPayloads`.
+   */
+  readonly rewrittenEventPayloadCount: number
 }
 
 export interface EaSquadPreviewClub {

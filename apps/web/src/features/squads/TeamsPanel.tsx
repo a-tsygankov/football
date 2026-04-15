@@ -75,10 +75,12 @@ export function TeamsPanel({
               </Field>
 
               {/* Priority-ordered, horizontally-scrollable league pills.
-                  The top men's leagues (Premier League, La Liga, Serie A…)
-                  come first because `useSquadBrowser` sorts via
-                  `compareLeagueNames`, so the first swipe surfaces the
-                  picks 95% of gamers want. */}
+                  The top men's leagues (Premier League, Serie A, La Liga
+                  …) come first because `useSquadBrowser` sorts via
+                  `compareLeagueNames`, and the hook also auto-selects
+                  the first pill once leagues are loaded, so the panel
+                  opens on a priority league every time — no empty
+                  first-paint state. */}
               <LeaguePills
                 leagues={teams.leagues}
                 selectedLeagueId={teams.selectedLeagueId}

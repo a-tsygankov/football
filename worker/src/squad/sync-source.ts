@@ -2,9 +2,11 @@ import { z } from 'zod'
 import {
   buildEaContentUrl,
   canonicaliseClubName,
+  canonicaliseClubs,
   canonicaliseLeagueIds,
   extractRosterUpdatePlatformMetadata,
   readEaSquadTables,
+  remapPlayerClubIds,
   starRating10FromOverall,
   unpackEaRosterBinary,
   type Club,
@@ -266,14 +268,24 @@ function normalizeSnapshotPayloadWithDefaults(
   // Without this the `leagues` view derived in the worker would render
   // the same league three or four times. Applied here so both source
   // paths (JSON snapshot + EA binary) get consistent behaviour.
-  const canonicalClubs = canonicaliseLeagueIds(payload.clubs)
+  const leagueCanonicalClubs = canonicaliseLeagueIds(payload.clubs)
+  // After league canonicalisation, two rows with the same name can land
+  // in the same league bucket (e.g. EA ships separate AC Milan rows for
+  // console vs. handheld that both alias to "AC Milan"). Dedupe on
+  // `(name, leagueId)` so the UI renders each club once, and rewrite
+  // every player whose `clubId` pointed at a collapsed row onto the
+  // canonical club. Without the player rewrite the downstream
+  // `assertNoDuplicateIds` check on players would still pass, but the
+  // clubId→player lookup would return nothing for the collapsed ids.
+  const { clubs: canonicalClubs, idRemap } = canonicaliseClubs(leagueCanonicalClubs)
+  const canonicalPlayers = remapPlayerClubIds(players, idRemap).players
   return {
     version: payload.version,
     releasedAt: payload.releasedAt ?? defaults.fallbackReleasedAt,
     sourceUrl: payload.sourceUrl ?? defaults.fallbackSourceUrl,
     notes: payload.notes ?? defaults.fallbackNotes,
     clubs: canonicalClubs,
-    players,
+    players: canonicalPlayers,
   }
 }
 
@@ -351,11 +363,15 @@ export function mapEaTablesToClubs(tables: {
       starRating: starRating10FromOverall(team.overallRating) ?? 0,
     })
   }
-  // Collapse leagues that share a name across multiple EA leagueIds. The
-  // JSON-source path does this inside `normalizeSnapshotPayload`; the
-  // binary path skips that function, so we apply it here to keep both
-  // ingests producing the same canonical shape.
-  return canonicaliseLeagueIds(clubs)
+  // Collapse leagues that share a name across multiple EA leagueIds, then
+  // dedupe clubs that now share `(name, leagueId)` after the merge. The
+  // JSON-source path does both inside `normalizeSnapshotPayload`; the
+  // binary path skips that function, so we apply them here to keep the
+  // ingests producing the same canonical shape. The EA binary path
+  // builds no player rows (`players: []`), so `idRemap` is discarded —
+  // no downstream references to rewrite at ingest time.
+  const leagueCanonical = canonicaliseLeagueIds(clubs)
+  return canonicaliseClubs(leagueCanonical).clubs
 }
 
 function deriveShortName(name: string): string {

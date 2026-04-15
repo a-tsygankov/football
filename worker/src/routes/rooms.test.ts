@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
+  EVENT_SCHEMA_VERSION,
+  EventId,
+  GameId,
+  GameNightId,
+  GamerId,
+  gamerTeamKey,
+  type PersistedGameEvent,
   ROOM_SESSION_HEADER,
   type RefreshRoomSquadAssetsResponse,
   type RepairRoomSquadsResponse,
   type ResetRoomSquadsResponse,
   type RetrieveRoomSquadsResponse,
+  RoomId,
   type RoomBootstrapResponse,
   type RoomScoreboardResponse,
 } from '@fc26/shared'
@@ -63,6 +71,8 @@ function buildTestApp() {
   return Object.assign(app, {
     squadStorage,
     squadVersions,
+    games,
+    events,
   })
 }
 
@@ -557,6 +567,9 @@ describe('room routes', () => {
     expect(firstBody.result.rewrittenVersionCount).toBe(1)
     expect(firstBody.result.rewrittenClubCount).toBe(1)
     expect(firstBody.result.collapsedLeagueCount).toBe(1)
+    expect(firstBody.result.collapsedClubCount).toBe(0)
+    expect(firstBody.result.rewrittenGameRowCount).toBe(0)
+    expect(firstBody.result.rewrittenEventPayloadCount).toBe(0)
 
     const storedAfterRepair = await app.squadStorage.getClubs('fc26-r11')
     expect(storedAfterRepair).not.toBeNull()
@@ -581,6 +594,176 @@ describe('room routes', () => {
     expect(secondBody.result.rewrittenVersionCount).toBe(0)
     expect(secondBody.result.rewrittenClubCount).toBe(0)
     expect(secondBody.result.collapsedLeagueCount).toBe(0)
+    expect(secondBody.result.collapsedClubCount).toBe(0)
+    expect(secondBody.result.rewrittenGameRowCount).toBe(0)
+    expect(secondBody.result.rewrittenEventPayloadCount).toBe(0)
+  })
+
+  it('repairs duplicate clubs and rewrites historical game + event references', async () => {
+    const app = buildTestApp()
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Dupes Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const created = (await createRes.json()) as RoomBootstrapResponse
+    const roomId = created.room.id
+    // Seed a stored squad version where the same club ships under two
+    // EA ids (console + handheld) — the classic post-alias duplicate.
+    await app.squadVersions.insert({
+      version: 'fc26-r20',
+      releasedAt: null,
+      ingestedAt: 1_000,
+      clubsBytes: 1,
+      clubCount: 2,
+      playerCount: 0,
+      sourceUrl: 'https://example.com',
+      notes: null,
+    })
+    await app.squadStorage.putClubs('fc26-r20', [
+      {
+        id: 100,
+        name: 'AC Milan',
+        shortName: 'MIL',
+        leagueId: 31,
+        leagueName: 'Serie A',
+        nationId: 27,
+        overallRating: 85,
+        attackRating: 83,
+        midfieldRating: 82,
+        defenseRating: 80,
+        avatarUrl: null,
+        logoUrl: '',
+        starRating: 8,
+      },
+      {
+        id: 200,
+        name: 'AC Milan',
+        shortName: 'MIL',
+        leagueId: 31,
+        leagueName: 'Serie A',
+        nationId: 27,
+        overallRating: 84,
+        attackRating: 82,
+        midfieldRating: 81,
+        defenseRating: 79,
+        avatarUrl: null,
+        logoUrl: '',
+        starRating: 7,
+      },
+    ])
+    // History: a recorded game where the home team was the duplicate
+    // (id 200). After repair it must point at canonical id 100. We
+    // write via the in-memory repo's `create` path, then flip status to
+    // bypass the "active game" constraint.
+    const gameNightIdValue = GameNightId('gn-dupes-1')
+    const recordedGameId = GameId('game-recorded-1')
+    await app.games.create({
+      id: recordedGameId,
+      roomId: RoomId(roomId),
+      gameNightId: gameNightIdValue,
+      status: 'active',
+      allocationMode: 'manual',
+      format: '1v1',
+      homeGamerIds: [GamerId('gamer-a')],
+      awayGamerIds: [GamerId('gamer-b')],
+      homeClubId: 200,
+      awayClubId: 100,
+      selectionStrategyId: 'manual',
+      randomSeed: null,
+      createdAt: 10,
+      updatedAt: 10,
+    })
+    await app.games.update({
+      id: recordedGameId,
+      roomId: RoomId(roomId),
+      gameNightId: gameNightIdValue,
+      status: 'recorded',
+      allocationMode: 'manual',
+      format: '1v1',
+      homeGamerIds: [GamerId('gamer-a')],
+      awayGamerIds: [GamerId('gamer-b')],
+      homeClubId: 200,
+      awayClubId: 100,
+      selectionStrategyId: 'manual',
+      randomSeed: null,
+      createdAt: 10,
+      updatedAt: 11,
+    })
+    // And a corresponding event payload — the `remapClubIdsInPayloads`
+    // scope is limited to `game_recorded`, which is what we need.
+    const payload: PersistedGameEvent['payload'] = {
+      type: 'game_recorded',
+      schemaVersion: EVENT_SCHEMA_VERSION,
+      gameId: recordedGameId,
+      gameNightId: gameNightIdValue,
+      roomId: RoomId(roomId),
+      format: '1v1',
+      size: 2,
+      occurredAt: 12,
+      home: {
+        gamerIds: [GamerId('gamer-a')],
+        gamerTeamKey: gamerTeamKey([GamerId('gamer-a')]),
+        clubId: 200,
+        score: 2,
+      },
+      away: {
+        gamerIds: [GamerId('gamer-b')],
+        gamerTeamKey: gamerTeamKey([GamerId('gamer-b')]),
+        clubId: 100,
+        score: 1,
+      },
+      result: 'home',
+      squadVersion: 'fc26-r20',
+      selectionStrategyId: 'manual',
+      entryMethod: 'manual',
+    }
+    await app.events.insert({
+      id: EventId('event-1'),
+      roomId: RoomId(roomId),
+      eventType: 'game_recorded',
+      payload,
+      schemaVersion: EVENT_SCHEMA_VERSION,
+      correlationId: null,
+      occurredAt: 12,
+      recordedAt: 13,
+    })
+
+    const repairRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${roomId}/settings/squads/repair`, {
+        method: 'POST',
+        headers: {
+          [ROOM_SESSION_HEADER]: created.session.token!,
+        },
+      }),
+      env,
+      execCtx(),
+    )
+    expect(repairRes.status).toBe(200)
+    const body = (await repairRes.json()) as RepairRoomSquadsResponse
+    expect(body.result.status).toBe('repaired')
+    expect(body.result.collapsedClubCount).toBe(1)
+    expect(body.result.rewrittenGameRowCount).toBe(1)
+    expect(body.result.rewrittenEventPayloadCount).toBe(1)
+
+    // clubs.json now has only the higher-rated canonical row.
+    const storedClubs = await app.squadStorage.getClubs('fc26-r20')
+    expect(storedClubs).toHaveLength(1)
+    expect(storedClubs![0]!.id).toBe(100)
+
+    // The stored events now reference the canonical id.
+    const events = await app.events.listByRoom(roomId)
+    expect(events).toHaveLength(1)
+    const rewritten = events[0]!.payload
+    expect(rewritten.type).toBe('game_recorded')
+    if (rewritten.type === 'game_recorded') {
+      expect(rewritten.home.clubId).toBe(100)
+      expect(rewritten.away.clubId).toBe(100)
+    }
   })
 
   it('rejects a wrong PIN and accepts the correct one', async () => {

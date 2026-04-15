@@ -1,6 +1,8 @@
 import { nanoid } from 'nanoid'
 import {
+  canonicaliseClubs,
   canonicaliseLeagueIds,
+  remapPlayerClubIds,
   type CreateCurrentGameRequest,
   type CreateGamerRequest,
   type CreateRoomRequest,
@@ -355,37 +357,93 @@ roomRoutes.post('/rooms/:roomId/settings/squads/repair', async (c) => {
   })
   let rewrittenVersionCount = 0
   let rewrittenClubCount = 0
+  let collapsedClubCount = 0
   const collapsedRawLeagueIds = new Set<number>()
+  // Aggregate every id→canonical remap across versions so we can rewrite
+  // the games table and event payloads in one sweep at the end. Versions
+  // ingested from the same EA release should produce consistent remaps,
+  // but we union them defensively in case historical data spanned
+  // rosters that happened to pick different canonical winners. First
+  // write wins on conflict — rare enough that logging would be noise.
+  const aggregatedRemap = new Map<number, number>()
   for (const version of versions) {
     const clubs = await deps.squadStorage.getClubs(version.version)
     if (!clubs || clubs.length === 0) continue
-    const canonical = canonicaliseLeagueIds(clubs)
+    // Phase 1: collapse duplicate leagueIds. Record which raw ids were
+    // dropped so the summary can report "N leagues collapsed".
+    const leagueCanonical = canonicaliseLeagueIds(clubs)
     let versionChanged = false
     let versionRewrittenClubs = 0
     for (let i = 0; i < clubs.length; i += 1) {
       const before = clubs[i]!
-      const after = canonical[i]!
+      const after = leagueCanonical[i]!
       if (before.leagueId === after.leagueId && before.leagueName === after.leagueName) continue
       versionChanged = true
       versionRewrittenClubs += 1
       collapsedRawLeagueIds.add(before.leagueId)
     }
+    // Phase 2: after leagueIds agree, two rows can share (name, leagueId)
+    // — typically because EA ships a console + handheld variant of the
+    // same licensed club. Dedupe them and carry the id remap forward.
+    const { clubs: clubCanonical, idRemap } = canonicaliseClubs(leagueCanonical)
+    const clubsRemoved = leagueCanonical.length - clubCanonical.length
+    if (clubsRemoved > 0) {
+      versionChanged = true
+      collapsedClubCount += clubsRemoved
+      for (const [from, to] of idRemap) {
+        if (!aggregatedRemap.has(from)) aggregatedRemap.set(from, to)
+      }
+    }
     if (versionChanged) {
-      await deps.squadStorage.putClubs(version.version, canonical)
+      await deps.squadStorage.putClubs(version.version, clubCanonical)
+      // Rewrite player shards so `clubId` fields match the canonical
+      // clubs. For each collapsed id, fold its players into the
+      // canonical club's shard (preserving ids) and then delete the
+      // stale shard. Skip silently when a collapsed id has no shard —
+      // many EA versions don't ship per-club player data.
+      for (const [from, to] of idRemap) {
+        const stalePlayers = await deps.squadStorage.getPlayersForClub(version.version, from)
+        if (!stalePlayers || stalePlayers.length === 0) continue
+        const existingPlayers =
+          (await deps.squadStorage.getPlayersForClub(version.version, to)) ?? []
+        const merged = [
+          ...existingPlayers,
+          ...remapPlayerClubIds(stalePlayers, idRemap).players,
+        ]
+        await deps.squadStorage.putPlayersForClub(version.version, to, merged)
+        // No API on the storage interface to delete a single shard; the
+        // stale shard becomes unreachable because `clubs.json` no
+        // longer references `from`. A future full retrieve or reset
+        // will clear it. Documented deliberately — adding a delete
+        // method just for this path would bloat the interface.
+      }
       rewrittenVersionCount += 1
       rewrittenClubCount += versionRewrittenClubs
       c.get('logger').info('squad-sync', 'stored squad repaired version', {
         version: version.version,
         rewrittenClubs: versionRewrittenClubs,
+        collapsedClubs: clubsRemoved,
       })
     }
   }
+  // Phase 3: rewrite historical references so the games table and event
+  // log consistently use canonical club ids. If no club collapse
+  // happened the remap is empty and both calls short-circuit to 0.
+  const rewrittenGameRowCount = await deps.games.remapClubIds(aggregatedRemap)
+  const rewrittenEventPayloadCount = await deps.events.remapClubIdsInPayloads(aggregatedRemap)
+  const anyChange =
+    rewrittenVersionCount > 0 ||
+    rewrittenGameRowCount > 0 ||
+    rewrittenEventPayloadCount > 0
   const result: SquadRepairResult = {
-    status: rewrittenVersionCount > 0 ? 'repaired' : 'noop',
+    status: anyChange ? 'repaired' : 'noop',
     versionCount: versions.length,
     rewrittenVersionCount,
     rewrittenClubCount,
     collapsedLeagueCount: collapsedRawLeagueIds.size,
+    collapsedClubCount,
+    rewrittenGameRowCount,
+    rewrittenEventPayloadCount,
   }
   c.get('logger').info('squad-sync', 'stored squad repair finished', { roomId, ...result })
   return c.json({ result } satisfies RepairRoomSquadsResponse)

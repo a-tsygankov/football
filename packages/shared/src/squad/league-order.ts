@@ -23,32 +23,51 @@ const MENS_INTERNATIONAL_LEAGUE_PATTERNS = [
   /men'?s national/i,
 ]
 
-// User-defined priority order: International (men) first, then the highest
-// men's tier of each of the listed European nations. Names are normalised
-// (lowercase, punctuation stripped) before comparison so EA's seasonal
-// sponsor suffixes — "LaLiga EA Sports", "Serie A Enilive", "Ligue 1
-// McDonalds" etc. — still match.
+// User-defined priority order: International (men) first, then the
+// user's preferred sequence of domestic tiers, with "Rest of World"
+// surfaced as an early default for catch-all ingests. Names are
+// normalised (lowercase, punctuation stripped) before comparison so
+// EA's seasonal sponsor suffixes — "LaLiga EA Sports", "Serie A
+// Enilive", "Ligue 1 McDonalds", etc. — still match. The ordering here
+// drives both the sort order of league dropdowns AND which league is
+// surfaced first when the user opens a picker, which is why it's
+// shaped to put the most-played leagues at the top instead of
+// alphabetical.
+//
+// Each tier is a single regex — where EA ships multiple historical
+// names for the same league (Primeira Liga vs. Liga Portugal, Jupiler
+// Pro League vs. Belgian Pro League, Süper Lig with or without the
+// Trendyol sponsor prefix) the regex uses an alternation so they land
+// on the same priority index. Keep these in sync with the test in
+// `league-order.test.ts`.
 const PRIORITY_LEAGUES = [
-  // England — Premier League
+  // 1. England — Premier League
   /^premier league$/,
-  // Spain — La Liga (any sponsor variant)
-  /^la ?liga\b/,
-  // Italy — Serie A (any sponsor variant)
+  // 2. Italy — Serie A (any sponsor variant)
   /^serie a\b/,
-  // France — Ligue 1 (any sponsor variant)
+  // 3. Spain — La Liga (any sponsor variant, with or without space)
+  /^la ?liga\b/,
+  // 4. Rest of World — EA's catch-all bucket for clubs that don't fit
+  //    a real league. Sometimes shipped as "Rest of World", sometimes
+  //    "ROW", sometimes "International Clubs" (distinct from national
+  //    teams — club-level mixed league, men's only).
+  /^rest of (the )?world\b/,
+  /^row\b/,
+  /^international clubs?\b/,
+  // 5. France — Ligue 1 (any sponsor variant)
   /^ligue 1\b/,
-  // Germany — Bundesliga (top tier only, exclude 2. Bundesliga)
+  // 6. Germany — Bundesliga top tier (exclude "2. Bundesliga")
   /^bundesliga$/,
-  // Portugal — Liga Portugal / Primeira Liga
-  /^liga portugal\b/,
-  /^primeira liga\b/,
-  // Belgium — (Jupiler) Pro League
-  /^jupiler pro league\b/,
-  /^belgian pro league\b/,
-  /^pro league\b/,
-  // Turkey — Süper Lig (any sponsor variant)
-  /^s[uü]per lig\b/,
-  /^trendyol s[uü]per lig\b/,
+  // 7. Belgium — (Jupiler / Belgian) Pro League
+  /^(jupiler |belgian )?pro league\b/,
+  // 8. Portugal — Primeira Liga / Liga Portugal (either name)
+  /^(liga portugal|primeira liga)\b/,
+  // 9. Turkey — Süper Lig (optionally prefixed with the Trendyol
+  //    sponsor, either 'ü' or 'u' spelling)
+  /^(trendyol )?s[uü]per lig\b/,
+  // 10. USA — Major League Soccer (full name or MLS acronym)
+  /^major league soccer\b/,
+  /\bmls\b/,
 ]
 
 function normalizeLeagueName(name: string): string {

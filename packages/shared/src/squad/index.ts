@@ -10,6 +10,8 @@ export { compareLeagueNames, getLeagueSortPriority } from './league-order.js'
 export { CLUB_NAME_ALIASES, canonicaliseClubName } from './club-aliases.js'
 export type { ClubAlias } from './club-aliases.js'
 export { canonicaliseLeagueIds } from './canonicalise-leagues.js'
+export { canonicaliseClubs, remapPlayerClubIds } from './canonicalise-clubs.js'
+export type { ClubCanonicalisationResult } from './canonicalise-clubs.js'
 export {
   buildEaContentUrl,
   decodeEaRosterText,

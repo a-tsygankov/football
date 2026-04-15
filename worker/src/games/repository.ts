@@ -11,6 +11,14 @@ export interface IGameRepository {
   getActive(gameNightId: GameNightIdType): Promise<CurrentGame | null>
   create(game: CurrentGame): Promise<void>
   update(game: CurrentGame): Promise<void>
+  /**
+   * One-shot migration helper used by the stored-squad repair route.
+   * Rewrites every `home_club_id` / `away_club_id` cell that appears as a
+   * key in `idRemap` with the remap target. Returns the number of rows
+   * modified so the repair summary can report it. Safe on repeat calls —
+   * already-canonical rows are untouched.
+   */
+  remapClubIds(idRemap: ReadonlyMap<number, number>): Promise<number>
 }
 
 export class InMemoryGameRepository implements IGameRepository {
@@ -37,6 +45,22 @@ export class InMemoryGameRepository implements IGameRepository {
       throw new Error(`game ${game.id} not found`)
     }
     this.games.set(game.id, game)
+  }
+
+  async remapClubIds(idRemap: ReadonlyMap<number, number>): Promise<number> {
+    if (idRemap.size === 0) return 0
+    let changes = 0
+    for (const [id, game] of this.games) {
+      const nextHome =
+        game.homeClubId !== null ? idRemap.get(game.homeClubId) ?? game.homeClubId : null
+      const nextAway =
+        game.awayClubId !== null ? idRemap.get(game.awayClubId) ?? game.awayClubId : null
+      if (nextHome === game.homeClubId && nextAway === game.awayClubId) continue
+      if (nextHome !== game.homeClubId) changes += 1
+      if (nextAway !== game.awayClubId) changes += 1
+      this.games.set(id, { ...game, homeClubId: nextHome, awayClubId: nextAway })
+    }
+    return changes
   }
 }
 
@@ -150,5 +174,28 @@ export class D1GameRepository implements IGameRepository {
         game.gameNightId,
       )
       .run()
+  }
+
+  async remapClubIds(idRemap: ReadonlyMap<number, number>): Promise<number> {
+    if (idRemap.size === 0) return 0
+    // One UPDATE per (from → to) pair keeps the SQL simple and avoids
+    // building a CASE statement that some D1 drivers choke on. Each
+    // statement hits at most two columns, and we count affected rows
+    // across home/away independently so the repair summary matches the
+    // "X historical references rewritten" framing the UI surfaces.
+    let totalChanges = 0
+    for (const [from, to] of idRemap) {
+      if (from === to) continue
+      const homeResult = await this.db
+        .prepare('UPDATE games SET home_club_id = ? WHERE home_club_id = ?')
+        .bind(to, from)
+        .run()
+      const awayResult = await this.db
+        .prepare('UPDATE games SET away_club_id = ? WHERE away_club_id = ?')
+        .bind(to, from)
+        .run()
+      totalChanges += (homeResult.meta?.changes ?? 0) + (awayResult.meta?.changes ?? 0)
+    }
+    return totalChanges
   }
 }

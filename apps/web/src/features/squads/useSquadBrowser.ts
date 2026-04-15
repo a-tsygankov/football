@@ -214,12 +214,23 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
   }, [teamsVersion])
 
   useEffect(() => {
-    if (selectedLeagueId === null) return
-    if (teamsLeagues.some((league) => league.id === selectedLeagueId)) return
-    // The chosen league disappeared (version change, etc.) — drop the
-    // selection rather than silently snap to "all" so the panel stays empty
-    // until the user picks again.
-    setSelectedLeagueId(null)
+    if (selectedLeagueId !== null) {
+      // Clear the selection if the version was switched and the previous
+      // league isn't in the new roster. Replacement is handled by the
+      // auto-select branch below on the next render.
+      if (teamsLeagues.some((league) => league.id === selectedLeagueId)) return
+      setSelectedLeagueId(null)
+      return
+    }
+    // Nothing selected and leagues are now available — jump straight to
+    // the first entry. `teamsLeagues` is already sorted by priority via
+    // `compareLeagueNames`, so the first element is always the highest
+    // priority league in the current squad (typically International or
+    // England Premier League). This enforces "every league picker opens
+    // on a priority league" without hardcoding a specific league name.
+    if (teamsLeagues.length === 0) return
+    const firstLeague = teamsLeagues[0]!
+    setSelectedLeagueId(firstLeague.id)
   }, [selectedLeagueId, teamsLeagues])
 
   const filteredTeamsClubs = useMemo(() => {
