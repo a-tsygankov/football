@@ -74,7 +74,7 @@ function getFetchImpl(): typeof fetch {
 }
 
 const createRoomSchema = z.object({
-  name: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(3).max(80),
   pin: z.string().nullable().optional(),
   avatarUrl: z.string().url().nullable().optional(),
   defaultSelectionStrategy: z.string().trim().min(1).max(64).optional(),
@@ -91,7 +91,7 @@ const joinRoomSchema = z.object({
 })
 
 const createGamerSchema = z.object({
-  name: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(3).max(80),
   rating: z.number().int().min(1).max(5).optional(),
   active: z.boolean().optional(),
   pin: z.string().nullable().optional(),
@@ -99,12 +99,18 @@ const createGamerSchema = z.object({
 })
 
 const updateGamerSchema = z.object({
-  name: z.string().trim().min(1).max(80).optional(),
+  name: z.string().trim().min(3).max(80).optional(),
   rating: z.number().int().min(1).max(5).optional(),
   active: z.boolean().optional(),
   currentPin: z.string().nullable().optional(),
   pin: z.string().nullable().optional(),
   avatarUrl: z.string().url().nullable().optional(),
+  // Per-gamer PIN bypass for room admins (the device that unlocked the
+  // hidden Settings panel via the triple-tap console). Trust here is
+  // the same as anywhere else in the room: anyone with the room session
+  // already holds the keys to start games and edit the roster — the
+  // gamer PIN is a soft per-profile lock, not a security boundary.
+  bypassPin: z.boolean().optional(),
 })
 
 const createGameNightSchema = z.object({
@@ -299,8 +305,17 @@ roomRoutes.post('/rooms/:roomId/settings/squad-assets/refresh', async (c) => {
     squadStorage: c.get('deps').squadStorage,
     squadVersions: c.get('deps').squadVersions,
   })
-  const result = await service.refreshLogos()
-  return c.json({ result } satisfies RefreshRoomSquadAssetsResponse)
+  try {
+    const result = await service.refreshLogos()
+    return c.json({ result } satisfies RefreshRoomSquadAssetsResponse)
+  } catch (error) {
+    // The TheSportsDB free tier rate-limits aggressively. Surface that as a
+    // 502 with a structured body rather than a 500 unhandled error so the UI
+    // can render "rate limited, try again later" instead of a generic crash.
+    const message = error instanceof Error ? error.message : String(error)
+    c.get('logger').warn('squad-sync', `squad asset refresh failed: ${message}`, { roomId })
+    return c.json({ error: 'asset_refresh_failed', message }, 502)
+  }
 })
 
 roomRoutes.post('/rooms/:roomId/settings/squads/retrieve', async (c) => {
@@ -469,7 +484,12 @@ roomRoutes.patch('/rooms/:roomId/gamers/:gamerId', async (c) => {
     return c.json({ error: 'invalid_pin_format' }, 400)
   }
 
-  if (existing.pinHash && existing.pinSalt) {
+  // PIN-protected gamers normally require the current PIN to edit. A room
+  // admin can bypass that lock by passing `bypassPin: true` from a device
+  // where the hidden Settings panel is unlocked (see useDebugConsole). The
+  // bypass is intentionally soft — it relies on the same room session that
+  // already authorizes every other room mutation.
+  if (existing.pinHash && existing.pinSalt && !body.bypassPin) {
     if (!body.currentPin) {
       return c.json({ error: 'gamer_pin_required', gamerId }, 401)
     }

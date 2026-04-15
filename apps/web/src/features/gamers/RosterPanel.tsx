@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import {
   type Gamer,
+  NAME_STEM_MIN_LENGTH,
   type RoomBootstrapResponse,
   type UpdateGamerRequest,
   isValidNameStem,
   normalizeNameStem,
 } from '@fc26/shared'
+import { useDebugConsole } from '../../debug/console-store.js'
 import { GamerIdentity } from '../../components/GamerPanel.jsx'
 import { Field } from '../../components/Field.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
@@ -39,6 +41,11 @@ export function RosterPanel({
   const [editingRating, setEditingRating] = useState('3')
   const [editingCurrentPin, setEditingCurrentPin] = useState('')
   const [editingNextPin, setEditingNextPin] = useState('')
+  // Room admins (anyone who has unlocked the hidden Settings panel via the
+  // triple-tap console) can edit PIN-protected gamers without entering the
+  // current PIN. The same flag flips the corresponding server-side check
+  // in `updateGamer` (see worker/src/routes/rooms.ts).
+  const settingsUnlocked = useDebugConsole((s) => s.everOpened)
 
   function startEditingGamer(gamer: Gamer): void {
     setEditingGamerId(gamer.id)
@@ -71,6 +78,9 @@ export function RosterPanel({
       rating: Number.parseInt(editingRating, 10),
       currentPin: editingCurrentPin.trim() || null,
       pin: editingNextPin.trim() || null,
+      // When Settings is unlocked the admin doesn't need to know the PIN —
+      // the server honors `bypassPin` for any room-session caller.
+      ...(settingsUnlocked ? { bypassPin: true } : {}),
     })
     setEditingGamerId(null)
     setEditingCurrentPin('')
@@ -193,7 +203,7 @@ export function RosterPanel({
                           ))}
                         </select>
                       </Field>
-                      {gamer.hasPin ? (
+                      {gamer.hasPin && !settingsUnlocked ? (
                         <Field label="Current PIN">
                           <input
                             value={editingCurrentPin}
@@ -204,6 +214,12 @@ export function RosterPanel({
                             style={inputStyle}
                           />
                         </Field>
+                      ) : null}
+                      {gamer.hasPin && settingsUnlocked ? (
+                        <InlineNotice
+                          tone="info"
+                          message="Settings unlocked: this PIN-protected gamer can be edited without entering the current PIN."
+                        />
                       ) : null}
                       <Field label={gamer.hasPin ? 'New PIN (leave blank to clear)' : 'Set PIN'}>
                         <input
@@ -216,7 +232,10 @@ export function RosterPanel({
                         />
                       </Field>
                       {!isValidNameStem(editingName) && editingName.trim().length > 0 ? (
-                        <InlineNotice tone="warn" message="Enter at least one letter or digit in the gamer name." />
+                        <InlineNotice
+                          tone="warn"
+                          message={`Gamer name must contain at least ${NAME_STEM_MIN_LENGTH} letters or digits.`}
+                        />
                       ) : null}
                       {bootstrap.gamers.some(
                         (item) =>

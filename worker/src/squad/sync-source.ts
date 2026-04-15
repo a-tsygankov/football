@@ -14,6 +14,7 @@ import {
   type SquadSnapshot,
 } from '@fc26/shared'
 import type { SquadSyncConfig } from './sync-config.js'
+import { PENDING_LOGO_PREFIX } from './storage.js'
 
 const clubSchema = z.object({
   id: z.number().int().positive(),
@@ -293,8 +294,6 @@ function applyTemplate(
     key in values ? encodeURIComponent(values[key] ?? '') : whole,
   )
 }
-
-const PENDING_LOGO_PREFIX = 'pending:club:'
 
 /**
  * Convert raw EA squad tables into the normalised `Club[]` shape stored in R2.

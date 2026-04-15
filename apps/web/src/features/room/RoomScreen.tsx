@@ -9,6 +9,7 @@ import type {
   SquadPlatform,
   UpdateGamerRequest,
 } from '@fc26/shared'
+import { useDebugConsole } from '../../debug/console-store.js'
 import { AddGamerPanel } from '../gamers/AddGamerPanel.jsx'
 import { RosterPanel } from '../gamers/RosterPanel.jsx'
 import { GameCreationPanel } from '../gameNight/GameCreationPanel.jsx'
@@ -102,6 +103,13 @@ export function RoomScreen({
     .map((item) => bootstrap.gamers.find((gamer) => gamer.id === item.gamerId))
     .filter((gamer): gamer is Gamer => gamer !== undefined)
   const squadBrowser = useSquadBrowser(latestSquadVersion)
+  // Settings is hidden from casual gamers — it exposes destructive controls
+  // (squad reset, asset refresh) that aren't part of the normal flow. The
+  // panel reveals itself once a user discovers the debug console via the
+  // triple-tap on the bottom-nav logo (see `console-store.ts`). The unlock
+  // is persisted in localStorage, so power-users keep their settings access
+  // across reloads without having to re-trigger the gesture.
+  const settingsUnlocked = useDebugConsole((s) => s.everOpened)
 
   function scrollToSection(sectionId: string): void {
     document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -199,17 +207,19 @@ export function RoomScreen({
         changes={squadBrowser.changes}
       />
 
-      <SettingsPanel
-        bootstrap={bootstrap}
-        busy={busy}
-        latestSquadVersion={latestSquadVersion}
-        roomSquadPlatform={roomSquadPlatform}
-        onChangeRoomSquadPlatform={onChangeRoomSquadPlatform}
-        onRefreshSquadAssets={onRefreshSquadAssets}
-        onResetSquadData={onResetSquadData}
-        onRetrieveSquadData={onRetrieveSquadData}
-        onSaveRoomSettings={onSaveRoomSettings}
-      />
+      {settingsUnlocked ? (
+        <SettingsPanel
+          bootstrap={bootstrap}
+          busy={busy}
+          latestSquadVersion={latestSquadVersion}
+          roomSquadPlatform={roomSquadPlatform}
+          onChangeRoomSquadPlatform={onChangeRoomSquadPlatform}
+          onRefreshSquadAssets={onRefreshSquadAssets}
+          onResetSquadData={onResetSquadData}
+          onRetrieveSquadData={onRetrieveSquadData}
+          onSaveRoomSettings={onSaveRoomSettings}
+        />
+      ) : null}
 
       <section id="fc26-roster-section">
         <RosterPanel

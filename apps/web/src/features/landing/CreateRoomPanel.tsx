@@ -1,4 +1,4 @@
-import { isValidNameStem } from '@fc26/shared'
+import { NAME_STEM_MIN_LENGTH, isValidNameStem } from '@fc26/shared'
 import { Field } from '../../components/Field.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
 import { Panel } from '../../components/Panel.jsx'
@@ -47,7 +47,10 @@ export function CreateRoomPanel({
         Room names compare by stem: case, spaces, and punctuation are ignored.
       </p>
       {!createRoomNameValid && createName.trim().length > 0 ? (
-        <InlineNotice tone="warn" message="Enter at least one letter or digit in the room name." />
+        <InlineNotice
+          tone="warn"
+          message={`Room name must contain at least ${NAME_STEM_MIN_LENGTH} letters or digits.`}
+        />
       ) : null}
       {!createRoomPinValid ? (
         <InlineNotice tone="warn" message="Room PIN must be exactly 4 digits." />

@@ -1,5 +1,5 @@
 import type { Club, FcPlayer, SquadDiff, SquadVersion } from '@fc26/shared'
-import { clubLogoKey, type ISquadStorage, squadKeys } from './storage.js'
+import { cachedJsonKey, clubLogoKey, type ISquadStorage, squadKeys } from './storage.js'
 
 interface LogoEntry {
   readonly bytes: ArrayBuffer
@@ -123,5 +123,18 @@ export class InMemorySquadStorage implements ISquadStorage {
   } | null> {
     const entry = this.entries.get(clubLogoKey(clubId)) as LogoEntry | undefined
     return entry ?? null
+  }
+
+  async getCachedJson<T>(
+    key: string,
+  ): Promise<{ readonly value: T; readonly cachedAt: number } | null> {
+    const entry = this.entries.get(cachedJsonKey(key)) as
+      | { value: T; cachedAt: number }
+      | undefined
+    return entry ?? null
+  }
+
+  async putCachedJson<T>(key: string, value: T, cachedAt: number): Promise<void> {
+    this.entries.set(cachedJsonKey(key), { value, cachedAt })
   }
 }

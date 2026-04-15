@@ -1,5 +1,5 @@
 import type { Club, ILogger, SquadAssetRefreshResult } from '@fc26/shared'
-import type { ISquadStorage } from './storage.js'
+import { isPendingLogoUrl, type ISquadStorage } from './storage.js'
 import type { ISquadVersionRepository } from './version-repository.js'
 import type { SquadAssetRefreshConfig } from './asset-config.js'
 
@@ -38,10 +38,25 @@ export interface SquadAssetRefreshServiceOptions {
   readonly logger: ILogger
   readonly squadStorage: ISquadStorage
   readonly squadVersions: ISquadVersionRepository
+  /** Wall-clock used for cache TTL bookkeeping; defaults to `Date.now`. */
+  readonly now?: () => number
 }
 
+/**
+ * TTL for cached SportsDB discovery JSON. The free-tier API rate-limits
+ * aggressively (key "123" caps bursts at ~30 req/min), and the upstream
+ * data — list of leagues, teams in a league, league badges — barely changes.
+ * 7 days strikes the balance: refreshes survive provider outages and avoid
+ * 429 storms, while still picking up the rare badge swap within a week.
+ */
+const SPORTSDB_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+
 export class SquadAssetRefreshService {
-  constructor(private readonly options: SquadAssetRefreshServiceOptions) {}
+  private readonly now: () => number
+
+  constructor(private readonly options: SquadAssetRefreshServiceOptions) {
+    this.now = options.now ?? (() => Date.now())
+  }
 
   async refreshLogos(): Promise<SquadAssetRefreshResult> {
     const versions = await this.options.squadVersions.list()
@@ -82,6 +97,31 @@ export class SquadAssetRefreshService {
     }
 
     const representativeClubs = dedupeRepresentativeClubs([...clubsByVersion.values()].flat())
+
+    // Skip the entire discovery phase when no club still carries a `pending:`
+    // sentinel. The provider (TheSportsDB free tier) rate-limits aggressively
+    // (~30 req/min on key "123"), so an unconditional refresh on every
+    // retrieve quickly trips 429s. The badge-bytes cache short-circuits the
+    // CDN download path, but discovery JSON would still hit the provider —
+    // which is the actual cause of the 429s users were seeing. If everything
+    // is already resolved, there's nothing to discover.
+    const hasPendingClub = representativeClubs.some((club) => isPendingLogoUrl(club.logoUrl))
+    if (!hasPendingClub) {
+      this.options.logger.info('squad-sync', 'squad asset refresh skipped — nothing pending', {
+        clubCount: representativeClubs.length,
+      })
+      return {
+        status: 'noop',
+        versionCount: clubsByVersion.size,
+        clubCount: representativeClubs.length,
+        updatedClubCount: 0,
+        matchedClubCount: 0,
+        matchedLeagueCount: 0,
+        unmatchedClubs: [],
+        unmatchedLeagues: [],
+      }
+    }
+
     const clubsByLeague = groupByLeagueName(representativeClubs)
     const allLeagues = await this.fetchAllLeagues()
     const leagueDetailsCache = new Map<string, AssetMatchContext>()
@@ -237,9 +277,12 @@ export class SquadAssetRefreshService {
   }
 
   private async fetchAllLeagues(): Promise<ReadonlyArray<SportsDbLeagueSummary>> {
-    const payload = await fetchJson<{ leagues?: SportsDbLeagueSummary[]; countries?: SportsDbLeagueSummary[] }>(
-      this.options.fetchImpl,
+    const payload = await this.cachedJsonFetch<{
+      leagues?: SportsDbLeagueSummary[]
+      countries?: SportsDbLeagueSummary[]
+    }>(
       `${this.options.config.providerBaseUrl}/all_leagues.php`,
+      'sportsdb/all_leagues.json',
     )
     const rows = payload.leagues ?? payload.countries ?? []
     return rows.filter((row) => (row.strSport ?? '').toLowerCase() === 'soccer')
@@ -252,9 +295,9 @@ export class SquadAssetRefreshService {
     const cacheKey = leagueName.trim().toLowerCase()
     const existing = cache.get(cacheKey)
     if (existing) return existing
-    const payload = await fetchJson<{ teams?: SportsDbTeam[] }>(
-      this.options.fetchImpl,
+    const payload = await this.cachedJsonFetch<{ teams?: SportsDbTeam[] }>(
       `${this.options.config.providerBaseUrl}/search_all_teams.php?l=${encodeURIComponent(leagueName)}`,
+      `sportsdb/teams-by-league/${slugify(leagueName)}.json`,
     )
     const teams = payload.teams ?? []
     cache.set(cacheKey, teams)
@@ -267,9 +310,9 @@ export class SquadAssetRefreshService {
   ): Promise<AssetMatchContext | null> {
     const existing = cache.get(leagueId)
     if (existing) return existing
-    const payload = await fetchJson<{ leagues?: SportsDbLeagueDetails[] }>(
-      this.options.fetchImpl,
+    const payload = await this.cachedJsonFetch<{ leagues?: SportsDbLeagueDetails[] }>(
       `${this.options.config.providerBaseUrl}/lookupleague.php?id=${encodeURIComponent(leagueId)}`,
+      `sportsdb/league-details/${encodeURIComponent(leagueId)}.json`,
     )
     const league = payload.leagues?.[0]
     if (!league?.idLeague || !league?.strLeague) return null
@@ -316,13 +359,44 @@ export class SquadAssetRefreshService {
   private async searchTeamByClub(
     club: Club,
   ): Promise<{ team: SportsDbTeam } | null> {
-    const payload = await fetchJson<{ teams?: SportsDbTeam[] }>(
-      this.options.fetchImpl,
+    const payload = await this.cachedJsonFetch<{ teams?: SportsDbTeam[] }>(
       `${this.options.config.providerBaseUrl}/searchteams.php?t=${encodeURIComponent(club.name)}`,
+      `sportsdb/team-search/${slugify(club.name)}.json`,
     )
     const team = pickBestTeamMatch(club, payload.teams ?? [])
     return team ? { team } : null
   }
+
+  /**
+   * R2-backed JSON cache wrapper. Hits the provider only when there's no
+   * cached envelope for `cacheKey`, or the cached envelope is older than
+   * {@link SPORTSDB_CACHE_TTL_MS}. Once primed, repeat refreshes do zero
+   * provider HTTP for already-discovered entries.
+   *
+   * The cache is shared across worker invocations (R2) and across the
+   * worker + squad-sync CLI (same bucket), so seeding can happen from
+   * either side.
+   */
+  private async cachedJsonFetch<T>(url: string, cacheKey: string): Promise<T> {
+    const cached = await this.options.squadStorage.getCachedJson<T>(cacheKey)
+    if (cached && this.now() - cached.cachedAt < SPORTSDB_CACHE_TTL_MS) {
+      return cached.value
+    }
+    const fresh = await fetchJson<T>(this.options.fetchImpl, url)
+    await this.options.squadStorage.putCachedJson(cacheKey, fresh, this.now())
+    return fresh
+  }
+}
+
+/** Lower-case alphanumerics + dashes; used to build cache keys from league/club names. */
+function slugify(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    || 'unknown'
 }
 
 async function fetchJson<T>(fetchImpl: typeof fetch, url: string): Promise<T> {

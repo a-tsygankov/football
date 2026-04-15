@@ -1,5 +1,5 @@
 import type { Club, FcPlayer, SquadDiff, SquadVersion } from '@fc26/shared'
-import { clubLogoKey, type ISquadStorage, squadKeys } from './storage.js'
+import { cachedJsonKey, clubLogoKey, type ISquadStorage, squadKeys } from './storage.js'
 
 /**
  * R2-backed `ISquadStorage`. Each method maps to one R2 operation; we keep
@@ -131,6 +131,23 @@ export class R2SquadStorage implements ISquadStorage {
       sourceUrl: obj.customMetadata?.sourceUrl ?? null,
       sourceEtag: obj.customMetadata?.sourceEtag ?? null,
     }
+  }
+
+  async getCachedJson<T>(
+    key: string,
+  ): Promise<{ readonly value: T; readonly cachedAt: number } | null> {
+    const obj = await this.bucket.get(cachedJsonKey(key))
+    if (!obj) return null
+    const envelope = (await obj.json()) as { value: T; cachedAt: number }
+    return envelope
+  }
+
+  async putCachedJson<T>(key: string, value: T, cachedAt: number): Promise<void> {
+    await this.bucket.put(
+      cachedJsonKey(key),
+      JSON.stringify({ value, cachedAt }),
+      { httpMetadata: { contentType: 'application/json' } },
+    )
   }
 
   async deleteVersion(version: string): Promise<void> {

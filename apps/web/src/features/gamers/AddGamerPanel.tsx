@@ -1,4 +1,5 @@
 import {
+  NAME_STEM_MIN_LENGTH,
   type RoomBootstrapResponse,
   isValidNameStem,
   normalizeNameStem,
@@ -90,7 +91,10 @@ export function AddGamerPanel({
         Names compare by stem: case, spaces, and punctuation are ignored.
       </p>
       {!isValidNameStem(gamerName) && gamerName.trim().length > 0 ? (
-        <InlineNotice tone="warn" message="Enter at least one letter or digit in the gamer name." />
+        <InlineNotice
+          tone="warn"
+          message={`Gamer name must contain at least ${NAME_STEM_MIN_LENGTH} letters or digits.`}
+        />
       ) : null}
       {gamerNameTakenLocally ? (
         <InlineNotice tone="warn" message="That gamer name stem already exists in this room." />

@@ -237,7 +237,10 @@ describe('room routes', () => {
         midfieldRating: 84,
         defenseRating: 82,
         avatarUrl: null,
-        logoUrl: 'https://placeholder.example/arsenal.png',
+        // The pending sentinel is the realistic state at refresh time and
+        // signals to the service that there's something to resolve (otherwise
+        // the short-circuit in `refreshLogos` returns 'noop').
+        logoUrl: 'pending:club:1',
         starRating: 4,
       },
     ])

@@ -66,6 +66,12 @@ export interface UpdateGamerRequest {
   currentPin?: string | null
   pin?: string | null
   avatarUrl?: string | null
+  /**
+   * Skip the per-gamer PIN check on the server. Set by clients where the
+   * hidden Settings panel is unlocked (room admins). The room session is
+   * still required, so this is no broader than any other room mutation.
+   */
+  bypassPin?: boolean
 }
 
 export interface GamerResponse {

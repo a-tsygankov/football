@@ -21,9 +21,14 @@ function emptyScoreboardResponse(roomId: string): Response {
 }
 
 describe('App shell', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.restoreAllMocks()
     localStorage.clear()
+    // The debug-console store reads its `everOpened` flag from localStorage
+    // at module init and would otherwise leak across tests after the first
+    // unlock. Reset it explicitly so every test starts with Settings hidden.
+    const { __resetDebugConsoleForTests } = await import('./debug/console-store.js')
+    __resetDebugConsoleForTests()
   })
 
   afterEach(() => {
@@ -194,6 +199,17 @@ describe('App shell', () => {
     expect(screen.getAllByText(/Active game night/i).length).toBeGreaterThan(0)
     expect(screen.getByText(/1 ready/i)).toBeInTheDocument()
     expect(screen.getAllByText(/Alice/i).length).toBeGreaterThan(0)
+
+    // Settings is hidden by default — it exposes destructive controls and is
+    // only meant for power-users. The triple-tap unlock on the bottom-nav
+    // logo flips a persisted flag in the debug-console store; once unlocked
+    // the Settings heading appears.
+    expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull()
+    const { useDebugConsole } = await import('./debug/console-store.js')
+    useDebugConsole.getState().toggle() // simulates the third tap
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument(),
+    )
   })
 
   it('reveals only relevant random formats for a two-gamer live pool', async () => {

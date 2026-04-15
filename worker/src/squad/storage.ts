@@ -79,6 +79,16 @@ export interface ISquadStorage {
     readonly sourceUrl: string | null
     readonly sourceEtag: string | null
   } | null>
+
+  /**
+   * Generic JSON cache used by the asset-refresh service to memoise responses
+   * from rate-limited upstream providers (TheSportsDB free tier caps bursts
+   * aggressively). The envelope carries `cachedAt` so callers can apply a TTL
+   * without storing it inside the payload. Returns `null` on miss.
+   */
+  getCachedJson<T>(key: string): Promise<{ readonly value: T; readonly cachedAt: number } | null>
+  /** Writes the JSON envelope. `cachedAt` is supplied by the caller (testable clock). */
+  putCachedJson<T>(key: string, value: T, cachedAt: number): Promise<void>
 }
 
 export function squadKeys(version: string) {
@@ -100,4 +110,27 @@ export function squadKeys(version: string) {
  */
 export function clubLogoKey(clubId: number): string {
   return `squads/logos/${clubId}`
+}
+
+/**
+ * Sentinel prefix written into `Club.logoUrl` at ingest time, before the
+ * asset-refresh service has resolved a real badge URL. The shared `Club`
+ * schema requires a non-empty string, so we can't store `null` — this
+ * sentinel doubles as "unresolved" in the asset-refresh short-circuit and
+ * is stripped client-side by `resolveAssetUrl`.
+ */
+export const PENDING_LOGO_PREFIX = 'pending:club:'
+
+/** True iff a club logo URL is the unresolved sentinel from a fresh ingest. */
+export function isPendingLogoUrl(url: string): boolean {
+  return url.startsWith(PENDING_LOGO_PREFIX)
+}
+
+/**
+ * Build the R2 key for a generic JSON cache entry. Kept under
+ * `squads/cache/` so it's easy to wipe in one `deleteVersion`-style sweep
+ * without touching version data or logo bytes.
+ */
+export function cachedJsonKey(key: string): string {
+  return `squads/cache/${key}`
 }
