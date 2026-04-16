@@ -1092,8 +1092,8 @@ function emptyResult(): SquadAssetRefreshResult {
  * to build the final `matchBreakdown` summary.
  */
 function countBySource(
-  map: ReadonlyMap<number, 'sportsdbLeague' | 'sportsdbFallback' | 'wikipedia'>,
-  source: 'sportsdbLeague' | 'sportsdbFallback' | 'wikipedia',
+  map: ReadonlyMap<number, 'eaCdn' | 'sportsdbLeague' | 'sportsdbFallback' | 'wikipedia'>,
+  source: 'eaCdn' | 'sportsdbLeague' | 'sportsdbFallback' | 'wikipedia',
 ): number {
   let count = 0
   for (const value of map.values()) {

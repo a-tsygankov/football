@@ -26,7 +26,7 @@ export async function scaleImageForAnalysis(file: File): Promise<string> {
     ctx.drawImage(bitmap, 0, 0, width, height)
     const dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY)
     // Strip the "data:image/jpeg;base64," prefix — the worker sends raw base64.
-    return dataUrl.split(',')[1]
+    return dataUrl.split(',')[1] ?? dataUrl
   } finally {
     bitmap.close()
   }
