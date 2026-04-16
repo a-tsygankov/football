@@ -16,8 +16,9 @@ port = 8787
 # - GIT_SHA (build metadata)
 [vars]
 WORKER_VERSION = "0.1.0"
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "5"
 MIN_CLIENT_VERSION = "0.1.0"
+SESSION_SECRET = "fc26-local-dev-session-secret"
 
 # Phase 1 bindings. The Worker boots without these (falls back to in-memory
 # stores in src/dependencies.ts so the scaffold stays runnable), but the
@@ -25,18 +26,22 @@ MIN_CLIENT_VERSION = "0.1.0"
 #
 # To provision:
 #   wrangler d1 create fc26                       # paste database_id below
-#   wrangler r2 bucket create fc26-squads
+#   wrangler r2 bucket create fc26
 #   pnpm exec wrangler d1 migrations apply fc26 --local
 #
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "fc26"
-# database_id = "TODO"
+[[d1_databases]]
+binding = "DB"
+database_name = "fc26"
+# Local-first placeholder. Replace with the real Cloudflare D1 UUID before
+# production deploys.
+database_id = "b0e1922f-6b23-4a37-b125-a71aee4ee8b2"
+preview_database_id = "fc26-local-phase-2"
+migrations_dir = "src/db/migrations"
+
+[[r2_buckets]]
+binding = "SQUADS"
+bucket_name = "fc26"
 #
-# [[r2_buckets]]
-# binding = "SQUADS"
-# bucket_name = "fc26-squads"
-#
-# Daily squad sync cron — wired up in Phase 1 once the squad-sync tool lands.
+# Squad sync + logo retrieval config lives in src/config/squad.ts.
 # [triggers]
 # crons = ["0 6 * * *"]

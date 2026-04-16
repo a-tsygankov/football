@@ -9,7 +9,9 @@ export interface Env {
   readonly WORKER_VERSION: string
   readonly SCHEMA_VERSION: string
   readonly MIN_CLIENT_VERSION: string
+  readonly SESSION_SECRET: string
   readonly GIT_SHA?: string
+  readonly SQUAD_SYNC_ADMIN_SECRET?: string
 
   // Added in Phase 1+
   readonly DB?: D1Database

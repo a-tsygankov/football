@@ -52,7 +52,15 @@
       "Bash(nslookup vugi-lt.home 10.0.0.1)",
       "Bash(nslookup vugi-lt.lan 10.0.0.1)",
       "Bash(curl -s --max-time 3 http://10.0.0.95:8787/api/health)",
-      "Bash(curl -s --max-time 3 -o /dev/null -w \"web HTTP %{http_code}\\\\n\" http://10.0.0.95:5173/)"
+      "Bash(curl -s --max-time 3 -o /dev/null -w \"web HTTP %{http_code}\\\\n\" http://10.0.0.95:5173/)",
+      "Bash(findstr :5173)",
+      "Bash(taskkill //F //PID 55340)",
+      "Bash(tasklist //FI \"PID eq 55340\")",
+      "Bash(wmic process:*)",
+      "Bash(powershell -Command \"Get-CimInstance Win32_Process -Filter 'ProcessId=55340' | Select-Object ProcessId,ParentProcessId,CommandLine | Format-List\")",
+      "Bash(powershell -Command \"Get-CimInstance Win32_Process -Filter 'ProcessId=27600' | Select-Object ProcessId,ParentProcessId,Name,CommandLine | Format-List\")",
+      "Bash(powershell -Command \"Stop-Process -Id 55340 -Force; Stop-Process -Id 27600 -Force\")",
+      "Bash(pnpm exec:*)"
     ]
   }
 }

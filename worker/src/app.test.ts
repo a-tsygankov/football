@@ -7,6 +7,7 @@ const env: Env = {
   WORKER_VERSION: '0.1.0-test',
   SCHEMA_VERSION: '1',
   MIN_CLIENT_VERSION: '0.1.0',
+  SESSION_SECRET: 'test-session-secret',
 }
 
 function execCtx(): ExecutionContext {

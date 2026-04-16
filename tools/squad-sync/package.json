@@ -1,0 +1,21 @@
+{
+  "name": "@fc26/squad-sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm run typecheck",
+    "test:run": "pnpm run typecheck",
+    "sync": "tsx src/main.ts",
+    "preview": "tsx src/preview-server.ts"
+  },
+  "dependencies": {
+    "@fc26/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.6",
+    "typescript": "^5.6.3"
+  }
+}

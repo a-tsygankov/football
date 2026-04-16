@@ -154,7 +154,7 @@ jobs:
         # cross-check build identity. WORKER_VERSION stays as the semver in
         # wrangler.toml so the three-axis version check (§20) has a stable
         # floor to compare MIN_CLIENT_VERSION against.
-        run: pnpm exec wrangler deploy --var GIT_SHA:${{ github.sha }}
+        run: pnpm exec wrangler deploy --var "GIT_SHA:${{ github.sha }}"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

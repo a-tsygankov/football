@@ -7,6 +7,7 @@ export interface VersionResponse {
   minClientVersion: string
   gitSha: string | null
   builtAt: string
+  latestSquadVersion: string | null
 }
 
 /**
@@ -16,14 +17,16 @@ export interface VersionResponse {
  */
 export const versionRoutes = new Hono<AppContext>()
 
-versionRoutes.get('/version', (c) => {
+versionRoutes.get('/version', async (c) => {
   const env = c.env
+  const latestSquadVersion = (await c.get('deps').squadVersions.latest())?.version ?? null
   const body: VersionResponse = {
     workerVersion: env.WORKER_VERSION,
     schemaVersion: Number.parseInt(env.SCHEMA_VERSION, 10),
     minClientVersion: env.MIN_CLIENT_VERSION,
     gitSha: env.GIT_SHA ?? null,
     builtAt: new Date().toISOString(),
+    latestSquadVersion,
   }
   c.get('logger').info('system', 'version requested', { ...body })
   return c.json(body)

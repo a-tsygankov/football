@@ -1,5 +1,12 @@
-import type { Club, FcPlayer, SquadDiff } from '@fc26/shared'
-import { type ISquadStorage, squadKeys } from './storage.js'
+import type { Club, FcPlayer, SquadDiff, SquadVersion } from '@fc26/shared'
+import { cachedJsonKey, clubLogoKey, type ISquadStorage, squadKeys } from './storage.js'
+
+interface LogoEntry {
+  readonly bytes: ArrayBuffer
+  readonly contentType: string
+  readonly sourceUrl: string | null
+  readonly sourceEtag: string | null
+}
 
 /**
  * In-memory implementation used by tests and by the dev shell when no R2
@@ -19,6 +26,21 @@ export class InMemorySquadStorage implements ISquadStorage {
 
   async setLatestVersion(version: string): Promise<void> {
     this.entries.set(squadKeys('').latestPointer, { version })
+  }
+
+  async clearLatestVersion(): Promise<void> {
+    this.entries.delete(squadKeys('').latestPointer)
+  }
+
+  async getVersionMetadata(version: string): Promise<SquadVersion | null> {
+    const value = this.entries.get(squadKeys(version).metadata) as
+      | SquadVersion
+      | undefined
+    return value ?? null
+  }
+
+  async putVersionMetadata(version: SquadVersion): Promise<void> {
+    this.entries.set(squadKeys(version.version).metadata, version)
   }
 
   async getClubs(version: string): Promise<ReadonlyArray<Club> | null> {
@@ -72,5 +94,47 @@ export class InMemorySquadStorage implements ISquadStorage {
     for (const key of [...this.entries.keys()]) {
       if (key.startsWith(prefix)) this.entries.delete(key)
     }
+  }
+
+  async putLogoBytes(
+    clubId: number,
+    bytes: ArrayBuffer | Uint8Array,
+    metadata: {
+      readonly contentType: string
+      readonly sourceUrl?: string | null
+      readonly sourceEtag?: string | null
+    },
+  ): Promise<void> {
+    const buffer =
+      bytes instanceof Uint8Array ? bytes.slice().buffer : bytes
+    this.entries.set(clubLogoKey(clubId), {
+      bytes: buffer,
+      contentType: metadata.contentType,
+      sourceUrl: metadata.sourceUrl ?? null,
+      sourceEtag: metadata.sourceEtag ?? null,
+    } satisfies LogoEntry)
+  }
+
+  async getLogoBytes(clubId: number): Promise<{
+    readonly bytes: ArrayBuffer
+    readonly contentType: string
+    readonly sourceUrl: string | null
+    readonly sourceEtag: string | null
+  } | null> {
+    const entry = this.entries.get(clubLogoKey(clubId)) as LogoEntry | undefined
+    return entry ?? null
+  }
+
+  async getCachedJson<T>(
+    key: string,
+  ): Promise<{ readonly value: T; readonly cachedAt: number } | null> {
+    const entry = this.entries.get(cachedJsonKey(key)) as
+      | { value: T; cachedAt: number }
+      | undefined
+    return entry ?? null
+  }
+
+  async putCachedJson<T>(key: string, value: T, cachedAt: number): Promise<void> {
+    this.entries.set(cachedJsonKey(key), { value, cachedAt })
   }
 }

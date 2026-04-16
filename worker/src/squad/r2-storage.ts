@@ -1,5 +1,5 @@
-import type { Club, FcPlayer, SquadDiff } from '@fc26/shared'
-import { type ISquadStorage, squadKeys } from './storage.js'
+import type { Club, FcPlayer, SquadDiff, SquadVersion } from '@fc26/shared'
+import { cachedJsonKey, clubLogoKey, type ISquadStorage, squadKeys } from './storage.js'
 
 /**
  * R2-backed `ISquadStorage`. Each method maps to one R2 operation; we keep
@@ -26,6 +26,24 @@ export class R2SquadStorage implements ISquadStorage {
     await this.bucket.put(
       squadKeys('').latestPointer,
       JSON.stringify({ version }),
+      { httpMetadata: { contentType: 'application/json' } },
+    )
+  }
+
+  async clearLatestVersion(): Promise<void> {
+    await this.bucket.delete(squadKeys('').latestPointer)
+  }
+
+  async getVersionMetadata(version: string): Promise<SquadVersion | null> {
+    const obj = await this.bucket.get(squadKeys(version).metadata)
+    if (!obj) return null
+    return (await obj.json()) as SquadVersion
+  }
+
+  async putVersionMetadata(version: SquadVersion): Promise<void> {
+    await this.bucket.put(
+      squadKeys(version.version).metadata,
+      JSON.stringify(version),
       { httpMetadata: { contentType: 'application/json' } },
     )
   }
@@ -76,6 +94,58 @@ export class R2SquadStorage implements ISquadStorage {
     await this.bucket.put(
       squadKeys(diff.toVersion).diffFrom(diff.fromVersion),
       JSON.stringify(diff),
+      { httpMetadata: { contentType: 'application/json' } },
+    )
+  }
+
+  async putLogoBytes(
+    clubId: number,
+    bytes: ArrayBuffer | Uint8Array,
+    metadata: {
+      readonly contentType: string
+      readonly sourceUrl?: string | null
+      readonly sourceEtag?: string | null
+    },
+  ): Promise<void> {
+    const customMetadata: Record<string, string> = {}
+    if (metadata.sourceUrl) customMetadata.sourceUrl = metadata.sourceUrl
+    if (metadata.sourceEtag) customMetadata.sourceEtag = metadata.sourceEtag
+    await this.bucket.put(clubLogoKey(clubId), bytes as ArrayBuffer, {
+      httpMetadata: { contentType: metadata.contentType },
+      customMetadata,
+    })
+  }
+
+  async getLogoBytes(clubId: number): Promise<{
+    readonly bytes: ArrayBuffer
+    readonly contentType: string
+    readonly sourceUrl: string | null
+    readonly sourceEtag: string | null
+  } | null> {
+    const obj = await this.bucket.get(clubLogoKey(clubId))
+    if (!obj) return null
+    const bytes = await obj.arrayBuffer()
+    return {
+      bytes,
+      contentType: obj.httpMetadata?.contentType ?? 'application/octet-stream',
+      sourceUrl: obj.customMetadata?.sourceUrl ?? null,
+      sourceEtag: obj.customMetadata?.sourceEtag ?? null,
+    }
+  }
+
+  async getCachedJson<T>(
+    key: string,
+  ): Promise<{ readonly value: T; readonly cachedAt: number } | null> {
+    const obj = await this.bucket.get(cachedJsonKey(key))
+    if (!obj) return null
+    const envelope = (await obj.json()) as { value: T; cachedAt: number }
+    return envelope
+  }
+
+  async putCachedJson<T>(key: string, value: T, cachedAt: number): Promise<void> {
+    await this.bucket.put(
+      cachedJsonKey(key),
+      JSON.stringify({ value, cachedAt }),
       { httpMetadata: { contentType: 'application/json' } },
     )
   }

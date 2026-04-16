@@ -31,8 +31,8 @@ function assertCallerInputs(
   slots: GameSize,
   locks: ReadonlySet<GamerId>,
 ): void {
-  if (slots !== 2 && slots !== 4) {
-    throw new SelectionError(`slots must be 2 or 4, got ${slots as number}`)
+  if (slots !== 2 && slots !== 3 && slots !== 4) {
+    throw new SelectionError(`slots must be 2, 3, or 4, got ${slots as number}`)
   }
   if (roster.length < slots) {
     throw new SelectionError(`roster has ${roster.length} gamers, need at least ${slots}`)

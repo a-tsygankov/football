@@ -19,6 +19,7 @@ function makeGamer(id: string, rating = 3): Gamer {
     name: id,
     rating,
     active: true,
+    avatarUrl: null,
     createdAt: 0,
     updatedAt: 0,
   }
@@ -43,7 +44,7 @@ const STRATEGIES: ReadonlyArray<IGamerSelectionStrategy> = [
   withValidator(fairPlayWeighted),
 ]
 
-const SIZES: ReadonlyArray<GameSize> = [2, 4]
+const SIZES: ReadonlyArray<GameSize> = [2, 3, 4]
 
 describe.each(STRATEGIES.map((s) => [s.id, s] as const))('strategy %s', (_id, strategy) => {
   describe.each(SIZES)('with size=%i', (slots) => {
@@ -166,7 +167,9 @@ describe('least-recently-played specifics', () => {
           type: 'game_recorded',
           schemaVersion: 1,
           gameId: 'g1' as never,
+          gameNightId: 'gn1' as never,
           roomId: ROOM,
+          format: '1v1',
           size: 2,
           occurredAt: 999_000,
           home: {

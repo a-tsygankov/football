@@ -4,6 +4,7 @@
 CREATE TABLE rooms (
   id                         TEXT PRIMARY KEY,
   name                       TEXT NOT NULL,
+  avatar_url                 TEXT,
   pin_hash                   TEXT,
   pin_salt                   TEXT,
   default_selection_strategy TEXT NOT NULL DEFAULT 'uniform-random',
@@ -17,10 +18,33 @@ CREATE TABLE gamers (
   name       TEXT NOT NULL,
   rating     INTEGER NOT NULL DEFAULT 3,
   active     INTEGER NOT NULL DEFAULT 1,
+  avatar_url TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX idx_gamers_room ON gamers(room_id, active);
+
+CREATE TABLE game_nights (
+  id           TEXT PRIMARY KEY,
+  room_id      TEXT NOT NULL REFERENCES rooms(id),
+  status       TEXT NOT NULL,
+  started_at   INTEGER NOT NULL,
+  ended_at     INTEGER,
+  last_game_at INTEGER,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX idx_game_nights_room_active ON game_nights(room_id) WHERE status = 'active';
+CREATE INDEX idx_game_nights_room_created ON game_nights(room_id, created_at DESC);
+
+CREATE TABLE game_night_active_gamers (
+  game_night_id TEXT NOT NULL REFERENCES game_nights(id),
+  gamer_id      TEXT NOT NULL REFERENCES gamers(id),
+  joined_at     INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL,
+  PRIMARY KEY (game_night_id, gamer_id)
+);
+CREATE INDEX idx_game_night_active_gamers_gamer ON game_night_active_gamers(gamer_id);
 
 -- Append-only. Repository layer enforces "no UPDATE, no DELETE" — the table
 -- does not carry a DB-level trigger for this because SQLite triggers would

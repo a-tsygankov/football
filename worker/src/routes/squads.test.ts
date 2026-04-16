@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Club, FcPlayer, SquadDiff, SquadVersion } from '@fc26/shared'
 import { buildApp } from '../app.js'
+import {
+  InMemoryPinAttemptRepository,
+} from '../auth/pin-attempt-repository.js'
 import type { Env } from '../env.js'
+import { InMemoryGamerRepository } from '../gamers/repository.js'
+import { InMemoryGameRepository } from '../games/repository.js'
+import { InMemoryGameNightRepository } from '../game-nights/repository.js'
+import { InMemoryRoomRepository } from '../rooms/repository.js'
 import { InMemorySquadStorage } from '../squad/in-memory-storage.js'
 import { InMemorySquadVersionRepository } from '../squad/version-repository.js'
 
@@ -9,6 +16,7 @@ const env: Env = {
   WORKER_VERSION: '0.1.0-test',
   SCHEMA_VERSION: '1',
   MIN_CLIENT_VERSION: '0.1.0',
+  SESSION_SECRET: 'test-session-secret',
 }
 
 function execCtx(): ExecutionContext {
@@ -30,6 +38,7 @@ const club: Club = {
   attackRating: 88,
   midfieldRating: 90,
   defenseRating: 87,
+  avatarUrl: null,
   logoUrl: 'https://r2.example/logos/1.png',
   starRating: 5,
 }
@@ -38,6 +47,7 @@ const player: FcPlayer = {
   id: 100,
   clubId: 1,
   name: 'Erling Haaland',
+  avatarUrl: null,
   position: 'ST',
   nationId: 36,
   overall: 91,
@@ -67,8 +77,21 @@ function makeVersion(version: string, ingestedAt: number): SquadVersion {
 function buildTestApp() {
   const squadStorage = new InMemorySquadStorage()
   const squadVersions = new InMemorySquadVersionRepository()
+  const rooms = new InMemoryRoomRepository()
+  const gamers = new InMemoryGamerRepository()
+  const games = new InMemoryGameRepository()
+  const gameNights = new InMemoryGameNightRepository()
+  const pinAttempts = new InMemoryPinAttemptRepository()
   const app = buildApp({
-    dependencies: () => ({ squadStorage, squadVersions }),
+    dependencies: () => ({
+      rooms,
+      gamers,
+      games,
+      gameNights,
+      pinAttempts,
+      squadStorage,
+      squadVersions,
+    }),
   })
   return { app, squadStorage, squadVersions }
 }
@@ -142,6 +165,39 @@ describe('squad routes', () => {
     expect(body.clubs).toEqual([club])
   })
 
+  it('GET /api/squads/:version/leagues derives league rows from clubs', async () => {
+    const { app, squadStorage } = buildTestApp()
+    await squadStorage.putClubs('fc26-r10', [
+      { ...club, leagueLogoUrl: 'https://r2.example/leagues/13.png' },
+      {
+        ...club,
+        id: 2,
+        name: 'Arsenal',
+        shortName: 'ARS',
+        logoUrl: 'https://r2.example/logos/2.png',
+      },
+    ])
+    const res = await app.fetch(
+      new Request('http://localhost/api/squads/fc26-r10/leagues'),
+      env,
+      execCtx(),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      version: string
+      leagues: Array<{ id: number; name: string; logoUrl: string | null; clubCount: number }>
+    }
+    expect(body.version).toBe('fc26-r10')
+    expect(body.leagues).toEqual([
+      {
+        id: 13,
+        name: 'Premier League',
+        logoUrl: 'https://r2.example/leagues/13.png',
+        clubCount: 2,
+      },
+    ])
+  })
+
   it('GET /api/squads/:version/clubs returns 404 for unknown version', async () => {
     const { app } = buildTestApp()
     const res = await app.fetch(
@@ -203,6 +259,65 @@ describe('squad routes', () => {
     const { app } = buildTestApp()
     const res = await app.fetch(
       new Request('http://localhost/api/squads/fc26-r11/diff'),
+      env,
+      execCtx(),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('GET /api/squads/logos/:clubId serves cached badge bytes when present', async () => {
+    const { app, squadStorage } = buildTestApp()
+    await squadStorage.putLogoBytes(1, new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+      contentType: 'image/png',
+      sourceUrl: 'https://cdn.example/badges/1.png',
+    })
+    const res = await app.fetch(
+      new Request('http://localhost/api/squads/logos/1'),
+      env,
+      execCtx(),
+    )
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('image/png')
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    expect(bytes).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47]))
+  })
+
+  it('GET /api/squads/logos/:clubId returns an SVG initials fallback when no bytes are cached', async () => {
+    // No squad version ingested at all — the route should still return a
+    // usable SVG using the numeric id, so callers never get a broken image.
+    const { app } = buildTestApp()
+    const res = await app.fetch(
+      new Request('http://localhost/api/squads/logos/42'),
+      env,
+      execCtx(),
+    )
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('image/svg+xml; charset=utf-8')
+    const body = await res.text()
+    expect(body.startsWith('<svg')).toBe(true)
+    expect(body).toContain('#42')
+  })
+
+  it('GET /api/squads/logos/:clubId uses club shortName for SVG initials when latest version has the club', async () => {
+    const { app, squadStorage, squadVersions } = buildTestApp()
+    await squadVersions.insert(makeVersion('fc26-r10', 1_000))
+    await squadStorage.putClubs('fc26-r10', [club])
+    const res = await app.fetch(
+      new Request('http://localhost/api/squads/logos/1'),
+      env,
+      execCtx(),
+    )
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('image/svg+xml; charset=utf-8')
+    const body = await res.text()
+    // Manchester City -> shortName 'MCI'
+    expect(body).toContain('MCI')
+  })
+
+  it('GET /api/squads/logos/:clubId rejects non-numeric club id', async () => {
+    const { app } = buildTestApp()
+    const res = await app.fetch(
+      new Request('http://localhost/api/squads/logos/not-a-number'),
       env,
       execCtx(),
     )

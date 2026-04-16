@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Club, FcPlayer, SquadDiff } from '@fc26/shared'
+import type { Club, FcPlayer, SquadDiff, SquadVersion } from '@fc26/shared'
 import { InMemorySquadStorage } from './in-memory-storage.js'
 
 const club: Club = {
@@ -13,6 +13,7 @@ const club: Club = {
   attackRating: 88,
   midfieldRating: 90,
   defenseRating: 87,
+  avatarUrl: null,
   logoUrl: 'https://r2.example/logos/1.png',
   starRating: 5,
 }
@@ -21,6 +22,7 @@ const player: FcPlayer = {
   id: 100,
   clubId: 1,
   name: 'Erling Haaland',
+  avatarUrl: null,
   position: 'ST',
   nationId: 36,
   overall: 91,
@@ -40,6 +42,24 @@ describe('InMemorySquadStorage', () => {
     expect(await store.getLatestVersion()).toBeNull()
     await store.setLatestVersion('fc26-r12')
     expect(await store.getLatestVersion()).toBe('fc26-r12')
+  })
+
+  it('round-trips version metadata manifests', async () => {
+    const store = new InMemorySquadStorage()
+    const version: SquadVersion = {
+      version: 'fc26-r12',
+      releasedAt: 1_710_000_000_000,
+      ingestedAt: 1_720_000_000_000,
+      clubsBytes: 1234,
+      clubCount: 1,
+      playerCount: 1,
+      sourceUrl: 'https://github.com/example/fc26/releases/download/r12/fc26-latest.json',
+      notes: 'github-release:example/fc26',
+    }
+
+    expect(await store.getVersionMetadata('fc26-r12')).toBeNull()
+    await store.putVersionMetadata(version)
+    expect(await store.getVersionMetadata('fc26-r12')).toEqual(version)
   })
 
   it('round-trips clubs and players per version', async () => {
