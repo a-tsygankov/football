@@ -6,6 +6,7 @@ import {
   type CreateCurrentGameRequest,
   GAME_FORMATS,
   type Gamer,
+  type AnalysePhotoResponse,
   type InterruptCurrentGameRequest,
   type RecordCurrentGameResultRequest,
   type RoomBootstrapResponse,
@@ -42,6 +43,7 @@ export function GameCreationPanel({
   onCreateGame,
   onInterruptGame,
   onRecordGameResult,
+  onAnalysePhoto,
 }: {
   bootstrap: RoomBootstrapResponse
   busy: BusyState
@@ -62,6 +64,11 @@ export function GameCreationPanel({
     gameId: string,
     request: RecordCurrentGameResultRequest,
   ) => Promise<void>
+  onAnalysePhoto: (
+    gameNightId: string,
+    gameId: string,
+    image: string,
+  ) => Promise<AnalysePhotoResponse>
 }) {
   const strategyOptions = useMemo(() => listStrategies(), [])
   const leagueOptions = useMemo(
@@ -200,6 +207,15 @@ export function GameCreationPanel({
                   request,
                 )
               : Promise.resolve()
+          }
+          onAnalysePhoto={(image) =>
+            bootstrap.activeGameNight
+              ? onAnalysePhoto(
+                  bootstrap.activeGameNight.id,
+                  bootstrap.currentGame!.id,
+                  image,
+                )
+              : Promise.reject(new Error('No active game night'))
           }
         />
       ) : (

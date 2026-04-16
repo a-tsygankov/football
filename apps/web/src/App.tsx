@@ -1,5 +1,6 @@
 import { startTransition, useCallback, useEffect, useState } from 'react'
 import {
+  type AnalysePhotoResponse,
   type CreateGamerRequest,
   type CreateCurrentGameRequest,
   type CurrentGame,
@@ -554,6 +555,31 @@ export function App() {
     }
   }
 
+  async function analysePhoto(
+    gameNightId: string,
+    gameId: string,
+    image: string,
+  ): Promise<AnalysePhotoResponse> {
+    if (!bootstrap) throw new Error('No active room')
+    setBusy('analysing-photo')
+    setError(null)
+    try {
+      return await apiJson<AnalysePhotoResponse>(
+        `/api/rooms/${bootstrap.room.id}/game-nights/${gameNightId}/games/${gameId}/analyse-photo`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ image }),
+        },
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      throw err
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function interruptGame(
     gameNightId: string,
     gameId: string,
@@ -778,6 +804,7 @@ export function App() {
             onInterruptGame={interruptGame}
             onLeaveRoom={leaveRoom}
             onRecordGameResult={recordGameResult}
+            onAnalysePhoto={analysePhoto}
             onRefresh={() => refreshRoom(bootstrap.room.id)}
             onRepairSquads={() => repairSquadData(bootstrap.room.id)}
             onResetSquadData={() => resetSquadData(bootstrap.room.id)}

@@ -125,6 +125,8 @@ export interface RecordCurrentGameResultRequest {
   homeScore?: number | null
   awayScore?: number | null
   occurredAt?: number
+  entryMethod?: 'manual' | 'ocr'
+  ocrModel?: string
 }
 
 export interface InterruptCurrentGameRequest {
@@ -184,4 +186,11 @@ export interface ResetRoomSquadsResponse {
 
 export interface RepairRoomSquadsResponse {
   result: SquadRepairResult
+}
+
+export interface AnalysePhotoResponse {
+  homeTeam: string | null
+  awayTeam: string | null
+  homeScore: number | null
+  awayScore: number | null
 }

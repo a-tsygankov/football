@@ -12,6 +12,7 @@ export interface Env {
   readonly SESSION_SECRET: string
   readonly GIT_SHA?: string
   readonly SQUAD_SYNC_ADMIN_SECRET?: string
+  readonly GEMINI_API_KEY?: string
 
   // Added in Phase 1+
   readonly DB?: D1Database

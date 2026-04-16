@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  type AnalysePhotoResponse,
   type Club,
   type CurrentGame,
   type Gamer,
@@ -24,6 +25,7 @@ export function CurrentGameCard({
   squadClubs,
   onInterruptGame,
   onRecordGameResult,
+  onAnalysePhoto,
 }: {
   busy: BusyState
   currentGame: CurrentGame
@@ -31,12 +33,16 @@ export function CurrentGameCard({
   squadClubs: ReadonlyArray<Club>
   onInterruptGame: (request: InterruptCurrentGameRequest) => Promise<void>
   onRecordGameResult: (request: RecordCurrentGameResultRequest) => Promise<void>
+  onAnalysePhoto: (image: string) => Promise<AnalysePhotoResponse>
 }) {
   const [homeScore, setHomeScore] = useState('')
   const [awayScore, setAwayScore] = useState('')
   const [interruptComment, setInterruptComment] = useState('')
   const [scorePhoto, setScorePhoto] = useState<File | null>(null)
   const [scorePhotoUrl, setScorePhotoUrl] = useState<string | null>(null)
+  const [ocrResult, setOcrResult] = useState<AnalysePhotoResponse | null>(null)
+  const [ocrError, setOcrError] = useState<string | null>(null)
+  const [ocrUsed, setOcrUsed] = useState(false)
   const trimmedHomeScore = homeScore.trim()
   const trimmedAwayScore = awayScore.trim()
   const hasScoreEntry = trimmedHomeScore.length > 0 || trimmedAwayScore.length > 0
@@ -75,6 +81,12 @@ export function CurrentGameCard({
     }
   }, [scorePhoto])
 
+  function inferResult(home: number, away: number): 'home' | 'away' | 'draw' {
+    if (home > away) return 'home'
+    if (away > home) return 'away'
+    return 'draw'
+  }
+
   async function submitResult(result: 'home' | 'away' | 'draw'): Promise<void> {
     if (!scorePairReady) return
     const nextHomeScore = trimmedHomeScore.length > 0 ? Number.parseInt(trimmedHomeScore, 10) : null
@@ -83,18 +95,63 @@ export function CurrentGameCard({
       result,
       homeScore: nextHomeScore,
       awayScore: nextAwayScore,
+      ...(ocrUsed ? { entryMethod: 'ocr' as const, ocrModel: 'gemini-2.0-flash' } : {}),
     })
     setHomeScore('')
     setAwayScore('')
     setInterruptComment('')
     setScorePhoto(null)
+    setOcrResult(null)
+    setOcrError(null)
+    setOcrUsed(false)
   }
 
   async function submitInterrupt(): Promise<void> {
     await onInterruptGame({ comment: interruptComment.trim() || null })
     setInterruptComment('')
     setScorePhoto(null)
+    setOcrResult(null)
+    setOcrError(null)
+    setOcrUsed(false)
   }
+
+  async function handleAnalysePhoto(): Promise<void> {
+    if (!scorePhoto) return
+    setOcrError(null)
+    setOcrResult(null)
+
+    try {
+      const { scaleImageForAnalysis } = await import('../../lib/image.js')
+      const base64 = await scaleImageForAnalysis(scorePhoto)
+      const result = await onAnalysePhoto(base64)
+      setOcrResult(result)
+
+      if (result.homeScore != null && result.awayScore != null) {
+        setHomeScore(String(result.homeScore))
+        setAwayScore(String(result.awayScore))
+        setOcrUsed(true)
+      }
+    } catch (err) {
+      setOcrError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  function acceptOcrResult(): void {
+    if (!ocrResult || ocrResult.homeScore == null || ocrResult.awayScore == null) return
+    const result = inferResult(ocrResult.homeScore, ocrResult.awayScore)
+    void submitResult(result)
+  }
+
+  function dismissOcrResult(): void {
+    setOcrResult(null)
+  }
+
+  const teamsMatch = ocrResult && homeClub && awayClub
+    ? fuzzyTeamMatch(ocrResult.homeTeam, homeClub.name) &&
+      fuzzyTeamMatch(ocrResult.awayTeam, awayClub.name)
+    : false
+
+  const teamsSet = homeClub != null && awayClub != null
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -173,7 +230,12 @@ export function CurrentGameCard({
               type="file"
               accept="image/*"
               capture="environment"
-              onChange={(event) => setScorePhoto(event.target.files?.[0] ?? null)}
+              onChange={(event) => {
+                setScorePhoto(event.target.files?.[0] ?? null)
+                setOcrResult(null)
+                setOcrError(null)
+                setOcrUsed(false)
+              }}
               style={inputStyle}
             />
             {scorePhotoUrl ? (
@@ -195,20 +257,85 @@ export function CurrentGameCard({
                   </span>
                   <button
                     type="button"
-                    onClick={() => setScorePhoto(null)}
+                    onClick={() => {
+                      setScorePhoto(null)
+                      setOcrResult(null)
+                      setOcrError(null)
+                      setOcrUsed(false)
+                    }}
                     style={secondaryButtonStyle}
                   >
                     Remove photo
                   </button>
                 </div>
+                {!ocrResult ? (
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => void handleAnalysePhoto()}
+                    style={{ ...primaryButtonStyle, fontSize: 14 }}
+                  >
+                    {busy === 'analysing-photo' ? 'Analysing...' : 'Analyse photo'}
+                  </button>
+                ) : null}
               </div>
             ) : (
               <span style={{ fontSize: 13, opacity: 0.72 }}>
-                Optional. Take a picture of the TV score before saving the result.
+                Optional. Take a picture of the TV score to auto-fill the result.
               </span>
             )}
           </div>
         </Field>
+        {ocrError ? (
+          <InlineNotice tone="warn" message={`Photo analysis failed: ${ocrError}`} />
+        ) : null}
+        {ocrResult ? (
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 14,
+              background: '#ecfdf5',
+              border: '1px solid #86efac',
+              display: 'grid',
+              gap: 10,
+            }}
+          >
+            <strong style={{ fontSize: 14 }}>Photo result</strong>
+            <p style={{ margin: 0, fontSize: 14 }}>
+              {ocrResult.homeTeam ?? '?'}{' '}
+              <strong>{ocrResult.homeScore ?? '?'} – {ocrResult.awayScore ?? '?'}</strong>{' '}
+              {ocrResult.awayTeam ?? '?'}
+            </p>
+            {teamsSet && !teamsMatch ? (
+              <InlineNotice
+                tone="warn"
+                message="Teams from photo don't match the active game. Please confirm or enter manually."
+              />
+            ) : null}
+            {ocrResult.homeScore != null && ocrResult.awayScore != null ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={acceptOcrResult}
+                  style={{ ...primaryButtonStyle, fontSize: 14 }}
+                >
+                  {teamsSet && teamsMatch ? 'Confirm & finish' : 'Correct, finish game'}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={dismissOcrResult}
+                  style={{ ...secondaryButtonStyle, fontSize: 14 }}
+                >
+                  No, enter manually
+                </button>
+              </div>
+            ) : (
+              <InlineNotice tone="warn" message="Could not read score from photo. Enter the result manually." />
+            )}
+          </div>
+        ) : null}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
           <button
             type="button"
@@ -270,4 +397,10 @@ export function CurrentGameCard({
       </div>
     </div>
   )
+}
+
+function fuzzyTeamMatch(ocrName: string | null, clubName: string): boolean {
+  if (!ocrName) return false
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+  return norm(ocrName) === norm(clubName) || norm(clubName).includes(norm(ocrName)) || norm(ocrName).includes(norm(clubName))
 }

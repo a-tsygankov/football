@@ -37,6 +37,7 @@ import {
   type RetrieveRoomSquadsResponse,
   type SquadRepairResult,
   ROOM_SESSION_HEADER,
+  type AnalysePhotoResponse,
   type RecordCurrentGameResultRequest,
   type Room,
   type RoomBootstrapResponse,
@@ -63,6 +64,7 @@ import {
   verifyRoomSession,
 } from '../auth/session.js'
 import { SQUAD_APP_CONFIG } from '../config/squad.js'
+import { SCORE_ANALYSIS_PROMPT, SCORE_ANALYSIS_MODEL } from '../config/prompts.js'
 import { toRoomSummary } from '../rooms/repository.js'
 import { toPublicGamer } from '../gamers/repository.js'
 import { resolveSquadAssetRefreshConfig } from '../squad/asset-config.js'
@@ -148,6 +150,8 @@ const recordCurrentGameSchema = z.object({
   homeScore: z.number().int().min(0).nullable().optional(),
   awayScore: z.number().int().min(0).nullable().optional(),
   occurredAt: z.number().int().positive().optional(),
+  entryMethod: z.enum(['manual', 'ocr']).optional(),
+  ocrModel: z.string().max(64).optional(),
 })
 
 const interruptCurrentGameSchema = z.object({
@@ -955,7 +959,8 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/result', 
     result: body.result,
     squadVersion: latestSquadVersion?.version ?? 'unknown',
     selectionStrategyId: activeGame.selectionStrategyId,
-    entryMethod: 'manual',
+    entryMethod: body.entryMethod ?? 'manual',
+    ...(body.ocrModel ? { ocrModel: body.ocrModel } : {}),
   }
   const persistedEvent = buildPersistedEvent(c, recordedEvent, roomId, occurredAt, now)
 
@@ -974,6 +979,84 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/result', 
     eventId: persistedEvent.id,
     eventType: persistedEvent.eventType,
   })
+})
+
+const analysePhotoSchema = z.object({
+  image: z.string().min(1),
+})
+
+roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/analyse-photo', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const gameNight = await requireActiveGameNight(c, roomId, GameNightId(c.req.param('gameNightId')))
+  if (!gameNight) {
+    return c.json({ error: 'active_game_night_not_found' }, 404)
+  }
+
+  const activeGame = await c.get('deps').games.getActive(gameNight.id)
+  if (!activeGame || activeGame.id !== GameId(c.req.param('gameId'))) {
+    return c.json({ error: 'active_game_not_found' }, 404)
+  }
+
+  const apiKey = (c.env as Record<string, string | undefined>).GEMINI_API_KEY
+  if (!apiKey) {
+    return c.json({ error: 'gemini_not_configured' }, 503)
+  }
+
+  const parsed = analysePhotoSchema.safeParse(await parseJson(c))
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.flatten() }, 400)
+  }
+
+  const { image } = parsed.data
+
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${SCORE_ANALYSIS_MODEL}:generateContent?key=${apiKey}`
+  const geminiBody = {
+    contents: [
+      {
+        parts: [
+          { text: SCORE_ANALYSIS_PROMPT },
+          { inline_data: { mime_type: 'image/jpeg', data: image } },
+        ],
+      },
+    ],
+    generationConfig: { temperature: 0.1 },
+  }
+
+  const geminiRes = await fetch(geminiUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(geminiBody),
+  })
+
+  if (!geminiRes.ok) {
+    const detail = await geminiRes.text().catch(() => 'unknown')
+    return c.json({ error: 'gemini_request_failed', detail }, 502)
+  }
+
+  const geminiJson = (await geminiRes.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+  }
+  const rawText = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) {
+    return c.json({ error: 'gemini_parse_failed', rawText }, 502)
+  }
+
+  try {
+    const result = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+    const response: AnalysePhotoResponse = {
+      homeTeam: typeof result.homeTeam === 'string' ? result.homeTeam : null,
+      awayTeam: typeof result.awayTeam === 'string' ? result.awayTeam : null,
+      homeScore: typeof result.homeScore === 'number' ? result.homeScore : null,
+      awayScore: typeof result.awayScore === 'number' ? result.awayScore : null,
+    }
+    return c.json(response)
+  } catch {
+    return c.json({ error: 'gemini_parse_failed', rawText }, 502)
+  }
 })
 
 roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/interrupt', async (c) => {

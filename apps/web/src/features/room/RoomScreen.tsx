@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type {
+  AnalysePhotoResponse,
   CreateCurrentGameRequest,
   Gamer,
   InterruptCurrentGameRequest,
@@ -41,6 +42,7 @@ export function RoomScreen({
   onInterruptGame,
   onLeaveRoom,
   onRecordGameResult,
+  onAnalysePhoto,
   onRefresh,
   onRepairSquads,
   onResetSquadData,
@@ -78,6 +80,11 @@ export function RoomScreen({
     gameId: string,
     request: RecordCurrentGameResultRequest,
   ) => Promise<void>
+  onAnalysePhoto: (
+    gameNightId: string,
+    gameId: string,
+    image: string,
+  ) => Promise<AnalysePhotoResponse>
   onRefresh: () => Promise<void>
   onRepairSquads: () => Promise<void>
   onResetSquadData: () => Promise<void>
@@ -189,6 +196,7 @@ export function RoomScreen({
             onCreateGame={handleCreateGame}
             onInterruptGame={onInterruptGame}
             onRecordGameResult={onRecordGameResult}
+            onAnalysePhoto={onAnalysePhoto}
           />
         </section>
       ) : null}
