@@ -60,7 +60,8 @@
       "Bash(powershell -Command \"Get-CimInstance Win32_Process -Filter 'ProcessId=55340' | Select-Object ProcessId,ParentProcessId,CommandLine | Format-List\")",
       "Bash(powershell -Command \"Get-CimInstance Win32_Process -Filter 'ProcessId=27600' | Select-Object ProcessId,ParentProcessId,Name,CommandLine | Format-List\")",
       "Bash(powershell -Command \"Stop-Process -Id 55340 -Force; Stop-Process -Id 27600 -Force\")",
-      "Bash(pnpm exec:*)"
+      "Bash(pnpm exec:*)",
+      "Bash(npx turbo:*)"
     ]
   }
 }
