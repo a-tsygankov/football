@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Background -->
+    <radialGradient id="bg" cx="38%" cy="32%" r="72%">
+      <stop offset="0%"   style="stop-color:#18191E"/>
+      <stop offset="100%" style="stop-color:#06070A"/>
+    </radialGradient>
+
+    <!-- Ball sphere: bright white lit from top-left, shade at bottom-right -->
+    <radialGradient id="ball" cx="35%" cy="28%" r="68%">
+      <stop offset="0%"   style="stop-color:#FFFFFF"/>
+      <stop offset="28%"  style="stop-color:#F6F6F4"/>
+      <stop offset="64%"  style="stop-color:#DCDCD6"/>
+      <stop offset="88%"  style="stop-color:#C4C4BC"/>
+      <stop offset="100%" style="stop-color:#A8A8A0"/>
+    </radialGradient>
+
+    <!-- Sphere limb darkening (dark rim at ball edge) -->
+    <radialGradient id="limb" cx="50%" cy="50%" r="50%">
+      <stop offset="54%"  style="stop-color:#00000000"/>
+      <stop offset="80%"  style="stop-color:#00000032"/>
+      <stop offset="100%" style="stop-color:#00000078"/>
+    </radialGradient>
+
+    <!-- Panel colour gradients (positioned in user space over each region) -->
+    <!-- Red  — left area:       ~(175, 240) -->
+    <radialGradient id="gP1" cx="175" cy="240" r="140" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   style="stop-color:#F04030"/>
+      <stop offset="50%"  style="stop-color:#CC1100"/>
+      <stop offset="100%" style="stop-color:#880000"/>
+    </radialGradient>
+    <!-- Blue — top-right area:  ~(300, 172) -->
+    <radialGradient id="gP2" cx="300" cy="172" r="155" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   style="stop-color:#4477EE"/>
+      <stop offset="50%"  style="stop-color:#1144CC"/>
+      <stop offset="100%" style="stop-color:#002299"/>
+    </radialGradient>
+    <!-- Green — bottom area:    ~(308, 335) -->
+    <radialGradient id="gP3" cx="308" cy="335" r="155" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   style="stop-color:#22CC55"/>
+      <stop offset="50%"  style="stop-color:#109933"/>
+      <stop offset="100%" style="stop-color:#006622"/>
+    </radialGradient>
+
+    <!-- Wavy contour textures per panel (rotate direction matches visual shape) -->
+    <pattern id="wP1" width="28" height="14"
+             patternUnits="userSpaceOnUse" patternTransform="rotate(28,256,236)">
+      <path d="M-14 7 Q-7 2.5 0 7 Q7 11.5 14 7 Q21 2.5 28 7 Q35 11.5 42 7"
+            stroke="#991100" stroke-width="1.5" fill="none"/>
+    </pattern>
+    <pattern id="wP2" width="28" height="14"
+             patternUnits="userSpaceOnUse" patternTransform="rotate(-6,256,236)">
+      <path d="M-14 7 Q-7 2.5 0 7 Q7 11.5 14 7 Q21 2.5 28 7 Q35 11.5 42 7"
+            stroke="#0A33AA" stroke-width="1.5" fill="none"/>
+    </pattern>
+    <pattern id="wP3" width="28" height="14"
+             patternUnits="userSpaceOnUse" patternTransform="rotate(14,256,236)">
+      <path d="M-14 7 Q-7 2.5 0 7 Q7 11.5 14 7 Q21 2.5 28 7 Q35 11.5 42 7"
+            stroke="#108833" stroke-width="1.5" fill="none"/>
+    </pattern>
+
+    <!-- Specular highlight (single light source, top-left) -->
+    <radialGradient id="spec" cx="208" cy="177" r="68" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   style="stop-color:#FFFFFF"/>
+      <stop offset="40%"  style="stop-color:#FFFFFF98"/>
+      <stop offset="100%" style="stop-color:#FFFFFF00"/>
+    </radialGradient>
+
+    <!-- Filters -->
+    <filter id="dropF"><feGaussianBlur stdDeviation="16"/></filter>
+    <filter id="seamF"><feGaussianBlur stdDeviation="0.9"/></filter>
+    <filter id="tGlow">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- Clip paths -->
+    <clipPath id="ballC"><circle cx="256" cy="236" r="163"/></clipPath>
+    <clipPath id="p1C"><path d="M 278 208 C 248 178, 204 150, 150 120 A 163 163 0 0 0 152 356 C 210 305, 250 252, 278 208 Z"/></clipPath>
+    <clipPath id="p2C"><path d="M 278 208 C 248 178, 204 150, 150 120 A 163 163 0 0 1 416 232 C 368 222, 318 212, 278 208 Z"/></clipPath>
+    <clipPath id="p3C"><path d="M 278 208 C 318 212, 368 222, 416 232 A 163 163 0 0 1 152 356 C 210 305, 250 252, 278 208 Z"/></clipPath>
+  </defs>
+
+  <!-- ── BACKGROUND ───────────────────────────────────────────────────────── -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- ── DROP SHADOW ─────────────────────────────────────────────────────── -->
+  <ellipse cx="262" cy="420" rx="132" ry="20" fill="#000000" opacity="0.72" filter="url(#dropF)"/>
+  <ellipse cx="260" cy="423" rx="82"  ry="12" fill="#000000" opacity="0.46" filter="url(#dropF)"/>
+
+  <!-- ── BALL SPHERE BASE ─────────────────────────────────────────────────── -->
+  <circle cx="256" cy="236" r="163" fill="url(#ball)"/>
+
+  <!-- ── COLOURED PANELS ──────────────────────────────────────────────────── -->
+  <g clip-path="url(#ballC)">
+    <g transform="translate(278,208) scale(1.0) translate(-278,-208)">
+      <path d="M 278 208 C 248 178, 204 150, 150 120 A 163 163 0 0 0 152 356 C 210 305, 250 252, 278 208 Z"   fill="url(#gP1)"/>
+      <path d="M 278 208 C 248 178, 204 150, 150 120 A 163 163 0 0 1 416 232 C 368 222, 318 212, 278 208 Z"  fill="url(#gP2)"/>
+      <path d="M 278 208 C 318 212, 368 222, 416 232 A 163 163 0 0 1 152 356 C 210 305, 250 252, 278 208 Z" fill="url(#gP3)"/>
+    </g>
+  </g>
+
+  <!-- ── WAVE TEXTURES on panels ─────────────────────────────────────────── -->
+  <g transform="translate(278,208) scale(1.0) translate(-278,-208)">
+    <rect x="80"  y="73"  width="220" height="310" fill="url(#wP1)" clip-path="url(#p1C)" opacity="0.40"/>
+    <rect x="93"  y="73"  width="335" height="210" fill="url(#wP2)" clip-path="url(#p2C)" opacity="0.36"/>
+    <rect x="93"  y="190" width="335" height="210" fill="url(#wP3)" clip-path="url(#p3C)" opacity="0.40"/>
+  </g>
+
+  <!-- ── SEAMS ─────────────────────────────────────────────────────────────── -->
+  <path d="M 278 208 C 248 178, 204 150, 150 120" fill="none" stroke="#000000" stroke-width="16"
+        clip-path="url(#ballC)" stroke-linecap="round"
+        filter="url(#seamF)" opacity="0.50"/>
+  <path d="M 278 208 C 318 212, 368 222, 416 232" fill="none" stroke="#000000" stroke-width="16"
+        clip-path="url(#ballC)" stroke-linecap="round"
+        filter="url(#seamF)" opacity="0.50"/>
+  <path d="M 278 208 C 250 252, 210 305, 152 356" fill="none" stroke="#000000" stroke-width="16"
+        clip-path="url(#ballC)" stroke-linecap="round"
+        filter="url(#seamF)" opacity="0.50"/>
+  <path d="M 278 208 C 248 178, 204 150, 150 120" fill="none" stroke="#FFFFFF" stroke-width="9"
+        clip-path="url(#ballC)" stroke-linecap="round"/>
+  <path d="M 278 208 C 318 212, 368 222, 416 232" fill="none" stroke="#FFFFFF" stroke-width="9"
+        clip-path="url(#ballC)" stroke-linecap="round"/>
+  <path d="M 278 208 C 250 252, 210 305, 152 356" fill="none" stroke="#FFFFFF" stroke-width="9"
+        clip-path="url(#ballC)" stroke-linecap="round"/>
+
+  <!-- ── SPHERE LIMB DARKENING ────────────────────────────────────────────── -->
+  <circle cx="256" cy="236" r="163" fill="url(#limb)"/>
+
+  <!-- ── SPECULAR HIGHLIGHTS ──────────────────────────────────────────────── -->
+  <ellipse cx="208" cy="177" rx="56" ry="42" fill="url(#spec)" transform="rotate(-22,208,177)"/>
+  <ellipse cx="198" cy="169" rx="18" ry="13" fill="#FFFFFF" opacity="0.95"
+           transform="rotate(-18,198,169)"/>
+  <ellipse cx="191" cy="163" rx="7"  ry="5"  fill="#FFFFFF" opacity="1.0"/>
+  <ellipse cx="316" cy="308" rx="42" ry="30" fill="#FFFFFF" opacity="0.05"
+           transform="rotate(14,316,308)"/>
+  <circle cx="256" cy="236" r="163" fill="none" stroke="#FFFFFF0A" stroke-width="1.5"/>
+
+  <!-- ── TYPOGRAPHY ────────────────────────────────────────────────────────── -->
+  <!-- "FC 26" — above ball -->
+  <text x="256" y="50" text-anchor="middle"
+        font-family="'Arial Black','Helvetica Neue',sans-serif"
+        font-size="44" font-weight="900" fill="#06070A"
+        letter-spacing="3" opacity="0.55" dx="2" dy="2">FC 26</text>
+  <text x="256" y="50" text-anchor="middle"
+        font-family="'Arial Black','Helvetica Neue',sans-serif"
+        font-size="44" font-weight="900" fill="#FFFFFF"
+        letter-spacing="3" filter="url(#tGlow)">FC 26</text>
+  <!-- Thin rule under FC 26 -->
+  <line x1="148" y1="60" x2="364" y2="60"
+        stroke="#888880" stroke-width="1.4" opacity="0.4"/>
+
+  <!-- "COMPANION" — straight text below the ball -->
+  <line x1="148" y1="462" x2="364" y2="462"
+        stroke="#888880" stroke-width="1" opacity="0.28"/>
+  <text x="256" y="488" text-anchor="middle"
+        font-family="'Arial','Helvetica Neue',sans-serif"
+        font-size="21" font-weight="700" fill="#CCCCCC"
+        letter-spacing="8" opacity="0.80">COMPANION</text>
+</svg>
