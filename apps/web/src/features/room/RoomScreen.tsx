@@ -191,8 +191,8 @@ export function RoomScreen({
             activeGameNightGamerIds={activeGameNightGamerIds}
             latestSquadVersion={latestSquadVersion}
             squadClubs={squadBrowser.teams.clubs}
-            squadLeagues={squadBrowser.teams.leagues}
             squadLoading={squadBrowser.teams.loading}
+            squadBrowserTeams={squadBrowser.teams}
             onCreateGame={handleCreateGame}
             onInterruptGame={onInterruptGame}
             onRecordGameResult={onRecordGameResult}

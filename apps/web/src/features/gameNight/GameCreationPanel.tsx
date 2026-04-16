@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  compareLeagueNames,
-  starRating10FromOverall,
   type Club,
   type CreateCurrentGameRequest,
   GAME_FORMATS,
@@ -10,17 +8,14 @@ import {
   type InterruptCurrentGameRequest,
   type RecordCurrentGameResultRequest,
   type RoomBootstrapResponse,
-  type SquadLeague,
   inferGameFormat,
   listStrategies,
 } from '@fc26/shared'
 import { EaTeamCard } from '../../components/EaTeamCard.jsx'
-import { Field } from '../../components/Field.jsx'
+import { EmptyTeamCard } from '../../components/EmptyTeamCard.jsx'
 import { GamerIdentity } from '../../components/GamerPanel.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
 import { Panel } from '../../components/Panel.jsx'
-import { RatingSelector } from '../../components/RatingSelector.jsx'
-import { useLinkedPair } from '../../hooks/useLinkedPair.js'
 import {
   compactButtonStyle,
   inputStyle,
@@ -28,8 +23,70 @@ import {
   secondaryButtonStyle,
 } from '../../styles/controls.js'
 import type { BusyState } from '../../types/busyState.js'
+import type { SquadBrowserState } from '../squads/useSquadBrowser.js'
 import { buildManualAssignments } from '../../utils/roster.js'
 import { CurrentGameCard } from './CurrentGameCard.jsx'
+import { InlineTeamPicker } from './InlineTeamPicker.jsx'
+import { Field } from '../../components/Field.jsx'
+
+// ---------------------------------------------------------------------------
+// localStorage helpers for last-used club persistence
+// ---------------------------------------------------------------------------
+
+function lastClubKey(roomId: string, side: 'home' | 'away'): string {
+  return `fc26:room:${roomId}:last-${side}-club-id`
+}
+
+function teamBrowserStateKey(roomId: string): string {
+  return `fc26:room:${roomId}:team-browser-state`
+}
+
+function loadLastClubId(roomId: string, side: 'home' | 'away'): number | null {
+  try {
+    const raw = localStorage.getItem(lastClubKey(roomId, side))
+    if (raw === null) return null
+    const parsed = Number.parseInt(raw, 10)
+    return Number.isFinite(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function saveLastClubId(roomId: string, side: 'home' | 'away', clubId: number): void {
+  try {
+    localStorage.setItem(lastClubKey(roomId, side), String(clubId))
+  } catch {
+    // Silently ignore quota / security errors.
+  }
+}
+
+interface PersistedBrowserState {
+  gender: 'men' | 'women'
+  countryNationId: number | null
+  leagueId: number | null
+}
+
+function loadBrowserState(roomId: string): PersistedBrowserState | null {
+  try {
+    const raw = localStorage.getItem(teamBrowserStateKey(roomId))
+    if (!raw) return null
+    return JSON.parse(raw) as PersistedBrowserState
+  } catch {
+    return null
+  }
+}
+
+function saveBrowserState(roomId: string, state: PersistedBrowserState): void {
+  try {
+    localStorage.setItem(teamBrowserStateKey(roomId), JSON.stringify(state))
+  } catch {
+    // Silently ignore quota / security errors.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GameCreationPanel
+// ---------------------------------------------------------------------------
 
 export function GameCreationPanel({
   bootstrap,
@@ -38,8 +95,8 @@ export function GameCreationPanel({
   activeGameNightGamerIds,
   latestSquadVersion,
   squadClubs,
-  squadLeagues,
   squadLoading,
+  squadBrowserTeams,
   onCreateGame,
   onInterruptGame,
   onRecordGameResult,
@@ -51,8 +108,8 @@ export function GameCreationPanel({
   activeGameNightGamerIds: ReadonlySet<string>
   latestSquadVersion: string | null
   squadClubs: ReadonlyArray<Club>
-  squadLeagues: ReadonlyArray<SquadLeague>
   squadLoading: boolean
+  squadBrowserTeams: SquadBrowserState['teams']
   onCreateGame: (gameNightId: string, request: CreateCurrentGameRequest) => Promise<void>
   onInterruptGame: (
     gameNightId: string,
@@ -71,42 +128,37 @@ export function GameCreationPanel({
   ) => Promise<AnalysePhotoResponse>
 }) {
   const strategyOptions = useMemo(() => listStrategies(), [])
-  const leagueOptions = useMemo(
-    () => [...squadLeagues].sort((left, right) => compareLeagueNames(left.name, right.name)),
-    [squadLeagues],
-  )
   const [allocationMode, setAllocationMode] = useState<'manual' | 'random'>('manual')
   const [randomFormat, setRandomFormat] = useState<keyof typeof GAME_FORMATS>('2v2')
   const [randomStrategyId, setRandomStrategyId] = useState(bootstrap.room.defaultSelectionStrategy)
   const [manualAssignments, setManualAssignments] = useState<
     Record<string, 'home' | 'away' | 'bench'>
   >({})
-  const [teamAssignmentMode, setTeamAssignmentMode] = useState<'none' | 'manual' | 'random'>('none')
-  // Home/away collection, league filter, and random-rating controls start
-  // linked. The link breaks the moment the user independently touches the
-  // second control of a pair — see `useLinkedPair` for the full semantics.
-  const {
-    home: homeTeamCollection,
-    away: awayTeamCollection,
-    setHome: setHomeTeamCollection,
-    setAway: setAwayTeamCollection,
-  } = useLinkedPair<'league' | 'international'>('league')
-  const {
-    home: homeLeagueId,
-    away: awayLeagueId,
-    setHome: setHomeLeagueId,
-    setAway: setAwayLeagueId,
-  } = useLinkedPair<number | 'all'>('all')
+  const [teamAssignmentMode, setTeamAssignmentMode] = useState<'none' | 'pick'>('none')
   const [manualHomeClubId, setManualHomeClubId] = useState<number | null>(null)
   const [manualAwayClubId, setManualAwayClubId] = useState<number | null>(null)
-  const [randomTeamCollection, setRandomTeamCollection] = useState<'all' | 'league' | 'international'>('all')
-  const [randomLeagueId, setRandomLeagueId] = useState<number | 'all'>('all')
-  const {
-    home: homeRandomTeamRating,
-    away: awayRandomTeamRating,
-    setHome: setHomeRandomTeamRating,
-    setAway: setAwayRandomTeamRating,
-  } = useLinkedPair<number>(8)
+  const [pickingSide, setPickingSide] = useState<'home' | 'away' | null>(null)
+
+  const roomId = bootstrap.room.id
+
+  // Load last-used club IDs and browser state from localStorage on mount.
+  useEffect(() => {
+    const savedHome = loadLastClubId(roomId, 'home')
+    const savedAway = loadLastClubId(roomId, 'away')
+    if (savedHome !== null) setManualHomeClubId(savedHome)
+    if (savedAway !== null) setManualAwayClubId(savedAway)
+
+    const savedBrowser = loadBrowserState(roomId)
+    if (savedBrowser) {
+      squadBrowserTeams.setGender(savedBrowser.gender)
+      squadBrowserTeams.setCountryNationId(savedBrowser.countryNationId)
+      if (savedBrowser.leagueId !== null) {
+        squadBrowserTeams.setSelectedLeagueId(savedBrowser.leagueId)
+      }
+    }
+    // Only run on mount — roomId won't change within a session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId])
 
   useEffect(() => {
     setRandomStrategyId(bootstrap.room.defaultSelectionStrategy)
@@ -118,30 +170,6 @@ export function GameCreationPanel({
 
   const availableRandomFormats = Object.values(GAME_FORMATS).filter(
     (format) => format.size <= activeGameNightGamers.length,
-  )
-  const internationalClubs = useMemo(
-    () => squadClubs.filter((club) => isInternationalClub(club)),
-    [squadClubs],
-  )
-  const homeManualClubOptions = useMemo(
-    () => filterTeamOptions(squadClubs, internationalClubs, homeTeamCollection, homeLeagueId),
-    [homeLeagueId, homeTeamCollection, internationalClubs, squadClubs],
-  )
-  const awayManualClubOptions = useMemo(
-    () => filterTeamOptions(squadClubs, internationalClubs, awayTeamCollection, awayLeagueId),
-    [awayLeagueId, awayTeamCollection, internationalClubs, squadClubs],
-  )
-  const randomClubPool = useMemo(
-    () => filterRandomClubPool(squadClubs, internationalClubs, randomTeamCollection, randomLeagueId),
-    [internationalClubs, randomLeagueId, randomTeamCollection, squadClubs],
-  )
-  const homeRandomClubChoices = useMemo(
-    () => randomClubPool.filter((club) => starRating10FromOverall(club.overallRating) === homeRandomTeamRating),
-    [homeRandomTeamRating, randomClubPool],
-  )
-  const awayRandomClubChoices = useMemo(
-    () => randomClubPool.filter((club) => starRating10FromOverall(club.overallRating) === awayRandomTeamRating),
-    [awayRandomTeamRating, randomClubPool],
   )
 
   useEffect(() => {
@@ -156,14 +184,32 @@ export function GameCreationPanel({
     .filter(([gamerId, side]) => side === 'away' && activeGameNightGamerIds.has(gamerId))
     .map(([gamerId]) => gamerId)
   const manualFormat = inferGameFormat(manualHomeIds.length, manualAwayIds.length)
+
   const canCreateManualGame =
     !bootstrap.currentGame &&
     manualFormat !== null &&
-    canResolveManualTeams(teamAssignmentMode, manualHomeClubId, manualAwayClubId)
+    (teamAssignmentMode !== 'pick' || (manualHomeClubId !== null && manualAwayClubId !== null))
+
   const canCreateRandomGame =
-    !bootstrap.currentGame &&
-    availableRandomFormats.length > 0 &&
-    canResolveRandomTeams(teamAssignmentMode, homeRandomClubChoices, awayRandomClubChoices)
+    !bootstrap.currentGame && availableRandomFormats.length > 0
+
+  // Resolve Club objects for displaying selected team cards.
+  const homeClub = useMemo(
+    () => (manualHomeClubId !== null ? squadClubs.find((c) => c.id === manualHomeClubId) ?? null : null),
+    [manualHomeClubId, squadClubs],
+  )
+  const awayClub = useMemo(
+    () => (manualAwayClubId !== null ? squadClubs.find((c) => c.id === manualAwayClubId) ?? null : null),
+    [manualAwayClubId, squadClubs],
+  )
+
+  // Gamer names by side for the inline picker title.
+  const homeGamerNames = manualHomeIds
+    .map((id) => activeGameNightGamers.find((g) => g.id === id)?.name)
+    .filter((n): n is string => n !== undefined)
+  const awayGamerNames = manualAwayIds
+    .map((id) => activeGameNightGamers.find((g) => g.id === id)?.name)
+    .filter((n): n is string => n !== undefined)
 
   function setManualAssignment(gamerId: string, next: 'home' | 'away' | 'bench'): void {
     setManualAssignments((current) => ({
@@ -172,8 +218,22 @@ export function GameCreationPanel({
     }))
   }
 
-  const randomHomeClub = pickRandomAssignmentClub(homeRandomClubChoices)
-  const randomAwayClub = pickRandomAssignmentClub(awayRandomClubChoices, randomHomeClub?.id ?? null)
+  function handleSelectClub(club: Club): void {
+    if (pickingSide === 'home') {
+      setManualHomeClubId(club.id)
+      saveLastClubId(roomId, 'home', club.id)
+    } else if (pickingSide === 'away') {
+      setManualAwayClubId(club.id)
+      saveLastClubId(roomId, 'away', club.id)
+    }
+    // Persist browser state so the next pick (other side) keeps the same filters.
+    saveBrowserState(roomId, {
+      gender: squadBrowserTeams.gender,
+      countryNationId: squadBrowserTeams.countryNationId,
+      leagueId: squadBrowserTeams.selectedLeagueId,
+    })
+    setPickingSide(null)
+  }
 
   return (
     <Panel
@@ -246,36 +306,23 @@ export function GameCreationPanel({
             </button>
           </div>
 
-          <OptionalTeamAssignmentSection
+          <TeamAssignmentSection
             latestSquadVersion={latestSquadVersion}
             squadLoading={squadLoading}
             teamAssignmentMode={teamAssignmentMode}
-            onChangeTeamAssignmentMode={setTeamAssignmentMode}
-            leagueOptions={leagueOptions}
-            homeTeamCollection={homeTeamCollection}
-            awayTeamCollection={awayTeamCollection}
-            onChangeHomeTeamCollection={setHomeTeamCollection}
-            onChangeAwayTeamCollection={setAwayTeamCollection}
-            homeLeagueId={homeLeagueId}
-            awayLeagueId={awayLeagueId}
-            onChangeHomeLeagueId={setHomeLeagueId}
-            onChangeAwayLeagueId={setAwayLeagueId}
-            manualHomeClubId={manualHomeClubId}
-            manualAwayClubId={manualAwayClubId}
-            onChangeManualHomeClubId={setManualHomeClubId}
-            onChangeManualAwayClubId={setManualAwayClubId}
-            homeManualClubOptions={homeManualClubOptions}
-            awayManualClubOptions={awayManualClubOptions}
-            randomTeamCollection={randomTeamCollection}
-            onChangeRandomTeamCollection={setRandomTeamCollection}
-            randomLeagueId={randomLeagueId}
-            onChangeRandomLeagueId={setRandomLeagueId}
-            homeRandomTeamRating={homeRandomTeamRating}
-            awayRandomTeamRating={awayRandomTeamRating}
-            onChangeHomeRandomTeamRating={setHomeRandomTeamRating}
-            onChangeAwayRandomTeamRating={setAwayRandomTeamRating}
-            homeRandomClubChoices={homeRandomClubChoices}
-            awayRandomClubChoices={awayRandomClubChoices}
+            onChangeTeamAssignmentMode={(mode) => {
+              setTeamAssignmentMode(mode)
+              setPickingSide(null)
+            }}
+            homeClub={homeClub}
+            awayClub={awayClub}
+            pickingSide={pickingSide}
+            onClickCard={(side) => setPickingSide(side)}
+            homeGamerNames={homeGamerNames}
+            awayGamerNames={awayGamerNames}
+            squadBrowserTeams={squadBrowserTeams}
+            onSelectClub={handleSelectClub}
+            onCancelPicker={() => setPickingSide(null)}
           />
 
           {allocationMode === 'manual' ? (
@@ -380,8 +427,8 @@ export function GameCreationPanel({
                           allocationMode: 'manual',
                           homeGamerIds: manualHomeIds,
                           awayGamerIds: manualAwayIds,
-                          homeClubId: teamAssignmentMode === 'manual' ? manualHomeClubId : null,
-                          awayClubId: teamAssignmentMode === 'manual' ? manualAwayClubId : null,
+                          homeClubId: teamAssignmentMode === 'pick' ? manualHomeClubId : null,
+                          awayClubId: teamAssignmentMode === 'pick' ? manualAwayClubId : null,
                         })
                       : undefined
                   }
@@ -440,8 +487,8 @@ export function GameCreationPanel({
                         allocationMode: 'random',
                         format: randomFormat,
                         selectionStrategyId: randomStrategyId,
-                        homeClubId: teamAssignmentMode === 'random' ? randomHomeClub?.id ?? null : null,
-                        awayClubId: teamAssignmentMode === 'random' ? randomAwayClub?.id ?? null : null,
+                        homeClubId: teamAssignmentMode === 'pick' ? manualHomeClubId : null,
+                        awayClubId: teamAssignmentMode === 'pick' ? manualAwayClubId : null,
                       })
                     : undefined
                 }
@@ -457,66 +504,38 @@ export function GameCreationPanel({
   )
 }
 
-function OptionalTeamAssignmentSection({
+// ---------------------------------------------------------------------------
+// TeamAssignmentSection — replaces the old OptionalTeamAssignmentSection
+// ---------------------------------------------------------------------------
+
+function TeamAssignmentSection({
   latestSquadVersion,
   squadLoading,
   teamAssignmentMode,
   onChangeTeamAssignmentMode,
-  leagueOptions,
-  homeTeamCollection,
-  awayTeamCollection,
-  onChangeHomeTeamCollection,
-  onChangeAwayTeamCollection,
-  homeLeagueId,
-  awayLeagueId,
-  onChangeHomeLeagueId,
-  onChangeAwayLeagueId,
-  manualHomeClubId,
-  manualAwayClubId,
-  onChangeManualHomeClubId,
-  onChangeManualAwayClubId,
-  homeManualClubOptions,
-  awayManualClubOptions,
-  randomTeamCollection,
-  onChangeRandomTeamCollection,
-  randomLeagueId,
-  onChangeRandomLeagueId,
-  homeRandomTeamRating,
-  awayRandomTeamRating,
-  onChangeHomeRandomTeamRating,
-  onChangeAwayRandomTeamRating,
-  homeRandomClubChoices,
-  awayRandomClubChoices,
+  homeClub,
+  awayClub,
+  pickingSide,
+  onClickCard,
+  homeGamerNames,
+  awayGamerNames,
+  squadBrowserTeams,
+  onSelectClub,
+  onCancelPicker,
 }: {
   latestSquadVersion: string | null
   squadLoading: boolean
-  teamAssignmentMode: 'none' | 'manual' | 'random'
-  onChangeTeamAssignmentMode: (value: 'none' | 'manual' | 'random') => void
-  leagueOptions: ReadonlyArray<SquadLeague>
-  homeTeamCollection: 'league' | 'international'
-  awayTeamCollection: 'league' | 'international'
-  onChangeHomeTeamCollection: (value: 'league' | 'international') => void
-  onChangeAwayTeamCollection: (value: 'league' | 'international') => void
-  homeLeagueId: number | 'all'
-  awayLeagueId: number | 'all'
-  onChangeHomeLeagueId: (value: number | 'all') => void
-  onChangeAwayLeagueId: (value: number | 'all') => void
-  manualHomeClubId: number | null
-  manualAwayClubId: number | null
-  onChangeManualHomeClubId: (value: number | null) => void
-  onChangeManualAwayClubId: (value: number | null) => void
-  homeManualClubOptions: ReadonlyArray<Club>
-  awayManualClubOptions: ReadonlyArray<Club>
-  randomTeamCollection: 'all' | 'league' | 'international'
-  onChangeRandomTeamCollection: (value: 'all' | 'league' | 'international') => void
-  randomLeagueId: number | 'all'
-  onChangeRandomLeagueId: (value: number | 'all') => void
-  homeRandomTeamRating: number
-  awayRandomTeamRating: number
-  onChangeHomeRandomTeamRating: (value: number) => void
-  onChangeAwayRandomTeamRating: (value: number) => void
-  homeRandomClubChoices: ReadonlyArray<Club>
-  awayRandomClubChoices: ReadonlyArray<Club>
+  teamAssignmentMode: 'none' | 'pick'
+  onChangeTeamAssignmentMode: (value: 'none' | 'pick') => void
+  homeClub: Club | null
+  awayClub: Club | null
+  pickingSide: 'home' | 'away' | null
+  onClickCard: (side: 'home' | 'away') => void
+  homeGamerNames: string[]
+  awayGamerNames: string[]
+  squadBrowserTeams: SquadBrowserState['teams']
+  onSelectClub: (club: Club) => void
+  onCancelPicker: () => void
 }) {
   return (
     <div
@@ -537,251 +556,97 @@ function OptionalTeamAssignmentSection({
         </span>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" onClick={() => onChangeTeamAssignmentMode('none')} style={teamAssignmentMode === 'none' ? primaryButtonStyle : compactButtonStyle}>No FC teams</button>
-        <button type="button" onClick={() => onChangeTeamAssignmentMode('manual')} style={teamAssignmentMode === 'manual' ? primaryButtonStyle : compactButtonStyle}>Pick FC teams</button>
-        <button type="button" onClick={() => onChangeTeamAssignmentMode('random')} style={teamAssignmentMode === 'random' ? primaryButtonStyle : compactButtonStyle}>FC teams by stars</button>
+        <button
+          type="button"
+          onClick={() => onChangeTeamAssignmentMode('none')}
+          style={teamAssignmentMode === 'none' ? primaryButtonStyle : compactButtonStyle}
+        >
+          No FC teams
+        </button>
+        <button
+          type="button"
+          onClick={() => onChangeTeamAssignmentMode('pick')}
+          style={teamAssignmentMode === 'pick' ? primaryButtonStyle : compactButtonStyle}
+        >
+          Pick FC teams
+        </button>
       </div>
+
       {!latestSquadVersion ? (
         <InlineNotice tone="warn" message="Retrieve squad data in Settings before assigning FC teams." />
       ) : squadLoading ? (
         <InlineNotice tone="info" message="Loading FC teams..." />
-      ) : teamAssignmentMode === 'manual' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 12 }}>
-          <ManualTeamPicker
-            title="Home FC team"
-            collection={homeTeamCollection}
-            onChangeCollection={onChangeHomeTeamCollection}
-            leagueId={homeLeagueId}
-            onChangeLeagueId={onChangeHomeLeagueId}
-            selectedClubId={manualHomeClubId}
-            onChangeClubId={onChangeManualHomeClubId}
-            leagueOptions={leagueOptions}
-            clubs={homeManualClubOptions}
-          />
-          <ManualTeamPicker
-            title="Away FC team"
-            collection={awayTeamCollection}
-            onChangeCollection={onChangeAwayTeamCollection}
-            leagueId={awayLeagueId}
-            onChangeLeagueId={onChangeAwayLeagueId}
-            selectedClubId={manualAwayClubId}
-            onChangeClubId={onChangeManualAwayClubId}
-            leagueOptions={leagueOptions}
-            clubs={awayManualClubOptions}
-          />
-        </div>
-      ) : teamAssignmentMode === 'random' ? (
+      ) : teamAssignmentMode === 'pick' ? (
         <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" onClick={() => onChangeRandomTeamCollection('all')} style={randomTeamCollection === 'all' ? primaryButtonStyle : compactButtonStyle}>Any team</button>
-            <button type="button" onClick={() => onChangeRandomTeamCollection('league')} style={randomTeamCollection === 'league' ? primaryButtonStyle : compactButtonStyle}>Within league</button>
-            <button type="button" onClick={() => onChangeRandomTeamCollection('international')} style={randomTeamCollection === 'international' ? primaryButtonStyle : compactButtonStyle}>International</button>
-          </div>
-          {randomTeamCollection === 'league' ? (
-            <Field label="League filter">
-              <select
-                value={String(randomLeagueId)}
-                onChange={(event) => onChangeRandomLeagueId(event.target.value === 'all' ? 'all' : Number.parseInt(event.target.value, 10))}
-                style={inputStyle}
-              >
-                <option value="all">All leagues</option>
-                {leagueOptions.map((league) => (
-                  <option key={league.id} value={league.id}>{league.name}</option>
-                ))}
-              </select>
-            </Field>
-          ) : null}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: 12 }}>
-            <div style={{ display: 'grid', gap: 10 }}>
-              <RatingSelector label="Home team stars" value={homeRandomTeamRating} onChange={onChangeHomeRandomTeamRating} />
-              <ClubMatchPreview clubs={homeRandomClubChoices} emptyMessage="No home-team matches for this star rating." />
-            </div>
-            <div style={{ display: 'grid', gap: 10 }}>
-              <RatingSelector label="Away team stars" value={awayRandomTeamRating} onChange={onChangeAwayRandomTeamRating} />
-              <ClubMatchPreview clubs={awayRandomClubChoices} emptyMessage="No away-team matches for this star rating." />
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function ManualTeamPicker({
-  title,
-  collection,
-  onChangeCollection,
-  leagueId,
-  onChangeLeagueId,
-  selectedClubId,
-  onChangeClubId,
-  leagueOptions,
-  clubs,
-}: {
-  title: string
-  collection: 'league' | 'international'
-  onChangeCollection: (value: 'league' | 'international') => void
-  leagueId: number | 'all'
-  onChangeLeagueId: (value: number | 'all') => void
-  selectedClubId: number | null
-  onChangeClubId: (value: number | null) => void
-  leagueOptions: ReadonlyArray<SquadLeague>
-  clubs: ReadonlyArray<Club>
-}) {
-  return (
-    <div style={{ display: 'grid', gap: 10 }}>
-      <strong style={{ fontSize: 14 }}>{title}</strong>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" onClick={() => onChangeCollection('league')} style={collection === 'league' ? primaryButtonStyle : compactButtonStyle}>League</button>
-        <button type="button" onClick={() => onChangeCollection('international')} style={collection === 'international' ? primaryButtonStyle : compactButtonStyle}>International</button>
-      </div>
-      {collection === 'league' ? (
-        <Field label="League">
-          <select
-            value={String(leagueId)}
-            onChange={(event) => onChangeLeagueId(event.target.value === 'all' ? 'all' : Number.parseInt(event.target.value, 10))}
-            style={inputStyle}
-          >
-            <option value="all">All leagues</option>
-            {leagueOptions.map((league) => (
-              <option key={league.id} value={league.id}>{league.name}</option>
-            ))}
-          </select>
-        </Field>
-      ) : null}
-      <ClubGrid clubs={clubs} selectedClubId={selectedClubId} onChangeClubId={onChangeClubId} />
-    </div>
-  )
-}
-
-function ClubGrid({
-  clubs,
-  selectedClubId,
-  onChangeClubId,
-}: {
-  clubs: ReadonlyArray<Club>
-  selectedClubId: number | null
-  onChangeClubId: (value: number | null) => void
-}) {
-  if (clubs.length === 0) {
-    return <InlineNotice tone="info" message="No FC teams match this filter." />
-  }
-
-  // 2-column EA-styled grid — matches the Teams panel picker so users see the
-  // same card whether they're browsing or assigning a team to a matchup.
-  return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-        gap: 10,
-      }}
-    >
-      {clubs.map((club) => (
-        <EaTeamCard
-          key={club.id}
-          club={club}
-          size="compact"
-          selected={selectedClubId === club.id}
-          onSelect={() => onChangeClubId(club.id)}
-        />
-      ))}
-    </div>
-  )
-}
-
-function ClubMatchPreview({
-  clubs,
-  emptyMessage,
-}: {
-  clubs: ReadonlyArray<Club>
-  emptyMessage: string
-}) {
-  if (clubs.length === 0) {
-    return <InlineNotice tone="warn" message={emptyMessage} />
-  }
-  return (
-    <div style={{ display: 'grid', gap: 8 }}>
-      <span style={{ fontSize: 13, opacity: 0.72 }}>
-        Matching teams: {clubs.length}
-      </span>
-      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-        {clubs.slice(0, 8).map((club) => (
+          {/* Two-column side-by-side team cards */}
           <div
-            key={club.id}
             style={{
-              minWidth: 140,
-              borderRadius: 14,
-              padding: 10,
-              background: '#f8fafc',
-              border: '1px solid #d1fae5',
-              color: '#052e16',
               display: 'grid',
-              gap: 4,
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gap: 12,
             }}
           >
-            <strong style={{ fontSize: 13, lineHeight: 1.15 }}>{club.name}</strong>
-            <span style={{ fontSize: 12, opacity: 0.7 }}>{club.leagueName}</span>
+            {/* Home card */}
+            <div style={{ display: 'grid', gap: 6 }}>
+              <strong
+                style={{
+                  fontSize: 14,
+                  fontFamily: 'Georgia, serif',
+                  color: '#166534',
+                  textAlign: 'center',
+                }}
+              >
+                Home
+              </strong>
+              {homeClub ? (
+                <EaTeamCard
+                  club={homeClub}
+                  size="medium"
+                  selected={pickingSide === 'home'}
+                  onSelect={() => onClickCard('home')}
+                />
+              ) : (
+                <EmptyTeamCard onClick={() => onClickCard('home')} />
+              )}
+            </div>
+
+            {/* Away card */}
+            <div style={{ display: 'grid', gap: 6 }}>
+              <strong
+                style={{
+                  fontSize: 14,
+                  fontFamily: 'Georgia, serif',
+                  color: '#166534',
+                  textAlign: 'center',
+                }}
+              >
+                Away
+              </strong>
+              {awayClub ? (
+                <EaTeamCard
+                  club={awayClub}
+                  size="medium"
+                  selected={pickingSide === 'away'}
+                  onSelect={() => onClickCard('away')}
+                />
+              ) : (
+                <EmptyTeamCard onClick={() => onClickCard('away')} />
+              )}
+            </div>
           </div>
-        ))}
-      </div>
+
+          {/* Inline team picker shown below the cards */}
+          {pickingSide !== null ? (
+            <InlineTeamPicker
+              side={pickingSide}
+              gamerNames={pickingSide === 'home' ? homeGamerNames : awayGamerNames}
+              squadBrowserTeams={squadBrowserTeams}
+              onSelect={onSelectClub}
+              onCancel={onCancelPicker}
+            />
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
-}
-
-function isInternationalClub(club: Club): boolean {
-  return /international|national/i.test(club.leagueName)
-}
-
-function filterTeamOptions(
-  clubs: ReadonlyArray<Club>,
-  internationalClubs: ReadonlyArray<Club>,
-  collection: 'league' | 'international',
-  leagueId: number | 'all',
-): ReadonlyArray<Club> {
-  if (collection === 'international') return internationalClubs
-  return clubs.filter((club) => (leagueId === 'all' ? !isInternationalClub(club) : club.leagueId === leagueId))
-}
-
-function filterRandomClubPool(
-  clubs: ReadonlyArray<Club>,
-  internationalClubs: ReadonlyArray<Club>,
-  collection: 'all' | 'league' | 'international',
-  leagueId: number | 'all',
-): ReadonlyArray<Club> {
-  if (collection === 'international') return internationalClubs
-  if (collection === 'league') {
-    return clubs.filter((club) => (leagueId === 'all' ? !isInternationalClub(club) : club.leagueId === leagueId))
-  }
-  return clubs
-}
-
-function canResolveManualTeams(
-  teamAssignmentMode: 'none' | 'manual' | 'random',
-  homeClubId: number | null,
-  awayClubId: number | null,
-): boolean {
-  if (teamAssignmentMode !== 'manual') return true
-  return homeClubId !== null && awayClubId !== null
-}
-
-function canResolveRandomTeams(
-  teamAssignmentMode: 'none' | 'manual' | 'random',
-  homeChoices: ReadonlyArray<Club>,
-  awayChoices: ReadonlyArray<Club>,
-): boolean {
-  if (teamAssignmentMode !== 'random') return true
-  return homeChoices.length > 0 && awayChoices.length > 0
-}
-
-function pickRandomAssignmentClub(
-  clubs: ReadonlyArray<Club>,
-  blockedClubId: number | null = null,
-): Club | null {
-  const preferred =
-    blockedClubId === null
-      ? clubs[0]
-      : clubs.find((club) => club.id !== blockedClubId)
-
-  return preferred ?? clubs[0] ?? null
 }
