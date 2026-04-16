@@ -23,16 +23,6 @@ interface DebugConsoleState {
   close: () => void
 }
 
-function readEverOpened(): boolean {
-  if (typeof window === 'undefined') return false
-  try {
-    return window.localStorage.getItem(STORAGE_KEY) === '1'
-  } catch {
-    // Private mode / disabled storage — fail closed (settings stay hidden).
-    return false
-  }
-}
-
 function writeEverOpened(): void {
   if (typeof window === 'undefined') return
   try {
@@ -44,7 +34,9 @@ function writeEverOpened(): void {
 
 export const useDebugConsole = create<DebugConsoleState>((set) => ({
   open: false,
-  everOpened: readEverOpened(),
+  // Start hidden every session — Settings only reveals after the user
+  // triple-taps the logo in *this* page load.
+  everOpened: false,
   toggle: () =>
     set((s) => {
       const nextOpen = !s.open

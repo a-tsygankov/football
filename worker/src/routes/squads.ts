@@ -3,7 +3,8 @@ import {
   compareLeagueNames,
   getLeagueCountryName,
   getLeagueNationId,
-  isWomensLeague,
+  isNonCompetitiveLeagueName,
+  isWomensLeague as isWomensLeagueById,
   type SquadLeague,
 } from '@fc26/shared'
 import type { AppContext } from '../app.js'
@@ -247,15 +248,25 @@ function deriveLeagues(clubs: ReadonlyArray<{
       })
       continue
     }
-    const nationId = getLeagueNationId(club.leagueId) ?? undefined
+    let nationId = getLeagueNationId(club.leagueId) ?? undefined
+    let gender: 'men' | 'women' = isWomensLeagueById(club.leagueId) ? 'women' : 'men'
+    let countryName = getLeagueCountryName(club.leagueId)
+    // Non-competitive / specialty leagues (Classics, Legends, Historic, Icons)
+    // are not in the EA CDN league map. Force them into Men's Rest of World
+    // so they show up under a sensible filter in the UI.
+    if (nationId === undefined && isNonCompetitiveLeagueName(club.leagueName)) {
+      nationId = 225 // Rest of World
+      gender = 'men'
+      countryName = 'Rest of World'
+    }
     grouped.set(club.leagueId, {
       id: club.leagueId,
       name: club.leagueName,
       logoUrl: club.leagueLogoUrl ?? null,
       clubCount: 1,
       nationId,
-      gender: isWomensLeague(club.leagueId) ? 'women' : 'men',
-      countryName: getLeagueCountryName(club.leagueId),
+      gender,
+      countryName,
     })
   }
   return [...grouped.values()].sort((left, right) => compareLeagueNames(left.name, right.name))

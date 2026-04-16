@@ -32,13 +32,12 @@ describe('useDebugConsole', () => {
     expect(localStorage.getItem('fc26:debug-console:ever-opened')).toBe('1')
   })
 
-  it('restores `everOpened` from localStorage on a fresh module load', async () => {
+  it('starts with everOpened false on a fresh session even if localStorage flag is set', async () => {
     localStorage.setItem('fc26:debug-console:ever-opened', '1')
-    // Force the module to re-read the persisted flag. `vi.resetModules`
-    // drops the cached singleton so the next import re-evaluates the store
-    // (and re-runs `readEverOpened()`).
+    // Settings should only appear after the user triple-taps in the
+    // *current* session — not carry over from a previous page load.
     vi.resetModules()
     const { useDebugConsole: freshStore } = await import('./console-store.js')
-    expect(freshStore.getState().everOpened).toBe(true)
+    expect(freshStore.getState().everOpened).toBe(false)
   })
 })

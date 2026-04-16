@@ -141,6 +141,28 @@ export class SquadAssetRefreshService {
         // Network error -- skip, let Wikipedia handle it.
       }
     }
+    // Historic/specialty clubs ("Real Madrid Historic") can inherit the badge
+    // from the corresponding base club ("Real Madrid") that EA CDN resolved.
+    const resolvedClubsByName = new Map<string, string>()
+    for (const club of representativeClubs) {
+      const url = clubLogoById.get(club.id)
+      if (url) resolvedClubsByName.set(club.name.toLowerCase(), url)
+    }
+    for (const club of representativeClubs) {
+      if (clubLogoById.has(club.id)) continue
+      if (!shouldResolveClubLogo(club, mode)) continue
+      const baseName = club.name
+        .replace(/\s+(Historic|Classics?|Legends?|Icons?|Heroes)\s*$/i, '')
+        .trim()
+      if (baseName !== club.name) {
+        const baseUrl = resolvedClubsByName.get(baseName.toLowerCase())
+        if (baseUrl) {
+          clubLogoById.set(club.id, baseUrl)
+          clubLogoSourceById.set(club.id, 'eaCdn')
+          eaCdnResolved.add(club.id)
+        }
+      }
+    }
     this.options.logger.info('squad-sync', 'EA CDN badge pass finished', {
       resolved: eaCdnResolved.size,
       remaining: representativeClubs.filter(
@@ -165,6 +187,32 @@ export class SquadAssetRefreshService {
         }
       } catch {
         // Network error -- skip.
+      }
+    }
+    // For historic/specialty league names (e.g. "La Liga Historic"), try to
+    // inherit the logo from the base league (e.g. "La Liga") that EA CDN
+    // already resolved.
+    const resolvedLeagueNames = new Map<string, string>()
+    for (const meta of leagueMetaByKey.values()) {
+      if (meta.leagueLogoUrl) {
+        resolvedLeagueNames.set(meta.leagueName.toLowerCase(), meta.leagueLogoUrl)
+      }
+    }
+    for (const club of representativeClubs) {
+      const key = buildLeagueKey(club.leagueId, club.leagueName)
+      if (leagueMetaByKey.has(key)) continue
+      const baseName = club.leagueName
+        .replace(/\s+(Historic|Classics?|Legends?|Icons?|Heroes)\s*$/i, '')
+        .trim()
+      if (baseName !== club.leagueName) {
+        const baseLogoUrl = resolvedLeagueNames.get(baseName.toLowerCase())
+        if (baseLogoUrl) {
+          leagueMetaByKey.set(key, {
+            leagueId: club.leagueId,
+            leagueName: club.leagueName,
+            leagueLogoUrl: baseLogoUrl,
+          })
+        }
       }
     }
     this.options.logger.info('squad-sync', 'EA CDN league logo pass finished', {
@@ -531,6 +579,16 @@ function wikipediaTitleCandidates(clubName: string, leagueName?: string): string
     }
     push(`${trimmed} national football team`)
     push(`${trimmed} national association football team`)
+  }
+
+  // Historic / classic / legends teams: "Real Madrid Historic" → "Real Madrid".
+  // Strip the specialty suffix and search for the base club instead.
+  const baseName = trimmed
+    .replace(/\s+(Historic|Classics?|Legends?|Icons?|Heroes)\s*$/i, '')
+    .trim()
+  if (baseName !== trimmed && baseName.length > 0) {
+    push(baseName)
+    push(`${baseName} F.C.`)
   }
 
   push(trimmed)

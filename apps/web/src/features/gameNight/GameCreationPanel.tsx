@@ -13,7 +13,6 @@ import {
 } from '@fc26/shared'
 import { EaTeamCard } from '../../components/EaTeamCard.jsx'
 import { EmptyTeamCard } from '../../components/EmptyTeamCard.jsx'
-import { GamerIdentity } from '../../components/GamerPanel.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
 import { Panel } from '../../components/Panel.jsx'
 import {
@@ -339,77 +338,83 @@ export function GameCreationPanel({
                       key={gamer.id}
                       style={{
                         borderRadius: 18,
-                        padding: 14,
+                        padding: '10px 12px',
                         background: '#ffffff',
                         border: '1px solid #d1fae5',
+                        display: 'grid',
+                        gridTemplateColumns: 'auto 1fr',
+                        gap: 10,
+                        alignItems: 'center',
                       }}
                     >
+                      {/* Avatar + name + status stacked vertically */}
+                      <div style={{ display: 'grid', justifyItems: 'center', gap: 2, textAlign: 'center', minWidth: 56 }}>
+                        <img
+                          src={gamer.avatarUrl ?? undefined}
+                          alt=""
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: '50%',
+                            objectFit: 'cover',
+                            background: '#dcfce7',
+                          }}
+                        />
+                        <strong style={{ fontSize: 13, lineHeight: 1.2, color: '#052e16' }}>
+                          {gamer.name}
+                        </strong>
+                        <span style={{ fontSize: 11, opacity: 0.6, lineHeight: 1.1 }}>
+                          {assignment === 'bench'
+                            ? 'Waiting'
+                            : assignment === 'home'
+                              ? 'Home'
+                              : 'Away'}
+                        </span>
+                      </div>
+                      {/* Home / Away / Bench buttons */}
                       <div
                         style={{
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          gap: 8,
-                          alignItems: 'center',
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(3, 1fr)',
+                          gap: 6,
                         }}
                       >
-                        <div style={{ flex: '1 1 auto', minWidth: 0 }}>
-                          <GamerIdentity
-                            gamer={gamer}
-                            size={40}
-                            subtitle={
-                              assignment === 'bench'
-                                ? 'Waiting'
-                                : assignment === 'home'
-                                  ? 'Home side'
-                                  : 'Away side'
-                            }
-                          />
-                        </div>
-                        <div
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(3, auto)',
-                            gap: 6,
-                            flexShrink: 0,
-                          }}
+                        <button
+                          type="button"
+                          disabled={busy !== null || homeFull}
+                          onClick={() => setManualAssignment(gamer.id, 'home')}
+                          style={
+                            assignment === 'home'
+                              ? { ...primaryButtonStyle, padding: '8px 6px', fontSize: 13 }
+                              : { ...compactButtonStyle, padding: '8px 6px' }
+                          }
                         >
-                          <button
-                            type="button"
-                            disabled={busy !== null || homeFull}
-                            onClick={() => setManualAssignment(gamer.id, 'home')}
-                            style={
-                              assignment === 'home'
-                                ? { ...primaryButtonStyle, padding: '8px 12px', fontSize: 13 }
-                                : compactButtonStyle
-                            }
-                          >
-                            Home
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy !== null || awayFull}
-                            onClick={() => setManualAssignment(gamer.id, 'away')}
-                            style={
-                              assignment === 'away'
-                                ? { ...primaryButtonStyle, padding: '8px 12px', fontSize: 13 }
-                                : compactButtonStyle
-                            }
-                          >
-                            Away
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy !== null}
-                            onClick={() => setManualAssignment(gamer.id, 'bench')}
-                            style={
-                              assignment === 'bench'
-                                ? { ...secondaryButtonStyle, padding: '8px 12px', fontSize: 13 }
-                                : compactButtonStyle
-                            }
-                          >
-                            Bench
-                          </button>
-                        </div>
+                          Home
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy !== null || awayFull}
+                          onClick={() => setManualAssignment(gamer.id, 'away')}
+                          style={
+                            assignment === 'away'
+                              ? { ...primaryButtonStyle, padding: '8px 6px', fontSize: 13 }
+                              : { ...compactButtonStyle, padding: '8px 6px' }
+                          }
+                        >
+                          Away
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy !== null}
+                          onClick={() => setManualAssignment(gamer.id, 'bench')}
+                          style={
+                            assignment === 'bench'
+                              ? { ...secondaryButtonStyle, padding: '8px 6px', fontSize: 13 }
+                              : { ...compactButtonStyle, padding: '8px 6px' }
+                          }
+                        >
+                          Bench
+                        </button>
                       </div>
                     </article>
                   )
