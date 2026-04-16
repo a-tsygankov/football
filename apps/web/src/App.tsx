@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useState } from 'react'
+import { startTransition, useCallback, useEffect, useState } from 'react'
 import {
   type CreateGamerRequest,
   type CreateCurrentGameRequest,
@@ -29,6 +29,7 @@ import { APP_VERSION, type WorkerVersionInfo } from './lib/version.js'
 import { LandingScreen } from './features/landing/LandingScreen.jsx'
 import { RoomScreen } from './features/room/RoomScreen.jsx'
 import type { BusyState } from './types/busyState.js'
+import { useInstallPrompt } from './hooks/useInstallPrompt.js'
 
 const LAST_ROOM_ID_KEY = 'fc26:last-room-id'
 
@@ -40,6 +41,13 @@ export function App() {
   const [busy, setBusy] = useState<BusyState>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const install = useInstallPrompt()
+  const [iosHint, setIosHint] = useState(false)
+
+  const onPinClick = useCallback(() => {
+    if (install.status === 'ready') install.prompt()
+    else if (install.status === 'ios') setIosHint(h => !h)
+  }, [install])
 
   const [createName, setCreateName] = useState('')
   const [createPin, setCreatePin] = useState('')
@@ -673,7 +681,52 @@ export function App() {
             }
             tone={worker?.latestSquadVersion ? 'light' : 'warn'}
           />
+          {(install.status === 'ready' || install.status === 'ios') && (
+            <button
+              onClick={onPinClick}
+              style={{
+                padding: '14px 16px',
+                borderRadius: 20,
+                background: 'rgba(255,255,255,0.78)',
+                border: '1px solid rgba(5,46,22,0.08)',
+                cursor: 'pointer',
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+              }}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v10M8 11l4 4 4-4"/>
+                <rect x="3" y="17" width="18" height="3" rx="1.5"/>
+              </svg>
+              <div>
+                <p style={{ margin: 0, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.14em', opacity: 0.6 }}>
+                  Pin to Desktop
+                </p>
+                <p style={{ margin: '6px 0 0', fontSize: 13, opacity: 0.7 }}>
+                  {install.status === 'ios' ? 'Tap for steps' : 'Install app'}
+                </p>
+              </div>
+            </button>
+          )}
         </section>
+        {iosHint && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: '14px 16px',
+              borderRadius: 18,
+              background: '#ecfdf5',
+              border: '1px solid #86efac',
+              color: '#166534',
+              fontSize: 14,
+            }}
+          >
+            Tap the <strong>Share</strong> button in your browser, then choose{' '}
+            <strong>Add to Home Screen</strong>.
+          </div>
+        )}
 
         {error ? (
           <div
