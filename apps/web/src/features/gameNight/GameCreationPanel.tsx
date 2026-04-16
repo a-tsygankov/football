@@ -347,27 +347,30 @@ export function GameCreationPanel({
                       <div
                         style={{
                           display: 'flex',
-                          justifyContent: 'space-between',
-                          gap: 10,
+                          flexWrap: 'wrap',
+                          gap: 8,
                           alignItems: 'center',
                         }}
                       >
-                        <GamerIdentity
-                          gamer={gamer}
-                          size={46}
-                          subtitle={
-                            assignment === 'bench'
-                              ? 'Waiting'
-                              : assignment === 'home'
-                                ? 'Home side'
-                                : 'Away side'
-                          }
-                        />
+                        <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+                          <GamerIdentity
+                            gamer={gamer}
+                            size={40}
+                            subtitle={
+                              assignment === 'bench'
+                                ? 'Waiting'
+                                : assignment === 'home'
+                                  ? 'Home side'
+                                  : 'Away side'
+                            }
+                          />
+                        </div>
                         <div
                           style={{
                             display: 'grid',
                             gridTemplateColumns: 'repeat(3, auto)',
-                            gap: 8,
+                            gap: 6,
+                            flexShrink: 0,
                           }}
                         >
                           <button
@@ -376,7 +379,7 @@ export function GameCreationPanel({
                             onClick={() => setManualAssignment(gamer.id, 'home')}
                             style={
                               assignment === 'home'
-                                ? primaryButtonStyle
+                                ? { ...primaryButtonStyle, padding: '8px 12px', fontSize: 13 }
                                 : compactButtonStyle
                             }
                           >
@@ -388,7 +391,7 @@ export function GameCreationPanel({
                             onClick={() => setManualAssignment(gamer.id, 'away')}
                             style={
                               assignment === 'away'
-                                ? primaryButtonStyle
+                                ? { ...primaryButtonStyle, padding: '8px 12px', fontSize: 13 }
                                 : compactButtonStyle
                             }
                           >
@@ -400,7 +403,7 @@ export function GameCreationPanel({
                             onClick={() => setManualAssignment(gamer.id, 'bench')}
                             style={
                               assignment === 'bench'
-                                ? secondaryButtonStyle
+                                ? { ...secondaryButtonStyle, padding: '8px 12px', fontSize: 13 }
                                 : compactButtonStyle
                             }
                           >

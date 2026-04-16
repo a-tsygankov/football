@@ -139,24 +139,28 @@ export function RosterPanel({
                       boxShadow: statusDot.boxShadow,
                     }}
                   />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <GamerIdentity
-                      gamer={gamer}
-                      size={56}
-                      subtitle={`Rating ${gamer.rating} • ${gamer.active ? 'Available' : 'Inactive'}${gamer.hasPin ? ' • PIN protected' : ' • No PIN'}`}
-                      nameStyle={{ fontSize: 20 }}
-                    />
-                    <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+                    <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+                      <GamerIdentity
+                        gamer={gamer}
+                        size={48}
+                        subtitle={`Rating ${gamer.rating} • ${gamer.active ? 'Available' : 'Inactive'}${gamer.hasPin ? ' • PIN' : ''}`}
+                        nameStyle={{ fontSize: 18 }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                       <button
                         type="button"
                         disabled={busy !== null}
                         onClick={() => void onToggleGamer(gamer)}
-                        style={gamer.active ? secondaryButtonStyle : primaryButtonStyle}
+                        style={gamer.active
+                          ? { ...secondaryButtonStyle, padding: '8px 12px', fontSize: 13 }
+                          : { ...primaryButtonStyle, padding: '8px 12px', fontSize: 13 }}
                       >
                         {busy === 'updating-gamer'
                           ? 'Saving...'
                           : gamer.active
-                            ? 'Set inactive'
+                            ? 'Inactive'
                             : 'Reactivate'}
                       </button>
                       <button
@@ -169,7 +173,7 @@ export function RosterPanel({
                         }
                         style={compactButtonStyle}
                       >
-                        {editingGamerId === gamer.id ? 'Close edit' : 'Edit details'}
+                        {editingGamerId === gamer.id ? 'Close' : 'Edit'}
                       </button>
                     </div>
                   </div>

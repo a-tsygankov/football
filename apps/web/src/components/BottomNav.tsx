@@ -59,6 +59,15 @@ export function BottomNav() {
 
   function scrollToSection(targetId?: string): void {
     if (!targetId) return
+    // "Game" should prefer the live game section when it exists, otherwise
+    // fall back to the creation/start section.
+    if (targetId === SECTION_TARGETS.game) {
+      const live = document.getElementById('fc26-game-live-section')
+      if (live) {
+        live.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        return
+      }
+    }
     const target = document.getElementById(targetId)
     if (!target) return
     target.scrollIntoView({ behavior: 'smooth', block: 'start' })

@@ -403,7 +403,7 @@ export class SquadAssetRefreshService {
    * image URL.
    */
   private async lookupWikipediaLogo(club: Club): Promise<string | null> {
-    const candidates = wikipediaTitleCandidates(club.name)
+    const candidates = wikipediaTitleCandidates(club.name, club.leagueName)
     const wikipediaBase =
       this.options.config.wikipediaBaseUrl || DEFAULT_WIKIPEDIA_REST_BASE_URL
     for (const title of candidates) {
@@ -504,7 +504,7 @@ function dedupeInPlace(values: ReadonlyArray<string>): string[] {
 /**
  * Build a small set of Wikipedia article-title guesses for a given club name.
  */
-function wikipediaTitleCandidates(clubName: string): string[] {
+function wikipediaTitleCandidates(clubName: string, leagueName?: string): string[] {
   const trimmed = clubName.trim()
   if (!trimmed) return []
   const stripped = trimmed
@@ -514,6 +514,25 @@ function wikipediaTitleCandidates(clubName: string): string[] {
   const push = (value: string) => {
     if (value && !candidates.includes(value)) candidates.push(value)
   }
+
+  // International / national teams have short names like "Argentina",
+  // "Germany", etc.  Wikipedia articles are "X national football team"
+  // or "X women's national football team".
+  const isInternational = leagueName
+    ? /international|national/i.test(leagueName)
+    : false
+  const isWomens = leagueName
+    ? /women/i.test(leagueName)
+    : false
+
+  if (isInternational) {
+    if (isWomens) {
+      push(`${trimmed} women's national football team`)
+    }
+    push(`${trimmed} national football team`)
+    push(`${trimmed} national association football team`)
+  }
+
   push(trimmed)
   push(`${stripped} F.C.`)
   push(`${stripped} (football club)`)
