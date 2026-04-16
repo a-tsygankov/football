@@ -223,13 +223,15 @@ export interface SquadAssetRefreshResult {
    */
   readonly pendingClubCount: number
   /**
-   * Per-source counters for logo resolution. `sportsdbLeague` is the
-   * primary league-wide discovery match, `sportsdbFallback` is the per-
-   * club `searchteams.php` rescue for clubs the league match missed, and
-   * `wikipedia` is the Wikipedia REST API backstop for clubs SportsDB
-   * can't resolve at all. Together they sum to `matchedClubCount`.
+   * Per-source counters for logo resolution. `eaCdn` is the primary
+   * EA FUT Web App CDN pass (uses clubId directly — no name matching).
+   * `sportsdbLeague` is the league-wide discovery fallback,
+   * `sportsdbFallback` is the per-club `searchteams.php` rescue, and
+   * `wikipedia` is the Wikipedia REST API backstop. Together they sum
+   * to `matchedClubCount`.
    */
   readonly matchBreakdown: {
+    readonly eaCdn: number
     readonly sportsdbLeague: number
     readonly sportsdbFallback: number
     readonly wikipedia: number

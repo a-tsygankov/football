@@ -3,6 +3,8 @@ import { isPendingLogoUrl, type ISquadStorage } from './storage.js'
 import type { ISquadVersionRepository } from './version-repository.js'
 import {
   DEFAULT_WIKIPEDIA_REST_BASE_URL,
+  eaCdnClubBadgeUrl,
+  eaCdnLeagueLogoUrl,
   type SquadAssetRefreshConfig,
 } from './asset-config.js'
 
@@ -197,7 +199,7 @@ export class SquadAssetRefreshService {
     // Tracks which source resolved each club — used to emit a per-source
     // breakdown at the end so ops can see at a glance whether SportsDB is
     // carrying the load or if we're leaning on Wikipedia / missing coverage.
-    const clubLogoSourceById = new Map<number, 'sportsdbLeague' | 'sportsdbFallback' | 'wikipedia'>()
+    const clubLogoSourceById = new Map<number, 'eaCdn' | 'sportsdbLeague' | 'sportsdbFallback' | 'wikipedia'>()
     const leagueMetaByKey = new Map<string, AssetMatchContext>()
     const unmatchedClubs: string[] = []
     const unmatchedLeagues = new Set<string>()
@@ -210,6 +212,58 @@ export class SquadAssetRefreshService {
     // backstop matters most.
     const sportsDbFallbackState = { rateLimited: false, budget: PER_CLUB_SEARCH_BUDGET }
     const wikipediaFallbackState = { rateLimited: false, budget: PER_CLUB_SEARCH_BUDGET }
+
+    // Phase 0 — EA CDN pass. EA's FUT Web App CDN serves badge PNGs keyed
+    // by the same clubId that comes out of the squad binary, so no fuzzy
+    // name matching is needed. We attempt a GET for every pending club;
+    // 200 → cache to R2 and mark resolved, 404 → fall through to SportsDB.
+    // The CDN is a public Akamai edge with generous rate limits.
+    const eaCdnResolved = new Set<number>()
+    for (const club of representativeClubs) {
+      if (!shouldResolveClubLogo(club, mode)) continue
+      if (clubLogoById.has(club.id)) continue
+      const url = eaCdnClubBadgeUrl(club.id)
+      try {
+        const res = await this.options.fetchImpl(url)
+        if (res.ok) {
+          clubLogoById.set(club.id, url)
+          clubLogoSourceById.set(club.id, 'eaCdn')
+          eaCdnResolved.add(club.id)
+        }
+      } catch {
+        // Network error — skip, let SportsDB handle it.
+      }
+    }
+    this.options.logger.info('squad-sync', 'EA CDN badge pass finished', {
+      resolved: eaCdnResolved.size,
+      remaining: representativeClubs.filter(
+        (c) => shouldResolveClubLogo(c, mode) && !clubLogoById.has(c.id),
+      ).length,
+    })
+
+    // Phase 0b — EA CDN league logos. Uses the legacy FUT GUID (FC 24) which
+    // still serves league logo PNGs keyed by leagueId.
+    const resolvedLeagueIds = new Set<number>()
+    for (const club of representativeClubs) {
+      if (resolvedLeagueIds.has(club.leagueId)) continue
+      resolvedLeagueIds.add(club.leagueId)
+      const url = eaCdnLeagueLogoUrl(club.leagueId)
+      try {
+        const res = await this.options.fetchImpl(url)
+        if (res.ok) {
+          leagueMetaByKey.set(buildLeagueKey(club.leagueId, club.leagueName), {
+            leagueId: club.leagueId,
+            leagueName: club.leagueName,
+            leagueLogoUrl: url,
+          })
+        }
+      } catch {
+        // Network error — SportsDB league details will fill this in.
+      }
+    }
+    this.options.logger.info('squad-sync', 'EA CDN league logo pass finished', {
+      resolved: leagueMetaByKey.size,
+    })
 
     for (const [leagueName, leagueClubs] of clubsByLeague) {
       const candidateLeagues = scoreLeagueCandidates(
@@ -427,6 +481,7 @@ export class SquadAssetRefreshService {
     }
 
     const matchBreakdown = {
+      eaCdn: countBySource(clubLogoSourceById, 'eaCdn'),
       sportsdbLeague: countBySource(clubLogoSourceById, 'sportsdbLeague'),
       sportsdbFallback: countBySource(clubLogoSourceById, 'sportsdbFallback'),
       wikipedia: countBySource(clubLogoSourceById, 'wikipedia'),
@@ -1018,6 +1073,7 @@ function emptyResult(): SquadAssetRefreshResult {
     unmatchedLeagues: [],
     pendingClubCount: 0,
     matchBreakdown: {
+      eaCdn: 0,
       sportsdbLeague: 0,
       sportsdbFallback: 0,
       wikipedia: 0,

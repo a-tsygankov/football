@@ -1000,7 +1000,7 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/analyse-p
     return c.json({ error: 'active_game_not_found' }, 404)
   }
 
-  const apiKey = (c.env as Record<string, string | undefined>).GEMINI_API_KEY
+  const apiKey = c.env.GEMINI_API_KEY
   if (!apiKey) {
     return c.json({ error: 'gemini_not_configured' }, 503)
   }
