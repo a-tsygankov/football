@@ -259,41 +259,20 @@ describe('room routes', () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = (async (input) => {
       const url = String(input)
-      if (url.endsWith('/all_leagues.php')) {
-        return Response.json({
-          leagues: [
-            {
-              idLeague: '4328',
-              strSport: 'Soccer',
-              strLeague: 'English Premier League',
-              strLeagueAlternate: 'Premier League, EPL, England',
-            },
-          ],
+      // EA CDN club badge
+      if (url.includes('/clubs/dark/')) {
+        const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
+        return new Response(bytes, {
+          status: 200,
+          headers: { 'content-type': 'image/png', etag: 'W/"badge"' },
         })
       }
-      if (url.includes('/search_all_teams.php?l=')) {
-        return Response.json({
-          teams: [
-            {
-              idTeam: '133604',
-              idLeague: '4328',
-              strTeam: 'Arsenal',
-              strTeamAlternate: 'Arsenal Football Club, AFC, Arsenal FC',
-              strLeague: 'English Premier League',
-              strBadge: 'https://assets.example/teams/arsenal.png',
-            },
-          ],
-        })
-      }
-      if (url.includes('/lookupleague.php?id=4328')) {
-        return Response.json({
-          leagues: [
-            {
-              idLeague: '4328',
-              strLeague: 'English Premier League',
-              strBadge: 'https://assets.example/leagues/epl.png',
-            },
-          ],
+      // EA CDN league logo
+      if (url.includes('/leagueLogos/dark/')) {
+        const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
+        return new Response(bytes, {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
         })
       }
       throw new Error(`unexpected URL ${url}`)
@@ -314,8 +293,8 @@ describe('room routes', () => {
       const body = (await refreshRes.json()) as RefreshRoomSquadAssetsResponse
       expect(body.result.status).toBe('refreshed')
       const updated = await app.squadStorage.getClubs('fc26-r11')
-      expect(updated?.[0]?.logoUrl).toBe('https://assets.example/teams/arsenal.png')
-      expect(updated?.[0]?.leagueLogoUrl).toBe('https://assets.example/leagues/epl.png')
+      // After EA CDN pass, the logo is cached and served from the worker route.
+      expect(updated?.[0]?.logoUrl).toBe('/api/squads/logos/1')
     } finally {
       globalThis.fetch = originalFetch
     }

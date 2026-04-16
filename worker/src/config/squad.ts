@@ -14,8 +14,7 @@ export interface SquadAppConfig {
     readonly retentionCount: number
   }
   readonly assets: {
-    readonly providerBaseUrl: string
-    readonly leagueAliases: Readonly<Record<string, string>>
+    readonly wikipediaBaseUrl?: string
   }
 }
 
@@ -31,8 +30,5 @@ export const SQUAD_APP_CONFIG: SquadAppConfig = {
     defaultPlatform: DEFAULT_SQUAD_PLATFORM,
     retentionCount: 12,
   },
-  assets: {
-    providerBaseUrl: 'https://www.thesportsdb.com/api/v1/json/123',
-    leagueAliases: {},
-  },
+  assets: {},
 }

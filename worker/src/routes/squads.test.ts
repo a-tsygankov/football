@@ -194,6 +194,9 @@ describe('squad routes', () => {
         name: 'Premier League',
         logoUrl: 'https://r2.example/leagues/13.png',
         clubCount: 2,
+        nationId: 14,
+        gender: 'men',
+        countryName: 'England',
       },
     ])
   })

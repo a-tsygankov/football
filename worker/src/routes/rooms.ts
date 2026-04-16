@@ -315,7 +315,7 @@ roomRoutes.post('/rooms/:roomId/settings/squad-assets/refresh', async (c) => {
   const mode: 'soft' | 'hard' = modeParam === 'hard' ? 'hard' : 'soft'
 
   const service = new SquadAssetRefreshService({
-    config: resolveSquadAssetRefreshConfig(SQUAD_APP_CONFIG.assets),
+    config: resolveSquadAssetRefreshConfig(SQUAD_APP_CONFIG.assets ?? {}),
     fetchImpl: getFetchImpl(),
     logger: c.get('logger'),
     squadStorage: c.get('deps').squadStorage,

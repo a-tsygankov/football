@@ -15,6 +15,15 @@ export { CLUB_NAME_ALIASES, canonicaliseClubName } from './club-aliases.js'
 export type { ClubAlias } from './club-aliases.js'
 export { canonicaliseLeagueIds } from './canonicalise-leagues.js'
 export { canonicaliseClubs, remapPlayerClubIds } from './canonicalise-clubs.js'
+export {
+  COUNTRY_PILL_ORDER,
+  EA_LEAGUE_NATIONS,
+  EA_NATION_NAMES,
+  getLeagueCountryName,
+  getLeagueNationId,
+  isRestOfWorldLeague,
+  isWomensLeague,
+} from './league-metadata.js'
 export type { ClubCanonicalisationResult } from './canonicalise-clubs.js'
 export {
   buildEaContentUrl,

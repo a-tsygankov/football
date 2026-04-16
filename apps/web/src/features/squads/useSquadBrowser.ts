@@ -20,6 +20,8 @@ export interface SquadBrowserState {
     version: string | null
     setVersion: (value: string | null) => void
     leagues: ReadonlyArray<SquadLeague>
+    /** Leagues filtered by gender + country. */
+    filteredLeagues: ReadonlyArray<SquadLeague>
     clubs: ReadonlyArray<Club>
     filteredClubs: ReadonlyArray<Club>
     selectedLeagueId: number | null
@@ -30,6 +32,12 @@ export interface SquadBrowserState {
     selectedClubPlayers: ReadonlyArray<FcPlayer>
     loading: boolean
     playersLoading: boolean
+    gender: 'men' | 'women'
+    setGender: (v: 'men' | 'women') => void
+    countryNationId: number | null
+    setCountryNationId: (v: number | null) => void
+    teamIndex: number
+    setTeamIndex: (v: number) => void
   }
   changes: {
     toVersion: string | null
@@ -78,6 +86,9 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
   const [emptyClubIds, setEmptyClubIds] = useState<ReadonlySet<number>>(new Set())
   const [teamsLoading, setTeamsLoading] = useState(false)
   const [playersLoading, setPlayersLoading] = useState(false)
+  const [gender, setGender] = useState<'men' | 'women'>('men')
+  const [countryNationId, setCountryNationId] = useState<number | null>(null)
+  const [teamIndex, setTeamIndex] = useState(0)
 
   // Changes
   const [changesToVersion, setChangesToVersion] = useState<string | null>(latestSquadVersion)
@@ -213,25 +224,32 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
     }
   }, [teamsVersion])
 
+  const filteredLeagues = useMemo(() => {
+    let result = teamsLeagues.filter((league) => {
+      const leagueGender = league.gender ?? 'men'
+      return leagueGender === gender
+    })
+    if (countryNationId !== null) {
+      result = result.filter((league) => league.nationId === countryNationId)
+    }
+    return result
+  }, [teamsLeagues, gender, countryNationId])
+
   useEffect(() => {
     if (selectedLeagueId !== null) {
       // Clear the selection if the version was switched and the previous
-      // league isn't in the new roster. Replacement is handled by the
+      // league isn't in the filtered set. Replacement is handled by the
       // auto-select branch below on the next render.
-      if (teamsLeagues.some((league) => league.id === selectedLeagueId)) return
+      if (filteredLeagues.some((league) => league.id === selectedLeagueId)) return
       setSelectedLeagueId(null)
       return
     }
-    // Nothing selected and leagues are now available — jump straight to
-    // the first entry. `teamsLeagues` is already sorted by priority via
-    // `compareLeagueNames`, so the first element is always the highest
-    // priority league in the current squad (typically International or
-    // England Premier League). This enforces "every league picker opens
-    // on a priority league" without hardcoding a specific league name.
-    if (teamsLeagues.length === 0) return
-    const firstLeague = teamsLeagues[0]!
+    // Nothing selected and leagues are now available -- jump straight to
+    // the first entry in the filtered set.
+    if (filteredLeagues.length === 0) return
+    const firstLeague = filteredLeagues[0]!
     setSelectedLeagueId(firstLeague.id)
-  }, [selectedLeagueId, teamsLeagues])
+  }, [selectedLeagueId, filteredLeagues])
 
   const filteredTeamsClubs = useMemo(() => {
     if (selectedLeagueId === null) return []
@@ -241,15 +259,15 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
   }, [selectedLeagueId, teamsClubs])
 
   useEffect(() => {
+    setTeamIndex(0)
     if (filteredTeamsClubs.length === 0) {
       setSelectedClubId(null)
       setSelectedClubPlayers([])
       return
     }
     if (selectedClubId && filteredTeamsClubs.some((club) => club.id === selectedClubId)) return
-    // No auto-select on first paint — let the user pick. This avoids loading
-    // a club they didn't ask for and matches the "no selection by default"
-    // behaviour requested for the league dropdown.
+    // No auto-select on first paint -- let the user pick. This avoids loading
+    // a club they didn't ask for.
     setSelectedClubId(null)
   }, [filteredTeamsClubs, selectedClubId])
 
@@ -461,6 +479,7 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
       version: teamsVersion,
       setVersion: setTeamsVersion,
       leagues: teamsLeagues,
+      filteredLeagues,
       clubs: teamsClubs,
       filteredClubs: filteredTeamsClubs,
       selectedLeagueId,
@@ -471,6 +490,12 @@ export function useSquadBrowser(latestSquadVersion: string | null): SquadBrowser
       selectedClubPlayers,
       loading: teamsLoading,
       playersLoading,
+      gender,
+      setGender,
+      countryNationId,
+      setCountryNationId,
+      teamIndex,
+      setTeamIndex,
     },
     changes: {
       toVersion: changesToVersion,

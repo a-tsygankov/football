@@ -166,6 +166,9 @@ export interface SquadLeague {
   readonly name: string
   readonly logoUrl: string | null
   readonly clubCount: number
+  readonly nationId?: number
+  readonly gender?: 'men' | 'women'
+  readonly countryName?: string | null
 }
 
 export interface SquadVersionsResponse {
@@ -232,8 +235,6 @@ export interface SquadAssetRefreshResult {
    */
   readonly matchBreakdown: {
     readonly eaCdn: number
-    readonly sportsdbLeague: number
-    readonly sportsdbFallback: number
     readonly wikipedia: number
   }
   /**
