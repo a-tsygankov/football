@@ -108,12 +108,7 @@ export function EaTeamCard({
 }: EaTeamCardProps) {
   const tokens = SIZE_TOKENS[size]
   const starRating10 = starRating10FromOverall(club.overallRating)
-  const nameFontSize =
-    club.name.length >= 22
-      ? tokens.nameFontSizeLong
-      : club.name.length >= 16
-        ? tokens.nameFontSizeMedium
-        : tokens.nameFontSizeShort
+  const nameFontSize = pickNameFontSize(club.name, tokens)
 
   const interactive = typeof onSelect === 'function'
 
@@ -159,9 +154,10 @@ export function EaTeamCard({
             style={{
               display: 'block',
               fontSize: nameFontSize,
-              lineHeight: 1.05,
+              lineHeight: 1.15,
               maxWidth: '100%',
-              overflowWrap: 'anywhere',
+              wordBreak: 'keep-all',
+              overflowWrap: 'normal',
               textWrap: 'balance',
             }}
           >
@@ -302,6 +298,23 @@ function DeltaTriangle({ delta }: { delta: number | null }) {
       }}
     />
   )
+}
+
+/**
+ * Pick a font size that keeps the club name on the card without breaking
+ * individual words mid-character. Uses the longest word in the name as
+ * the sizing driver: short words get the full-size font, longer single
+ * words scale down so they still fit the card width (~200–260px usable).
+ */
+function pickNameFontSize(name: string, tokens: SizeTokens): number {
+  const longestWord = Math.max(...name.split(/\s+/).map((w) => w.length), 0)
+  const totalLen = name.length
+  // Scale primarily on longest single word (prevents mid-word breaks),
+  // with total length as a secondary factor for multi-word names.
+  if (longestWord >= 14 || totalLen >= 26) return tokens.nameFontSizeLong * 0.85
+  if (longestWord >= 11 || totalLen >= 22) return tokens.nameFontSizeLong
+  if (longestWord >= 9 || totalLen >= 16) return tokens.nameFontSizeMedium
+  return tokens.nameFontSizeShort
 }
 
 function StarMeter({ rating10, fontSize }: { rating10: number | null; fontSize: number }) {

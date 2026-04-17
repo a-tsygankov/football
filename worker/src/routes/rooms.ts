@@ -64,7 +64,7 @@ import {
   verifyRoomSession,
 } from '../auth/session.js'
 import { SQUAD_APP_CONFIG } from '../config/squad.js'
-import { SCORE_ANALYSIS_PROMPT, SCORE_ANALYSIS_MODEL } from '../config/prompts.js'
+import { buildScoreAnalysisPrompt, SCORE_ANALYSIS_MODELS } from '../config/prompts.js'
 import { toRoomSummary } from '../rooms/repository.js'
 import { toPublicGamer } from '../gamers/repository.js'
 import { resolveSquadAssetRefreshConfig } from '../squad/asset-config.js'
@@ -983,6 +983,14 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/result', 
 
 const analysePhotoSchema = z.object({
   image: z.string().min(1),
+  homeTeam: z.object({
+    name: z.string(),
+    aliases: z.array(z.string()),
+  }).nullable().optional(),
+  awayTeam: z.object({
+    name: z.string(),
+    aliases: z.array(z.string()),
+  }).nullable().optional(),
 })
 
 roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/analyse-photo', async (c) => {
@@ -1010,52 +1018,107 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/analyse-p
     return c.json({ error: 'invalid_body', issues: parsed.error.flatten() }, 400)
   }
 
-  const { image } = parsed.data
+  const { image, homeTeam, awayTeam } = parsed.data
 
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${SCORE_ANALYSIS_MODEL}:generateContent?key=${apiKey}`
-  const geminiBody = {
-    contents: [
-      {
-        parts: [
-          { text: SCORE_ANALYSIS_PROMPT },
-          { inline_data: { mime_type: 'image/jpeg', data: image } },
-        ],
-      },
-    ],
-    generationConfig: { temperature: 0.1 },
+  const prompt = buildScoreAnalysisPrompt({ homeTeam, awayTeam })
+
+  // Try each model in the fallback chain until one succeeds.
+  let geminiRes: Response | null = null
+  let usedModel: string = SCORE_ANALYSIS_MODELS[0]
+  for (const model of SCORE_ANALYSIS_MODELS) {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+    const geminiBody = {
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: 'image/jpeg', data: image } },
+          ],
+        },
+      ],
+      generationConfig: { temperature: 0.1 },
+    }
+    const res = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(geminiBody),
+    })
+    if (res.ok) {
+      geminiRes = res
+      usedModel = model
+      break
+    }
+    // Log the failure and try the next model.
+    const detail = await res.text().catch(() => 'unknown')
+    console.log(`[analyse-photo] model ${model} failed (${res.status}): ${detail.slice(0, 200)}`)
   }
 
-  const geminiRes = await fetch(geminiUrl, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(geminiBody),
-  })
-
-  if (!geminiRes.ok) {
-    const detail = await geminiRes.text().catch(() => 'unknown')
-    return c.json({ error: 'gemini_request_failed', detail }, 502)
+  if (!geminiRes) {
+    return c.json({ error: 'gemini_request_failed', detail: 'all models failed' }, 502)
   }
 
   const geminiJson = (await geminiRes.json()) as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
   }
   const rawText = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+  console.log(`[analyse-photo] model=${usedModel} raw:`, rawText)
   const jsonMatch = rawText.match(/\{[\s\S]*\}/)
   if (!jsonMatch) {
-    return c.json({ error: 'gemini_parse_failed', rawText }, 502)
+    const errorResponse: AnalysePhotoResponse = {
+      homeTeam: null,
+      awayTeam: null,
+      homeScore: null,
+      awayScore: null,
+      teamsMatched: false,
+      result: null,
+      error: 'Could not parse AI response',
+      model: usedModel,
+    }
+    return c.json(errorResponse)
   }
 
   try {
-    const result = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+    const parsed2 = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+    const homeTeamName = typeof parsed2.homeTeam === 'string' ? parsed2.homeTeam : null
+    const awayTeamName = typeof parsed2.awayTeam === 'string' ? parsed2.awayTeam : null
+    const homeScoreVal = typeof parsed2.homeScore === 'number' ? parsed2.homeScore : null
+    const awayScoreVal = typeof parsed2.awayScore === 'number' ? parsed2.awayScore : null
+    const confident = parsed2.confident === true
+    const aiTeamsMatched = parsed2.teamsMatched === true
+
+    let inferredResult: 'home' | 'away' | 'draw' | null = null
+    if (homeScoreVal != null && awayScoreVal != null && confident) {
+      if (homeScoreVal > awayScoreVal) inferredResult = 'home'
+      else if (awayScoreVal > homeScoreVal) inferredResult = 'away'
+      else inferredResult = 'draw'
+    }
+
+    const teamsProvided = homeTeam != null || awayTeam != null
+    const teamsMatched = teamsProvided ? aiTeamsMatched : false
+
     const response: AnalysePhotoResponse = {
-      homeTeam: typeof result.homeTeam === 'string' ? result.homeTeam : null,
-      awayTeam: typeof result.awayTeam === 'string' ? result.awayTeam : null,
-      homeScore: typeof result.homeScore === 'number' ? result.homeScore : null,
-      awayScore: typeof result.awayScore === 'number' ? result.awayScore : null,
+      homeTeam: homeTeamName,
+      awayTeam: awayTeamName,
+      homeScore: homeScoreVal,
+      awayScore: awayScoreVal,
+      teamsMatched,
+      result: inferredResult,
+      error: !confident ? 'AI was not confident about the result' : null,
+      model: usedModel,
     }
     return c.json(response)
   } catch {
-    return c.json({ error: 'gemini_parse_failed', rawText }, 502)
+    const errorResponse: AnalysePhotoResponse = {
+      homeTeam: null,
+      awayTeam: null,
+      homeScore: null,
+      awayScore: null,
+      teamsMatched: false,
+      result: null,
+      error: 'Could not parse AI response',
+      model: usedModel,
+    }
+    return c.json(errorResponse)
   }
 })
 

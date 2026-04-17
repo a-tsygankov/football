@@ -188,9 +188,20 @@ export interface RepairRoomSquadsResponse {
   result: SquadRepairResult
 }
 
+export interface AnalysePhotoRequest {
+  image: string
+  homeTeam?: { name: string; aliases: string[] } | null
+  awayTeam?: { name: string; aliases: string[] } | null
+}
+
 export interface AnalysePhotoResponse {
   homeTeam: string | null
   awayTeam: string | null
   homeScore: number | null
   awayScore: number | null
+  teamsMatched: boolean
+  result: 'home' | 'away' | 'draw' | null
+  error: string | null
+  /** Which Gemini model produced this result. */
+  model?: string
 }

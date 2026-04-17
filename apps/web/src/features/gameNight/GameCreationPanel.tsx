@@ -124,6 +124,8 @@ export function GameCreationPanel({
     gameNightId: string,
     gameId: string,
     image: string,
+    homeTeam?: { name: string; aliases: string[] } | null,
+    awayTeam?: { name: string; aliases: string[] } | null,
   ) => Promise<AnalysePhotoResponse>
 }) {
   const strategyOptions = useMemo(() => listStrategies(), [])
@@ -267,12 +269,14 @@ export function GameCreationPanel({
                 )
               : Promise.resolve()
           }
-          onAnalysePhoto={(image) =>
+          onAnalysePhoto={(image, homeTeam, awayTeam) =>
             bootstrap.activeGameNight
               ? onAnalysePhoto(
                   bootstrap.activeGameNight.id,
                   bootstrap.currentGame!.id,
                   image,
+                  homeTeam,
+                  awayTeam,
                 )
               : Promise.reject(new Error('No active game night'))
           }

@@ -9,4 +9,6 @@ export interface WorkerVersionInfo {
   gitSha: string | null
   builtAt: string
   latestSquadVersion?: string | null
+  /** Which Gemini model is active, or null if AI is not configured. */
+  activeAiModel?: string | null
 }

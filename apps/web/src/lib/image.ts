@@ -7,13 +7,16 @@
  * stats screen.
  */
 
-const MAX_DIMENSION = 800
+const DEFAULT_MAX_DIMENSION = 2048
 const JPEG_QUALITY = 0.7
 
-export async function scaleImageForAnalysis(file: File): Promise<string> {
+export async function scaleImageForAnalysis(
+  file: File,
+  maxDimension = DEFAULT_MAX_DIMENSION,
+): Promise<string> {
   const bitmap = await createImageBitmap(file)
   try {
-    const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height))
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height))
     const width = Math.round(bitmap.width * scale)
     const height = Math.round(bitmap.height * scale)
 

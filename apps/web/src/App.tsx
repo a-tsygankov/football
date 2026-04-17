@@ -559,6 +559,8 @@ export function App() {
     gameNightId: string,
     gameId: string,
     image: string,
+    homeTeam?: { name: string; aliases: string[] } | null,
+    awayTeam?: { name: string; aliases: string[] } | null,
   ): Promise<AnalysePhotoResponse> {
     if (!bootstrap) throw new Error('No active room')
     setBusy('analysing-photo')
@@ -569,7 +571,7 @@ export function App() {
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ image }),
+          body: JSON.stringify({ image, homeTeam, awayTeam }),
         },
       )
     } catch (err) {

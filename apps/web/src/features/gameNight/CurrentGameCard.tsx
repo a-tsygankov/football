@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   type AnalysePhotoResponse,
   type Club,
@@ -17,6 +17,7 @@ import {
 } from '../../styles/controls.js'
 import type { BusyState } from '../../types/busyState.js'
 import { TeamColumn } from './TeamColumn.jsx'
+import { TvPhotoCapture } from './TvPhotoCapture.jsx'
 
 export function CurrentGameCard({
   busy,
@@ -33,15 +34,15 @@ export function CurrentGameCard({
   squadClubs: ReadonlyArray<Club>
   onInterruptGame: (request: InterruptCurrentGameRequest) => Promise<void>
   onRecordGameResult: (request: RecordCurrentGameResultRequest) => Promise<void>
-  onAnalysePhoto: (image: string) => Promise<AnalysePhotoResponse>
+  onAnalysePhoto: (
+    image: string,
+    homeTeam?: { name: string; aliases: string[] } | null,
+    awayTeam?: { name: string; aliases: string[] } | null,
+  ) => Promise<AnalysePhotoResponse>
 }) {
   const [homeScore, setHomeScore] = useState('')
   const [awayScore, setAwayScore] = useState('')
   const [interruptComment, setInterruptComment] = useState('')
-  const [scorePhoto, setScorePhoto] = useState<File | null>(null)
-  const [scorePhotoUrl, setScorePhotoUrl] = useState<string | null>(null)
-  const [ocrResult, setOcrResult] = useState<AnalysePhotoResponse | null>(null)
-  const [ocrError, setOcrError] = useState<string | null>(null)
   const [ocrUsed, setOcrUsed] = useState(false)
   const trimmedHomeScore = homeScore.trim()
   const trimmedAwayScore = awayScore.trim()
@@ -68,25 +69,6 @@ export function CurrentGameCard({
     [currentGame.awayClubId, squadClubs],
   )
 
-  useEffect(() => {
-    if (!scorePhoto) {
-      setScorePhotoUrl(null)
-      return
-    }
-
-    const nextUrl = URL.createObjectURL(scorePhoto)
-    setScorePhotoUrl(nextUrl)
-    return () => {
-      URL.revokeObjectURL(nextUrl)
-    }
-  }, [scorePhoto])
-
-  function inferResult(home: number, away: number): 'home' | 'away' | 'draw' {
-    if (home > away) return 'home'
-    if (away > home) return 'away'
-    return 'draw'
-  }
-
   async function submitResult(result: 'home' | 'away' | 'draw'): Promise<void> {
     if (!scorePairReady) return
     const nextHomeScore = trimmedHomeScore.length > 0 ? Number.parseInt(trimmedHomeScore, 10) : null
@@ -95,63 +77,41 @@ export function CurrentGameCard({
       result,
       homeScore: nextHomeScore,
       awayScore: nextAwayScore,
-      ...(ocrUsed ? { entryMethod: 'ocr' as const, ocrModel: 'gemini-2.0-flash' } : {}),
+      ...(ocrUsed ? { entryMethod: 'ocr' as const, ocrModel: 'gemini' } : {}),
     })
     setHomeScore('')
     setAwayScore('')
     setInterruptComment('')
-    setScorePhoto(null)
-    setOcrResult(null)
-    setOcrError(null)
     setOcrUsed(false)
   }
 
   async function submitInterrupt(): Promise<void> {
     await onInterruptGame({ comment: interruptComment.trim() || null })
     setInterruptComment('')
-    setScorePhoto(null)
-    setOcrResult(null)
-    setOcrError(null)
     setOcrUsed(false)
   }
 
-  async function handleAnalysePhoto(): Promise<void> {
-    if (!scorePhoto) return
-    setOcrError(null)
-    setOcrResult(null)
-
-    try {
-      const { scaleImageForAnalysis } = await import('../../lib/image.js')
-      const base64 = await scaleImageForAnalysis(scorePhoto)
-      const result = await onAnalysePhoto(base64)
-      setOcrResult(result)
-
-      if (result.homeScore != null && result.awayScore != null) {
-        setHomeScore(String(result.homeScore))
-        setAwayScore(String(result.awayScore))
-        setOcrUsed(true)
-      }
-    } catch (err) {
-      setOcrError(err instanceof Error ? err.message : String(err))
-    }
+  function handleAcceptResult(
+    result: 'home' | 'away' | 'draw',
+    hScore: number,
+    aScore: number,
+    model?: string,
+  ): void {
+    setHomeScore(String(hScore))
+    setAwayScore(String(aScore))
+    setOcrUsed(true)
+    void onRecordGameResult({
+      result,
+      homeScore: hScore,
+      awayScore: aScore,
+      entryMethod: 'ocr' as const,
+      ocrModel: model ?? 'gemini',
+    }).then(() => {
+      setHomeScore('')
+      setAwayScore('')
+      setOcrUsed(false)
+    })
   }
-
-  function acceptOcrResult(): void {
-    if (!ocrResult || ocrResult.homeScore == null || ocrResult.awayScore == null) return
-    const result = inferResult(ocrResult.homeScore, ocrResult.awayScore)
-    void submitResult(result)
-  }
-
-  function dismissOcrResult(): void {
-    setOcrResult(null)
-  }
-
-  const teamsMatch = ocrResult && homeClub && awayClub
-    ? fuzzyTeamMatch(ocrResult.homeTeam, homeClub.name) &&
-      fuzzyTeamMatch(ocrResult.awayTeam, awayClub.name)
-    : false
-
-  const teamsSet = homeClub != null && awayClub != null
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -224,147 +184,21 @@ export function CurrentGameCard({
         {!scorePairReady && hasScoreEntry ? (
           <InlineNotice tone="warn" message="Enter both scores or leave both blank." />
         ) : null}
-        <Field label="TV photo">
-          <div style={{ display: 'grid', gap: 10 }}>
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(event) => {
-                setScorePhoto(event.target.files?.[0] ?? null)
-                setOcrResult(null)
-                setOcrError(null)
-                setOcrUsed(false)
-              }}
-              style={inputStyle}
-            />
-            {scorePhotoUrl ? (
-              <div style={{ display: 'grid', gap: 8 }}>
-                <img
-                  src={scorePhotoUrl}
-                  alt="Captured TV score"
-                  style={{
-                    width: '100%',
-                    maxHeight: 220,
-                    objectFit: 'cover',
-                    borderRadius: 16,
-                    border: '1px solid #d1fae5',
-                  }}
-                />
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 13, opacity: 0.72 }}>
-                    {scorePhoto?.name ?? 'TV photo ready'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setScorePhoto(null)
-                      setOcrResult(null)
-                      setOcrError(null)
-                      setOcrUsed(false)
-                    }}
-                    style={secondaryButtonStyle}
-                  >
-                    Remove photo
-                  </button>
-                </div>
-                {!ocrResult ? (
-                  <button
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => void handleAnalysePhoto()}
-                    style={{ ...primaryButtonStyle, fontSize: 14 }}
-                  >
-                    {busy === 'analysing-photo' ? 'Analysing...' : 'Analyse photo'}
-                  </button>
-                ) : null}
-              </div>
-            ) : (
-              <span style={{ fontSize: 13, opacity: 0.72 }}>
-                Optional. Take a picture of the TV score to auto-fill the result.
-              </span>
-            )}
-          </div>
-        </Field>
-        {ocrError ? (
-          <InlineNotice tone="warn" message={`Photo analysis failed: ${ocrError}`} />
-        ) : null}
-        {ocrResult ? (
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 14,
-              background: '#ecfdf5',
-              border: '1px solid #86efac',
-              display: 'grid',
-              gap: 10,
-            }}
-          >
-            <strong style={{ fontSize: 14 }}>Photo result</strong>
-            <p style={{ margin: 0, fontSize: 14 }}>
-              {ocrResult.homeTeam ?? '?'}{' '}
-              <strong>{ocrResult.homeScore ?? '?'} – {ocrResult.awayScore ?? '?'}</strong>{' '}
-              {ocrResult.awayTeam ?? '?'}
-            </p>
-            {teamsSet && !teamsMatch ? (
-              <InlineNotice
-                tone="warn"
-                message="Teams from photo don't match the active game. Please confirm or enter manually."
-              />
-            ) : null}
-            {ocrResult.homeScore != null && ocrResult.awayScore != null ? (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <button
-                  type="button"
-                  disabled={busy !== null}
-                  onClick={acceptOcrResult}
-                  style={{ ...primaryButtonStyle, fontSize: 14 }}
-                >
-                  {teamsSet && teamsMatch ? 'Confirm & finish' : 'Correct, finish game'}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy !== null}
-                  onClick={dismissOcrResult}
-                  style={{ ...secondaryButtonStyle, fontSize: 14 }}
-                >
-                  No, enter manually
-                </button>
-              </div>
-            ) : (
-              <InlineNotice tone="warn" message="Could not read score from photo. Enter the result manually." />
-            )}
-          </div>
-        ) : null}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-          <button
-            type="button"
-            disabled={busy !== null || !scorePairReady}
-            onClick={() => void submitResult('home')}
-            style={{ ...primaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
-          >
-            {busy === 'recording-game' ? 'Saving...' : 'Home win'}
-          </button>
-          <button
-            type="button"
-            disabled={busy !== null || !scorePairReady}
-            onClick={() => void submitResult('draw')}
-            style={{ ...secondaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
-          >
-            {busy === 'recording-game' ? 'Saving...' : 'Draw'}
-          </button>
-          <button
-            type="button"
-            disabled={busy !== null || !scorePairReady}
-            onClick={() => void submitResult('away')}
-            style={{ ...primaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
-          >
-            {busy === 'recording-game' ? 'Saving...' : 'Away win'}
-          </button>
-        </div>
-        <p style={{ margin: 0, fontSize: 13, opacity: 0.72 }}>
-          Scores are optional, but if you enter them they must match the winner you pick.
-        </p>
+        <TvPhotoCapture
+          busy={busy}
+          homeClub={homeClub}
+          awayClub={awayClub}
+          onAnalysePhoto={onAnalysePhoto}
+          onAcceptResult={handleAcceptResult}
+          onInterruptGame={() => void submitInterrupt()}
+        />
+        <ResultButtons
+          busy={busy}
+          scorePairReady={scorePairReady}
+          homeScoreValue={trimmedHomeScore}
+          awayScoreValue={trimmedAwayScore}
+          onSubmit={(result) => void submitResult(result)}
+        />
       </div>
       <div
         style={{
@@ -399,8 +233,70 @@ export function CurrentGameCard({
   )
 }
 
-function fuzzyTeamMatch(ocrName: string | null, clubName: string): boolean {
-  if (!ocrName) return false
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
-  return norm(ocrName) === norm(clubName) || norm(clubName).includes(norm(ocrName)) || norm(ocrName).includes(norm(clubName))
+/**
+ * Three result buttons whose enabled state depends on the entered scores.
+ *
+ * - Both scores empty → all three enabled (winner-only recording).
+ * - Both scores filled → only the button matching the score relationship
+ *   is enabled (prevents submitting a contradictory result).
+ * - One score filled / invalid pair → all disabled (incomplete entry).
+ */
+function ResultButtons({
+  busy,
+  scorePairReady,
+  homeScoreValue,
+  awayScoreValue,
+  onSubmit,
+}: {
+  busy: BusyState
+  scorePairReady: boolean
+  homeScoreValue: string
+  awayScoreValue: string
+  onSubmit: (result: 'home' | 'away' | 'draw') => void
+}) {
+  const bothFilled = homeScoreValue.length > 0 && awayScoreValue.length > 0
+  const h = bothFilled ? Number.parseInt(homeScoreValue, 10) : NaN
+  const a = bothFilled ? Number.parseInt(awayScoreValue, 10) : NaN
+  const scoresValid = bothFilled && Number.isFinite(h) && Number.isFinite(a)
+
+  // When scores are filled and valid, only the correct outcome is enabled.
+  const homeDisabled = busy !== null || !scorePairReady || (scoresValid && !(h > a))
+  const drawDisabled = busy !== null || !scorePairReady || (scoresValid && h !== a)
+  const awayDisabled = busy !== null || !scorePairReady || (scoresValid && !(a > h))
+
+  return (
+    <div style={{ display: 'grid', gap: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+        <button
+          type="button"
+          disabled={homeDisabled}
+          onClick={() => onSubmit('home')}
+          style={{ ...primaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
+        >
+          {busy === 'recording-game' ? 'Saving...' : 'Home win'}
+        </button>
+        <button
+          type="button"
+          disabled={drawDisabled}
+          onClick={() => onSubmit('draw')}
+          style={{ ...secondaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
+        >
+          {busy === 'recording-game' ? 'Saving...' : 'Draw'}
+        </button>
+        <button
+          type="button"
+          disabled={awayDisabled}
+          onClick={() => onSubmit('away')}
+          style={{ ...primaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
+        >
+          {busy === 'recording-game' ? 'Saving...' : 'Away win'}
+        </button>
+      </div>
+      <p style={{ margin: 0, fontSize: 13, opacity: 0.72 }}>
+        {scoresValid
+          ? `Score ${h} : ${a} — only the matching result is available.`
+          : 'Scores are optional. Enter both or leave both blank.'}
+      </p>
+    </div>
+  )
 }

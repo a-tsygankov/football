@@ -84,6 +84,8 @@ export function RoomScreen({
     gameNightId: string,
     gameId: string,
     image: string,
+    homeTeam?: { name: string; aliases: string[] } | null,
+    awayTeam?: { name: string; aliases: string[] } | null,
   ) => Promise<AnalysePhotoResponse>
   onRefresh: () => Promise<void>
   onRepairSquads: () => Promise<void>
