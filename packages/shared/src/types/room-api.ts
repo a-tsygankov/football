@@ -81,6 +81,13 @@ export interface UpdateGamerRequest {
 
 export interface GamerResponse {
   gamer: Gamer
+  /**
+   * Latest game-night active-gamer pool when the mutation touched it
+   * (e.g. a new active gamer added to the live game night, or a gamer
+   * deactivated and removed from the pool). Omitted when the active
+   * pool was not affected.
+   */
+  activeGameNightGamers?: ReadonlyArray<GameNightActiveGamer>
 }
 
 export interface CreateGameNightRequest {

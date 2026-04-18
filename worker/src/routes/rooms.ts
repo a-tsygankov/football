@@ -580,7 +580,28 @@ roomRoutes.post('/rooms/:roomId/gamers', async (c) => {
   }
 
   await c.get('deps').gamers.insert(gamer)
-  return c.json({ gamer: toPublicGamer(gamer) }, 201)
+
+  // A gamer added during a live game night should be selectable in the next
+  // game without first opening the active-pool editor. Append them to the
+  // game-night roster so the bootstrap reflects them as ready to play.
+  let activeGameNightGamers: ReadonlyArray<GameNightActiveGamer> | undefined
+  if (gamer.active) {
+    const activeGameNight = await getFreshActiveGameNight(c, roomId, now)
+    if (activeGameNight) {
+      const existing = await c.get('deps').gameNights.listActiveGamers(activeGameNight.id)
+      const nextIds = [...existing.map((item) => item.gamerId), gamer.id]
+      activeGameNightGamers = await c
+        .get('deps')
+        .gameNights.replaceActiveGamers(activeGameNight.id, roomId, nextIds, now)
+    }
+  }
+
+  return c.json(
+    activeGameNightGamers
+      ? { gamer: toPublicGamer(gamer), activeGameNightGamers }
+      : { gamer: toPublicGamer(gamer) },
+    201,
+  )
 })
 
 roomRoutes.patch('/rooms/:roomId/gamers/:gamerId', async (c) => {
@@ -636,12 +657,31 @@ roomRoutes.patch('/rooms/:roomId/gamers/:gamerId', async (c) => {
     return c.json({ error: 'gamer_name_taken', nameKey: nextNameKey }, 409)
   }
 
+  // Deactivating a gamer must also evict them from the live game-night
+  // pool, otherwise the Roster toggle silently leaves them selectable for
+  // the next game. The only case we still block is when the gamer is in
+  // the currently in-progress game — the user must record or interrupt
+  // that game first so we don't leave a side short.
+  let activeGameNightGamers: ReadonlyArray<GameNightActiveGamer> | undefined
+  let pendingPoolRemoval: { gameNightId: GameNightId; nextIds: ReadonlyArray<GamerId> } | null = null
   if (body.active === false) {
     const activeGameNight = await getFreshActiveGameNight(c, roomId, Date.now())
     if (activeGameNight) {
+      const currentGame = await c.get('deps').games.getActive(activeGameNight.id)
+      if (
+        currentGame &&
+        [...currentGame.homeGamerIds, ...currentGame.awayGamerIds].includes(gamerId)
+      ) {
+        return c.json({ error: 'gamer_active_in_current_game', gamerId }, 409)
+      }
       const activeGamers = await c.get('deps').gameNights.listActiveGamers(activeGameNight.id)
       if (activeGamers.some((activeGamer) => activeGamer.gamerId === gamerId)) {
-        return c.json({ error: 'gamer_active_in_game_night', gamerId }, 409)
+        pendingPoolRemoval = {
+          gameNightId: activeGameNight.id,
+          nextIds: activeGamers
+            .map((item) => item.gamerId)
+            .filter((id) => id !== gamerId),
+        }
       }
     }
   }
@@ -673,7 +713,21 @@ roomRoutes.patch('/rooms/:roomId/gamers/:gamerId', async (c) => {
   }
 
   await c.get('deps').gamers.update(updated)
-  return c.json({ gamer: toPublicGamer(updated) })
+  if (pendingPoolRemoval) {
+    activeGameNightGamers = await c
+      .get('deps')
+      .gameNights.replaceActiveGamers(
+        pendingPoolRemoval.gameNightId,
+        roomId,
+        pendingPoolRemoval.nextIds,
+        Date.now(),
+      )
+  }
+  return c.json(
+    activeGameNightGamers
+      ? { gamer: toPublicGamer(updated), activeGameNightGamers }
+      : { gamer: toPublicGamer(updated) },
+  )
 })
 
 roomRoutes.post('/rooms/:roomId/game-nights', async (c) => {

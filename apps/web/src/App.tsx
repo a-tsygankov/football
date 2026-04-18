@@ -6,6 +6,7 @@ import {
   type CurrentGame,
   DEFAULT_SQUAD_PLATFORM,
   type Gamer,
+  type GamerResponse,
   type InterruptCurrentGameRequest,
   type RecordCurrentGameResultRequest,
   type RefreshRoomSquadAssetsResponse,
@@ -367,7 +368,7 @@ export function App() {
     setBusy('creating-gamer')
     setError(null)
     try {
-      const response = await apiJson<{ gamer: Gamer }>(`/api/rooms/${bootstrap.room.id}/gamers`, {
+      const response = await apiJson<GamerResponse>(`/api/rooms/${bootstrap.room.id}/gamers`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -380,7 +381,12 @@ export function App() {
       startTransition(() => {
         setBootstrap((current) =>
           current
-            ? { ...current, gamers: [...current.gamers, response.gamer] }
+            ? {
+                ...current,
+                gamers: [...current.gamers, response.gamer],
+                activeGameNightGamers:
+                  response.activeGameNightGamers ?? current.activeGameNightGamers,
+              }
             : current,
         )
       })
@@ -400,7 +406,7 @@ export function App() {
     setBusy('updating-gamer')
     setError(null)
     try {
-      const response = await apiJson<{ gamer: Gamer }>(
+      const response = await apiJson<GamerResponse>(
         `/api/rooms/${bootstrap.room.id}/gamers/${gamer.id}`,
         {
           method: 'PATCH',
@@ -416,6 +422,8 @@ export function App() {
                 gamers: current.gamers.map((item) =>
                   item.id === response.gamer.id ? response.gamer : item,
                 ),
+                activeGameNightGamers:
+                  response.activeGameNightGamers ?? current.activeGameNightGamers,
               }
             : current,
         )
@@ -435,7 +443,7 @@ export function App() {
     setBusy('updating-gamer')
     setError(null)
     try {
-      const response = await apiJson<{ gamer: Gamer }>(
+      const response = await apiJson<GamerResponse>(
         `/api/rooms/${bootstrap.room.id}/gamers/${gamerId}`,
         {
           method: 'PATCH',
@@ -451,6 +459,8 @@ export function App() {
                 gamers: current.gamers.map((item) =>
                   item.id === response.gamer.id ? response.gamer : item,
                 ),
+                activeGameNightGamers:
+                  response.activeGameNightGamers ?? current.activeGameNightGamers,
               }
             : current,
         )
