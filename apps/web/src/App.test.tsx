@@ -1376,4 +1376,264 @@ describe('App shell', () => {
       expect(screen.getByRole('button', { name: /Create manual game/i })).toBeInTheDocument(),
     )
   })
+
+  it('shows a newly added gamer in the Game Creation pool', async () => {
+    localStorage.setItem('fc26:last-room-id', 'room-add')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input, init) => {
+        const url = String(input)
+        const scoreboardRoomId = roomIdFromScoreboardUrl(url)
+        if (scoreboardRoomId) return emptyScoreboardResponse(scoreboardRoomId)
+        if (url.endsWith('/api/version')) {
+          return new Response(
+            JSON.stringify({
+              workerVersion: '0.1.0',
+              schemaVersion: 1,
+              minClientVersion: '0.1.0',
+              gitSha: null,
+              builtAt: new Date().toISOString(),
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/api/rooms/room-add/bootstrap')) {
+          return new Response(
+            JSON.stringify({
+              room: {
+                id: 'room-add',
+                name: 'Add Room',
+                avatarUrl: null,
+                hasPin: false,
+                defaultSelectionStrategy: 'uniform-random',
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              gamers: [
+                {
+                  id: 'g1',
+                  roomId: 'room-add',
+                  name: 'Alice',
+                  rating: 5,
+                  active: true,
+                  hasPin: false,
+                  avatarUrl: null,
+                  createdAt: 1000,
+                  updatedAt: 1000,
+                },
+                {
+                  id: 'g2',
+                  roomId: 'room-add',
+                  name: 'Bob',
+                  rating: 4,
+                  active: true,
+                  hasPin: false,
+                  avatarUrl: null,
+                  createdAt: 1000,
+                  updatedAt: 1000,
+                },
+              ],
+              activeGameNight: {
+                id: 'gn-add',
+                roomId: 'room-add',
+                status: 'active',
+                startedAt: Date.now() - 60_000,
+                endedAt: null,
+                lastGameAt: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              activeGameNightGamers: [
+                { gameNightId: 'gn-add', roomId: 'room-add', gamerId: 'g1', joinedAt: 1000, updatedAt: 1000 },
+                { gameNightId: 'gn-add', roomId: 'room-add', gamerId: 'g2', joinedAt: 1000, updatedAt: 1000 },
+              ],
+              currentGame: null,
+              session: {
+                roomId: 'room-add',
+                expiresAt: Date.now() + 10_000,
+              },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/api/rooms/room-add/gamers') && init?.method === 'POST') {
+          return new Response(
+            JSON.stringify({
+              gamer: {
+                id: 'g3',
+                roomId: 'room-add',
+                name: 'Cara',
+                rating: 3,
+                active: true,
+                hasPin: false,
+                avatarUrl: null,
+                createdAt: 2000,
+                updatedAt: 2000,
+              },
+              activeGameNightGamers: [
+                { gameNightId: 'gn-add', roomId: 'room-add', gamerId: 'g1', joinedAt: 1000, updatedAt: 1000 },
+                { gameNightId: 'gn-add', roomId: 'room-add', gamerId: 'g2', joinedAt: 1000, updatedAt: 1000 },
+                { gameNightId: 'gn-add', roomId: 'room-add', gamerId: 'g3', joinedAt: 2000, updatedAt: 2000 },
+              ],
+            }),
+            { status: 201, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      }),
+    )
+
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Game creation/i })).toBeInTheDocument(),
+    )
+
+    // Sanity check: only Alice and Bob are in the pool initially. Query the
+    // panel scope so we don't collide with identical names in the roster.
+    const gamePanel = screen.getByRole('heading', { name: /Game creation/i }).closest('section')!
+    expect(within(gamePanel).getByText('Alice')).toBeInTheDocument()
+    expect(within(gamePanel).getByText('Bob')).toBeInTheDocument()
+    expect(within(gamePanel).queryByText('Cara')).toBeNull()
+
+    fireEvent.change(screen.getByPlaceholderText(/Alice/i), { target: { value: 'Cara' } })
+    fireEvent.click(screen.getByRole('button', { name: /Add gamer/i }))
+
+    await waitFor(() =>
+      expect(within(gamePanel).getByText('Cara')).toBeInTheDocument(),
+    )
+  })
+
+  it('shows a reactivated gamer in the Game Creation pool', async () => {
+    localStorage.setItem('fc26:last-room-id', 'room-react')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input, init) => {
+        const url = String(input)
+        const scoreboardRoomId = roomIdFromScoreboardUrl(url)
+        if (scoreboardRoomId) return emptyScoreboardResponse(scoreboardRoomId)
+        if (url.endsWith('/api/version')) {
+          return new Response(
+            JSON.stringify({
+              workerVersion: '0.1.0',
+              schemaVersion: 1,
+              minClientVersion: '0.1.0',
+              gitSha: null,
+              builtAt: new Date().toISOString(),
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/api/rooms/room-react/bootstrap')) {
+          return new Response(
+            JSON.stringify({
+              room: {
+                id: 'room-react',
+                name: 'React Room',
+                avatarUrl: null,
+                hasPin: false,
+                defaultSelectionStrategy: 'uniform-random',
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              gamers: [
+                {
+                  id: 'g1',
+                  roomId: 'room-react',
+                  name: 'Alice',
+                  rating: 5,
+                  active: true,
+                  hasPin: false,
+                  avatarUrl: null,
+                  createdAt: 1000,
+                  updatedAt: 1000,
+                },
+                {
+                  id: 'g2',
+                  roomId: 'room-react',
+                  name: 'Bob',
+                  rating: 4,
+                  active: true,
+                  hasPin: false,
+                  avatarUrl: null,
+                  createdAt: 1000,
+                  updatedAt: 1000,
+                },
+                {
+                  id: 'g3',
+                  roomId: 'room-react',
+                  name: 'Cara',
+                  rating: 3,
+                  active: false,
+                  hasPin: false,
+                  avatarUrl: null,
+                  createdAt: 1000,
+                  updatedAt: 1000,
+                },
+              ],
+              activeGameNight: {
+                id: 'gn-react',
+                roomId: 'room-react',
+                status: 'active',
+                startedAt: Date.now() - 60_000,
+                endedAt: null,
+                lastGameAt: null,
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              activeGameNightGamers: [
+                { gameNightId: 'gn-react', roomId: 'room-react', gamerId: 'g1', joinedAt: 1000, updatedAt: 1000 },
+                { gameNightId: 'gn-react', roomId: 'room-react', gamerId: 'g2', joinedAt: 1000, updatedAt: 1000 },
+              ],
+              currentGame: null,
+              session: {
+                roomId: 'room-react',
+                expiresAt: Date.now() + 10_000,
+              },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/api/rooms/room-react/gamers/g3') && init?.method === 'PATCH') {
+          return new Response(
+            JSON.stringify({
+              gamer: {
+                id: 'g3',
+                roomId: 'room-react',
+                name: 'Cara',
+                rating: 3,
+                active: true,
+                hasPin: false,
+                avatarUrl: null,
+                createdAt: 1000,
+                updatedAt: 2000,
+              },
+              activeGameNightGamers: [
+                { gameNightId: 'gn-react', roomId: 'room-react', gamerId: 'g1', joinedAt: 1000, updatedAt: 1000 },
+                { gameNightId: 'gn-react', roomId: 'room-react', gamerId: 'g2', joinedAt: 1000, updatedAt: 1000 },
+                { gameNightId: 'gn-react', roomId: 'room-react', gamerId: 'g3', joinedAt: 2000, updatedAt: 2000 },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      }),
+    )
+
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Game creation/i })).toBeInTheDocument(),
+    )
+
+    const gamePanel = screen.getByRole('heading', { name: /Game creation/i }).closest('section')!
+    expect(within(gamePanel).queryByText('Cara')).toBeNull()
+
+    // Cara sits in the Roster as inactive; the reactivate button is labelled
+    // "Reactivate". Clicking it triggers a PATCH with active: true.
+    fireEvent.click(screen.getByRole('button', { name: /Reactivate/i }))
+
+    await waitFor(() =>
+      expect(within(gamePanel).getByText('Cara')).toBeInTheDocument(),
+    )
+  })
 })
