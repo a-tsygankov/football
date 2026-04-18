@@ -1472,4 +1472,284 @@ describe('room routes', () => {
     })
     expect(aliceBobTeam?.points).toBe(3)
   })
+
+  it('adds a gamer created during an active game night to the live pool', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Walk-In Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const initialGamerIds: string[] = []
+    for (const name of ['Alice', 'Bob']) {
+      const res = await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ name }),
+        }),
+        env,
+        execCtx(),
+      )
+      expect(res.status).toBe(201)
+      const body = (await res.json()) as { gamer: { id: string } }
+      initialGamerIds.push(body.gamer.id)
+    }
+
+    const gameNightRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/game-nights`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ activeGamerIds: initialGamerIds }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(gameNightRes.status).toBe(201)
+
+    const lateRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ name: 'Cara' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(lateRes.status).toBe(201)
+    const lateBody = (await lateRes.json()) as {
+      gamer: { id: string }
+      activeGameNightGamers?: ReadonlyArray<{ gamerId: string }>
+    }
+    expect(lateBody.activeGameNightGamers?.map((item) => item.gamerId)).toContain(
+      lateBody.gamer.id,
+    )
+
+    const bootstrapRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/bootstrap`, {
+        headers: { Cookie: cookie },
+      }),
+      env,
+      execCtx(),
+    )
+    const bootstrap = (await bootstrapRes.json()) as RoomBootstrapResponse
+    expect(bootstrap.activeGameNightGamers.map((item) => item.gamerId)).toEqual(
+      expect.arrayContaining([...initialGamerIds, lateBody.gamer.id]),
+    )
+    expect(bootstrap.activeGameNightGamers).toHaveLength(initialGamerIds.length + 1)
+  })
+
+  it('does not add an inactive new gamer to the live pool', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Skip Pool Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const initialGamerIds: string[] = []
+    for (const name of ['Alice', 'Bob']) {
+      const res = await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ name }),
+        }),
+        env,
+        execCtx(),
+      )
+      const body = (await res.json()) as { gamer: { id: string } }
+      initialGamerIds.push(body.gamer.id)
+    }
+
+    await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/game-nights`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ activeGamerIds: initialGamerIds }),
+      }),
+      env,
+      execCtx(),
+    )
+
+    const inactiveRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ name: 'Cara', active: false }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(inactiveRes.status).toBe(201)
+    const inactiveBody = (await inactiveRes.json()) as {
+      gamer: { id: string; active: boolean }
+      activeGameNightGamers?: ReadonlyArray<{ gamerId: string }>
+    }
+    expect(inactiveBody.gamer.active).toBe(false)
+    expect(inactiveBody.activeGameNightGamers).toBeUndefined()
+  })
+
+  it('removes a gamer from the live pool when deactivated from the roster', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Deactivate Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const gamerIds: string[] = []
+    for (const name of ['Alice', 'Bob', 'Cara']) {
+      const res = await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ name }),
+        }),
+        env,
+        execCtx(),
+      )
+      const body = (await res.json()) as { gamer: { id: string } }
+      gamerIds.push(body.gamer.id)
+    }
+
+    await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/game-nights`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ activeGamerIds: gamerIds }),
+      }),
+      env,
+      execCtx(),
+    )
+
+    const targetGamerId = gamerIds[2]!
+    const deactivateRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/gamers/${targetGamerId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ active: false }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(deactivateRes.status).toBe(200)
+    const deactivateBody = (await deactivateRes.json()) as {
+      gamer: { id: string; active: boolean }
+      activeGameNightGamers?: ReadonlyArray<{ gamerId: string }>
+    }
+    expect(deactivateBody.gamer.active).toBe(false)
+    expect(deactivateBody.activeGameNightGamers?.map((item) => item.gamerId)).not.toContain(
+      targetGamerId,
+    )
+
+    const bootstrapRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/bootstrap`, {
+        headers: { Cookie: cookie },
+      }),
+      env,
+      execCtx(),
+    )
+    const bootstrap = (await bootstrapRes.json()) as RoomBootstrapResponse
+    expect(bootstrap.activeGameNightGamers.map((item) => item.gamerId)).not.toContain(
+      targetGamerId,
+    )
+    expect(bootstrap.gamers.find((gamer) => gamer.id === targetGamerId)?.active).toBe(false)
+  })
+
+  it('blocks deactivation when the gamer is in the in-progress game', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Live Game Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const gamerIds: string[] = []
+    for (const name of ['Alice', 'Bob']) {
+      const res = await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ name }),
+        }),
+        env,
+        execCtx(),
+      )
+      const body = (await res.json()) as { gamer: { id: string } }
+      gamerIds.push(body.gamer.id)
+    }
+
+    const gameNightRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/game-nights`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ activeGamerIds: gamerIds }),
+      }),
+      env,
+      execCtx(),
+    )
+    const gameNightBody = (await gameNightRes.json()) as { gameNight: { id: string } }
+
+    const currentGameRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({
+            allocationMode: 'manual',
+            homeGamerIds: [gamerIds[0]],
+            awayGamerIds: [gamerIds[1]],
+          }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(currentGameRes.status).toBe(201)
+
+    const deactivateRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/gamers/${gamerIds[0]}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ active: false }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(deactivateRes.status).toBe(409)
+    const deactivateBody = (await deactivateRes.json()) as { error: string; gamerId: string }
+    expect(deactivateBody.error).toBe('gamer_active_in_current_game')
+    expect(deactivateBody.gamerId).toBe(gamerIds[0])
+  })
 })
