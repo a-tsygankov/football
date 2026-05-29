@@ -8,6 +8,7 @@ import {
   normalizeNameStem,
 } from '@fc26/shared'
 import { useDebugConsole } from '../../debug/console-store.js'
+import { AvatarPicker } from '../../components/AvatarPicker.jsx'
 import { GamerIdentity } from '../../components/GamerPanel.jsx'
 import { Field } from '../../components/Field.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
@@ -39,6 +40,7 @@ export function RosterPanel({
   const [editingGamerId, setEditingGamerId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [editingRating, setEditingRating] = useState('3')
+  const [editingAvatarUrl, setEditingAvatarUrl] = useState<string | null>(null)
   const [editingCurrentPin, setEditingCurrentPin] = useState('')
   const [editingNextPin, setEditingNextPin] = useState('')
   // Room admins (anyone who has unlocked the hidden Settings panel via the
@@ -51,6 +53,7 @@ export function RosterPanel({
     setEditingGamerId(gamer.id)
     setEditingName(gamer.name)
     setEditingRating(String(gamer.rating))
+    setEditingAvatarUrl(gamer.avatarUrl)
     setEditingCurrentPin('')
     setEditingNextPin('')
   }
@@ -76,6 +79,7 @@ export function RosterPanel({
     await onUpdateGamerDetails(editingGamerId, {
       name: editingName.trim(),
       rating: Number.parseInt(editingRating, 10),
+      avatarUrl: editingAvatarUrl,
       currentPin: editingCurrentPin.trim() || null,
       pin: editingNextPin.trim() || null,
       // When Settings is unlocked the admin doesn't need to know the PIN —
@@ -187,6 +191,14 @@ export function RosterPanel({
                         gap: 10,
                       }}
                     >
+                      <Field label="Avatar">
+                        <AvatarPicker
+                          kind="gamer"
+                          value={editingAvatarUrl}
+                          onChange={setEditingAvatarUrl}
+                          disabled={busy !== null}
+                        />
+                      </Field>
                       <Field label="Name">
                         <input
                           value={editingName}

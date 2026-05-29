@@ -1920,4 +1920,105 @@ describe('App shell', () => {
     expect(within(scoreboardPanel).getByText(/2\s*–\s*1/)).toBeInTheDocument()
     expect(matchHistoryUrls.some((url) => url.includes('scope=all'))).toBe(true)
   })
+
+  it('edits a gamer profile name and avatar from the roster', async () => {
+    localStorage.setItem('fc26:last-room-id', 'room-edit')
+    const existingAvatar =
+      'data:image/webp;base64,UklGRhYAAABXRUJQVlA4TAoAAAAvAAAAAAfQ//73v/+BiOh/AAA='
+    let patchBody: Record<string, unknown> | null = null
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input, init) => {
+        const url = String(input)
+        const scoreboardRoomId = roomIdFromScoreboardUrl(url)
+        if (scoreboardRoomId) return emptyScoreboardResponse(scoreboardRoomId)
+        if (url.endsWith('/api/version')) {
+          return new Response(
+            JSON.stringify({
+              workerVersion: '0.1.0',
+              schemaVersion: 1,
+              minClientVersion: '0.1.0',
+              gitSha: null,
+              builtAt: new Date().toISOString(),
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/api/rooms/room-edit/bootstrap')) {
+          return new Response(
+            JSON.stringify({
+              room: {
+                id: 'room-edit',
+                name: 'Edit Room',
+                avatarUrl: null,
+                hasPin: false,
+                defaultSelectionStrategy: 'uniform-random',
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              gamers: [
+                {
+                  id: 'g1',
+                  roomId: 'room-edit',
+                  name: 'Alice',
+                  rating: 5,
+                  active: true,
+                  hasPin: false,
+                  avatarUrl: existingAvatar,
+                  createdAt: 1000,
+                  updatedAt: 1000,
+                },
+              ],
+              activeGameNight: null,
+              activeGameNightGamers: [],
+              currentGame: null,
+              session: { roomId: 'room-edit', expiresAt: Date.now() + 10_000 },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/api/rooms/room-edit/gamers/g1') && init?.method === 'PATCH') {
+          patchBody = JSON.parse(String(init.body)) as Record<string, unknown>
+          return new Response(
+            JSON.stringify({
+              gamer: {
+                id: 'g1',
+                roomId: 'room-edit',
+                name: 'Alicia',
+                rating: 5,
+                active: true,
+                hasPin: false,
+                avatarUrl: existingAvatar,
+                createdAt: 1000,
+                updatedAt: 2000,
+              },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      }),
+    )
+
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Roster' })).toBeInTheDocument(),
+    )
+
+    const rosterPanel = screen.getByRole('heading', { name: 'Roster' }).closest('section')!
+    fireEvent.click(within(rosterPanel).getByRole('button', { name: 'Edit' }))
+
+    // The edit form now exposes the avatar picker for the gamer's existing image.
+    expect(within(rosterPanel).getByText('Replace image')).toBeInTheDocument()
+    expect(within(rosterPanel).getByRole('button', { name: 'Remove' })).toBeInTheDocument()
+
+    fireEvent.change(within(rosterPanel).getByDisplayValue('Alice'), {
+      target: { value: 'Alicia' },
+    })
+    fireEvent.click(within(rosterPanel).getByRole('button', { name: 'Save gamer' }))
+
+    await waitFor(() => expect(patchBody).not.toBeNull())
+    // Name change is sent and the existing avatar is threaded through the save.
+    expect(patchBody).toMatchObject({ name: 'Alicia', avatarUrl: existingAvatar })
+  })
 })

@@ -900,6 +900,85 @@ describe('room routes', () => {
     expect(updated.gamer.hasPin).toBe(false)
   })
 
+  it('updates a gamer avatar and preserves it when avatarUrl is omitted', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Avatar Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const gamerRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ name: 'Avatar Gamer' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(gamerRes.status).toBe(201)
+    const gamer = (await gamerRes.json()) as {
+      gamer: { id: string; avatarUrl: string | null }
+    }
+    expect(gamer.gamer.avatarUrl).toBeNull()
+
+    const dataUrl =
+      'data:image/webp;base64,UklGRhYAAABXRUJQVlA4TAoAAAAvAAAAAAfQ//73v/+BiOh/AAA='
+
+    // Set the avatar.
+    const setRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/gamers/${gamer.gamer.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ avatarUrl: dataUrl }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(setRes.status).toBe(200)
+    const withAvatar = (await setRes.json()) as { gamer: { avatarUrl: string | null } }
+    expect(withAvatar.gamer.avatarUrl).toBe(dataUrl)
+
+    // Editing another field without sending avatarUrl keeps the existing image.
+    const renameRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/gamers/${gamer.gamer.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ name: 'Avatar Player' }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(renameRes.status).toBe(200)
+    const renamed = (await renameRes.json()) as {
+      gamer: { name: string; avatarUrl: string | null }
+    }
+    expect(renamed.gamer.name).toBe('Avatar Player')
+    expect(renamed.gamer.avatarUrl).toBe(dataUrl)
+
+    // Passing null clears the avatar.
+    const clearRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/gamers/${gamer.gamer.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ avatarUrl: null }),
+      }),
+      env,
+      execCtx(),
+    )
+    expect(clearRes.status).toBe(200)
+    const cleared = (await clearRes.json()) as { gamer: { avatarUrl: string | null } }
+    expect(cleared.gamer.avatarUrl).toBeNull()
+  })
+
   it('shares a single stem namespace between rooms and gamers', async () => {
     const app = buildTestApp()
 
