@@ -141,6 +141,10 @@ export interface RecordCurrentGameResultRequest {
   occurredAt?: number
   entryMethod?: 'manual' | 'ocr'
   ocrModel?: string
+  /** Club name recognised for the home side (e.g. from the TV photo). */
+  homeClubName?: string | null
+  /** Club name recognised for the away side (e.g. from the TV photo). */
+  awayClubName?: string | null
 }
 
 export interface InterruptCurrentGameRequest {
@@ -192,7 +196,11 @@ export interface MatchHistorySide {
   /** Resolved gamer records for `gamerIds`, in the same order. */
   gamers: ReadonlyArray<Gamer>
   clubId: number
-  /** Resolved FC club name, or null when the club id is unknown to the latest squad data. */
+  /**
+   * Display club name: the latest squad data's name for `clubId`, falling back
+   * to the club name recognised at record time (used when no club was selected
+   * before the game, so `clubId` is 0). Null when neither is available.
+   */
   clubName: string | null
   /** Exact goals scored, or null when only the winner was recorded. */
   score: number | null

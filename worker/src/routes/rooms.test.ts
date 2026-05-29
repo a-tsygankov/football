@@ -2333,6 +2333,110 @@ describe('room routes', () => {
     expect(alice.matches).toHaveLength(1)
   })
 
+  it('stores recognised club names and shows them when no club was selected', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Recognised Clubs Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const gamerIds: string[] = []
+    for (const name of ['Alice', 'Bob']) {
+      const res = await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ name }),
+        }),
+        env,
+        execCtx(),
+      )
+      const body = (await res.json()) as { gamer: { id: string } }
+      gamerIds.push(body.gamer.id)
+    }
+    const [aliceId, bobId] = gamerIds
+
+    const gameNightRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/game-nights`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ activeGamerIds: gamerIds }),
+      }),
+      env,
+      execCtx(),
+    )
+    const gameNightBody = (await gameNightRes.json()) as { gameNight: { id: string } }
+
+    // Start the game WITHOUT selecting any FC clubs.
+    const currentGameRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({
+            allocationMode: 'manual',
+            homeGamerIds: [aliceId],
+            awayGamerIds: [bobId],
+          }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(currentGameRes.status).toBe(201)
+    const currentGameBody = (await currentGameRes.json()) as { currentGame: { id: string } }
+
+    // Record the result with club names recognised from the TV photo.
+    const recordRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games/${currentGameBody.currentGame.id}/result`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({
+            result: 'home',
+            homeScore: 3,
+            awayScore: 0,
+            entryMethod: 'ocr',
+            ocrModel: 'gemini',
+            homeClubName: 'Real Madrid',
+            awayClubName: 'Barcelona',
+          }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(recordRes.status).toBe(200)
+
+    const historyRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/match-history?scope=all`, {
+        headers: { Cookie: cookie },
+      }),
+      env,
+      execCtx(),
+    )
+    expect(historyRes.status).toBe(200)
+    const history = (await historyRes.json()) as MatchHistoryResponse
+    expect(history.matches).toHaveLength(1)
+    const match = history.matches[0]!
+    // No club was selected, so the id is the 0 sentinel but the recognised
+    // name is surfaced for display.
+    expect(match.home.clubId).toBe(0)
+    expect(match.home.clubName).toBe('Real Madrid')
+    expect(match.away.clubId).toBe(0)
+    expect(match.away.clubName).toBe('Barcelona')
+  })
+
   it('rejects a match-history request with no scope or both scopes', async () => {
     const app = buildTestApp()
 

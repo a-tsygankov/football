@@ -23,6 +23,11 @@ function SideBlock({ side, align }: { side: MatchHistorySide; align: 'left' | 'r
   const names = side.gamers.length > 0
     ? side.gamers.map((gamer) => gamer.name).join(' + ')
     : side.gamerIds.join(' + ')
+  // A real selected club has a positive id (and thus a logo). clubId 0 means no
+  // club was picked before the game; show the recognised name if we have one,
+  // otherwise render no club line at all (never "Club #0").
+  const hasSelectedClub = side.clubId > 0
+  const clubLabel = side.clubName ?? (hasSelectedClub ? `Club #${side.clubId}` : null)
   return (
     <div
       style={{
@@ -42,25 +47,29 @@ function SideBlock({ side, align }: { side: MatchHistorySide; align: 'left' | 'r
       >
         {names}
       </strong>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          flexDirection: align === 'left' ? 'row' : 'row-reverse',
-        }}
-      >
-        <img
-          src={clubLogoSrc(side.clubId)}
-          alt=""
-          width={20}
-          height={20}
-          style={{ borderRadius: 4, objectFit: 'contain', background: '#f1f5f9' }}
-        />
-        <span style={{ fontSize: 12, opacity: 0.74, overflowWrap: 'anywhere' }}>
-          {side.clubName ?? `Club #${side.clubId}`}
-        </span>
-      </div>
+      {clubLabel ? (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            flexDirection: align === 'left' ? 'row' : 'row-reverse',
+          }}
+        >
+          {hasSelectedClub ? (
+            <img
+              src={clubLogoSrc(side.clubId)}
+              alt=""
+              width={20}
+              height={20}
+              style={{ borderRadius: 4, objectFit: 'contain', background: '#f1f5f9' }}
+            />
+          ) : null}
+          <span style={{ fontSize: 12, opacity: 0.74, overflowWrap: 'anywhere' }}>
+            {clubLabel}
+          </span>
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -24,6 +24,13 @@ export interface GameSide {
   gamerIds: readonly GamerId[]
   gamerTeamKey: GamerTeamKey
   clubId: number
+  /**
+   * Club name recognised at record time (e.g. read off the TV photo by the
+   * OCR pass). Persisted so it survives squad-data changes and gives a label
+   * for games started without a pre-selected club (clubId 0). Optional because
+   * events recorded before this field existed won't have it.
+   */
+  clubName?: string | null
   /** Null when only the winner was recorded (no exact score entered). */
   score: number | null
 }

@@ -96,6 +96,8 @@ export function CurrentGameCard({
     hScore: number,
     aScore: number,
     model?: string,
+    homeClubName?: string | null,
+    awayClubName?: string | null,
   ): void {
     setHomeScore(String(hScore))
     setAwayScore(String(aScore))
@@ -106,6 +108,8 @@ export function CurrentGameCard({
       awayScore: aScore,
       entryMethod: 'ocr' as const,
       ocrModel: model ?? 'gemini',
+      homeClubName: homeClubName ?? null,
+      awayClubName: awayClubName ?? null,
     }).then(() => {
       setHomeScore('')
       setAwayScore('')

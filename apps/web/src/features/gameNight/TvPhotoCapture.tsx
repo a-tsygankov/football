@@ -57,6 +57,8 @@ export function TvPhotoCapture({
     homeScore: number,
     awayScore: number,
     model?: string,
+    homeClubName?: string | null,
+    awayClubName?: string | null,
   ) => void
   onInterruptGame: () => void
 }) {
@@ -109,7 +111,14 @@ export function TvPhotoCapture({
       else result = 'draw'
     }
 
-    onAcceptResult(result, homeScore, awayScore, analysisResult.model)
+    onAcceptResult(
+      result,
+      homeScore,
+      awayScore,
+      analysisResult.model,
+      analysisResult.homeTeam,
+      analysisResult.awayTeam,
+    )
     resetState()
   }
 

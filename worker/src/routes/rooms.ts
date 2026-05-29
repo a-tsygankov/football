@@ -156,6 +156,8 @@ const recordCurrentGameSchema = z.object({
   occurredAt: z.number().int().positive().optional(),
   entryMethod: z.enum(['manual', 'ocr']).optional(),
   ocrModel: z.string().max(64).optional(),
+  homeClubName: z.string().trim().min(1).max(120).nullable().optional(),
+  awayClubName: z.string().trim().min(1).max(120).nullable().optional(),
 })
 
 const interruptCurrentGameSchema = z.object({
@@ -1037,12 +1039,14 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/result', 
         gamerIds: activeGame.homeGamerIds,
         gamerTeamKey: buildSideTeamKey(activeGame.homeGamerIds),
         clubId: activeGame.homeClubId ?? 0,
+        clubName: body.homeClubName ?? null,
         score: scores.homeScore,
       },
       away: {
         gamerIds: activeGame.awayGamerIds,
         gamerTeamKey: buildSideTeamKey(activeGame.awayGamerIds),
         clubId: activeGame.awayClubId ?? 0,
+        clubName: body.awayClubName ?? null,
         score: scores.awayScore,
       },
     result: body.result,
@@ -1340,7 +1344,10 @@ async function buildMatchHistory(
       .map((gamerId) => gamersById.get(gamerId))
       .filter((gamer): gamer is Gamer => gamer !== undefined),
     clubId: side.clubId,
-    clubName: clubNamesById.get(side.clubId) ?? null,
+    // Prefer the selected club's current squad name; fall back to the name
+    // recognised at record time (the only label available for games started
+    // without a pre-selected club, where clubId is 0).
+    clubName: clubNamesById.get(side.clubId) ?? side.clubName ?? null,
     score: side.score,
     won,
   })
