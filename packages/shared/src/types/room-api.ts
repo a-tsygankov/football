@@ -10,7 +10,14 @@ import type {
   SquadPlatform,
 } from './domain.js'
 import type { GameResult } from './events.js'
-import type { RoomId } from './ids.js'
+import type {
+  EventId,
+  GameId,
+  GameNightId,
+  GamerId,
+  GamerTeamKey,
+  RoomId,
+} from './ids.js'
 import type {
   SquadAssetRefreshResult,
   SquadRepairResult,
@@ -171,6 +178,42 @@ export interface RoomScoreboardResponse {
   gamerRowsWithoutTeamGames: ReadonlyArray<GamerScoreboardRow>
   gamerTeamRows: ReadonlyArray<GamerTeamScoreboardRow>
   updatedAt: number | null
+}
+
+/** Which scoreboard entry a match-history drill-down is scoped to. */
+export type MatchHistoryScope =
+  | { type: 'gamer'; gamerId: GamerId }
+  | { type: 'gamerTeam'; gamerTeamKey: GamerTeamKey }
+
+/** One side of a past match, resolved for display. */
+export interface MatchHistorySide {
+  gamerIds: ReadonlyArray<GamerId>
+  /** Resolved gamer records for `gamerIds`, in the same order. */
+  gamers: ReadonlyArray<Gamer>
+  clubId: number
+  /** Resolved FC club name, or null when the club id is unknown to the latest squad data. */
+  clubName: string | null
+  /** Exact goals scored, or null when only the winner was recorded. */
+  score: number | null
+  /** True when this side won the match. */
+  won: boolean
+}
+
+/** A single past game in a drill-down, most-recent-first. */
+export interface MatchHistoryEntry {
+  eventId: EventId
+  gameId: GameId
+  gameNightId: GameNightId
+  occurredAt: number
+  format: GameFormat
+  result: GameResult
+  home: MatchHistorySide
+  away: MatchHistorySide
+}
+
+export interface MatchHistoryResponse {
+  roomId: RoomId
+  matches: ReadonlyArray<MatchHistoryEntry>
 }
 
 export interface RefreshRoomSquadAssetsResponse {

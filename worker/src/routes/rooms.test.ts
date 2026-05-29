@@ -6,6 +6,7 @@ import {
   GameNightId,
   GamerId,
   gamerTeamKey,
+  type MatchHistoryResponse,
   type PersistedGameEvent,
   ROOM_SESSION_HEADER,
   type RefreshRoomSquadAssetsResponse,
@@ -1906,5 +1907,277 @@ describe('room routes', () => {
     const deactivateBody = (await deactivateRes.json()) as { error: string; gamerId: string }
     expect(deactivateBody.error).toBe('gamer_active_in_current_game')
     expect(deactivateBody.gamerId).toBe(gamerIds[0])
+  })
+
+  it('returns per-gamer match history with resolved clubs and scores', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'History Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    await app.squadVersions.insert({
+      version: 'fc26-r11',
+      releasedAt: null,
+      ingestedAt: 2_000,
+      clubsBytes: 1,
+      clubCount: 2,
+      playerCount: 0,
+      sourceUrl: 'https://example.com',
+      notes: null,
+    })
+    await app.squadStorage.putClubs('fc26-r11', [
+      {
+        id: 1,
+        name: 'Arsenal',
+        shortName: 'ARS',
+        leagueId: 13,
+        leagueName: 'Premier League',
+        nationId: 14,
+        overallRating: 84,
+        attackRating: 84,
+        midfieldRating: 84,
+        defenseRating: 82,
+        avatarUrl: null,
+        logoUrl: 'pending:club:1',
+        starRating: 4,
+      },
+      {
+        id: 2,
+        name: 'Chelsea',
+        shortName: 'CHE',
+        leagueId: 13,
+        leagueName: 'Premier League',
+        nationId: 14,
+        overallRating: 83,
+        attackRating: 83,
+        midfieldRating: 83,
+        defenseRating: 81,
+        avatarUrl: null,
+        logoUrl: 'pending:club:2',
+        starRating: 4,
+      },
+    ])
+
+    const gamerIds: string[] = []
+    for (const name of ['Alice', 'Bob']) {
+      const res = await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ name }),
+        }),
+        env,
+        execCtx(),
+      )
+      const body = (await res.json()) as { gamer: { id: string } }
+      gamerIds.push(body.gamer.id)
+    }
+    const [aliceId, bobId] = gamerIds
+
+    const gameNightRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/game-nights`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ activeGamerIds: gamerIds }),
+      }),
+      env,
+      execCtx(),
+    )
+    const gameNightBody = (await gameNightRes.json()) as { gameNight: { id: string } }
+
+    const currentGameRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({
+            allocationMode: 'manual',
+            homeGamerIds: [aliceId],
+            awayGamerIds: [bobId],
+            homeClubId: 1,
+            awayClubId: 2,
+          }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(currentGameRes.status).toBe(201)
+    const currentGameBody = (await currentGameRes.json()) as { currentGame: { id: string } }
+
+    const recordRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games/${currentGameBody.currentGame.id}/result`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ result: 'home', homeScore: 2, awayScore: 1 }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(recordRes.status).toBe(200)
+
+    const historyRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/match-history?gamerId=${aliceId}`,
+        { headers: { Cookie: cookie } },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(historyRes.status).toBe(200)
+    const history = (await historyRes.json()) as MatchHistoryResponse
+    expect(history.matches).toHaveLength(1)
+    const match = history.matches[0]!
+    expect(match.result).toBe('home')
+    expect(match.home.gamers.map((g) => g.name)).toEqual(['Alice'])
+    expect(match.home.clubName).toBe('Arsenal')
+    expect(match.home.score).toBe(2)
+    expect(match.home.won).toBe(true)
+    expect(match.away.gamers.map((g) => g.name)).toEqual(['Bob'])
+    expect(match.away.clubName).toBe('Chelsea')
+    expect(match.away.score).toBe(1)
+    expect(match.away.won).toBe(false)
+  })
+
+  it('returns per-team match history filtered by gamer-team key', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Team History Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const gamerIds: string[] = []
+    for (const name of ['Alice', 'Bob', 'Cara', 'Dylan']) {
+      const res = await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ name }),
+        }),
+        env,
+        execCtx(),
+      )
+      const body = (await res.json()) as { gamer: { id: string } }
+      gamerIds.push(body.gamer.id)
+    }
+
+    const gameNightRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/game-nights`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ activeGamerIds: gamerIds }),
+      }),
+      env,
+      execCtx(),
+    )
+    const gameNightBody = (await gameNightRes.json()) as { gameNight: { id: string } }
+
+    const currentGameRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({
+            allocationMode: 'manual',
+            homeGamerIds: gamerIds.slice(0, 2),
+            awayGamerIds: gamerIds.slice(2, 4),
+          }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    const currentGameBody = (await currentGameRes.json()) as { currentGame: { id: string } }
+
+    await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games/${currentGameBody.currentGame.id}/result`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ result: 'home', homeScore: 4, awayScore: 2 }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+
+    const teamKey = gamerTeamKey([
+      GamerId(gamerIds[0]!),
+      GamerId(gamerIds[1]!),
+    ])
+    const historyRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/match-history?teamKey=${encodeURIComponent(teamKey)}`,
+        { headers: { Cookie: cookie } },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(historyRes.status).toBe(200)
+    const history = (await historyRes.json()) as MatchHistoryResponse
+    expect(history.matches).toHaveLength(1)
+    const match = history.matches[0]!
+    expect(new Set(match.home.gamers.map((g) => g.name))).toEqual(new Set(['Alice', 'Bob']))
+    expect(match.home.score).toBe(4)
+    expect(match.away.score).toBe(2)
+    expect(match.home.won).toBe(true)
+  })
+
+  it('rejects a match-history request with no scope or both scopes', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Scope Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const noneRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/match-history`, {
+        headers: { Cookie: cookie },
+      }),
+      env,
+      execCtx(),
+    )
+    expect(noneRes.status).toBe(400)
+
+    const bothRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/match-history?gamerId=g1&teamKey=gt_g1_g2`,
+        { headers: { Cookie: cookie } },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(bothRes.status).toBe(400)
   })
 })

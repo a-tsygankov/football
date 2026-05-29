@@ -4,6 +4,8 @@ import type {
   CreateCurrentGameRequest,
   Gamer,
   InterruptCurrentGameRequest,
+  MatchHistoryResponse,
+  MatchHistoryScope,
   RecordCurrentGameResultRequest,
   RoomBootstrapResponse,
   RoomScoreboardResponse,
@@ -29,6 +31,7 @@ export function RoomScreen({
   latestSquadVersion,
   roomSquadPlatform,
   scoreboard,
+  onLoadMatchHistory,
   gamerName,
   gamerRating,
   gamerPin,
@@ -59,6 +62,7 @@ export function RoomScreen({
   latestSquadVersion: string | null
   roomSquadPlatform: SquadPlatform
   scoreboard: RoomScoreboardResponse | null
+  onLoadMatchHistory: (scope: MatchHistoryScope) => Promise<MatchHistoryResponse>
   gamerName: string
   gamerRating: string
   gamerPin: string
@@ -203,7 +207,7 @@ export function RoomScreen({
         </section>
       ) : null}
 
-      <ScoreboardPanel scoreboard={scoreboard} />
+      <ScoreboardPanel scoreboard={scoreboard} onLoadMatchHistory={onLoadMatchHistory} />
 
       <TeamsPanel
         latestSquadVersion={latestSquadVersion}

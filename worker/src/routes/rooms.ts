@@ -19,6 +19,7 @@ import {
   GamerId,
   type GamerPoints,
   gamerTeamKey,
+  GamerTeamKey,
   type GamerScoreboardRow,
   type GamerTeamScoreboardRow,
   type GameInterruptedEvent,
@@ -38,6 +39,9 @@ import {
   type SquadRepairResult,
   ROOM_SESSION_HEADER,
   type AnalysePhotoResponse,
+  type MatchHistoryEntry,
+  type MatchHistoryResponse,
+  type MatchHistorySide,
   type RecordCurrentGameResultRequest,
   type Room,
   type RoomBootstrapResponse,
@@ -277,6 +281,24 @@ roomRoutes.get('/rooms/:roomId/scoreboard', async (c) => {
   const session = await requireRoomSession(c, roomId)
   if (!session) return c.json({ error: 'unauthorized' }, 401)
   return c.json(await buildScoreboard(c, roomId))
+})
+
+roomRoutes.get('/rooms/:roomId/match-history', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const gamerIdParam = c.req.query('gamerId')
+  const teamKeyParam = c.req.query('teamKey')
+  if ((gamerIdParam && teamKeyParam) || (!gamerIdParam && !teamKeyParam)) {
+    return c.json({ error: 'invalid_match_history_scope' }, 400)
+  }
+
+  const scope = gamerIdParam
+    ? ({ type: 'gamer', gamerId: GamerId(gamerIdParam) } as const)
+    : ({ type: 'gamerTeam', gamerTeamKey: GamerTeamKey(teamKeyParam!) } as const)
+
+  return c.json(await buildMatchHistory(c, roomId, scope))
 })
 
 roomRoutes.patch('/rooms/:roomId/settings', async (c) => {
@@ -1262,6 +1284,89 @@ async function buildBootstrap(
     currentGame,
     session: { roomId, expiresAt: session.exp, token: session.token },
   }
+}
+
+/** How many past games a drill-down returns, most-recent-first. */
+const MATCH_HISTORY_LIMIT = 20
+
+async function buildMatchHistory(
+  c: RouteContext,
+  roomId: RoomIdType,
+  scope:
+    | { type: 'gamer'; gamerId: GamerId }
+    | { type: 'gamerTeam'; gamerTeamKey: GamerTeamKey },
+): Promise<MatchHistoryResponse> {
+  const gamers = await c.get('deps').gamers.listByRoom(roomId)
+  const gamersById = new Map(gamers.map((gamer) => [gamer.id, toPublicGamer(gamer)]))
+
+  const recorded = (await c.get('deps').events.listByRoom(roomId)).filter(
+    (event): event is typeof event & { payload: GameRecordedEvent } =>
+      event.payload.type === 'game_recorded',
+  )
+
+  const matchesScoped = recorded.filter((event) => {
+    const { home, away } = event.payload
+    if (scope.type === 'gamer') {
+      return (
+        home.gamerIds.includes(scope.gamerId) || away.gamerIds.includes(scope.gamerId)
+      )
+    }
+    return (
+      home.gamerTeamKey === scope.gamerTeamKey ||
+      away.gamerTeamKey === scope.gamerTeamKey
+    )
+  })
+
+  // Newest first, then cap. `listByRoom` returns oldest-first.
+  const recent = matchesScoped
+    .slice()
+    .sort((a, b) => b.payload.occurredAt - a.payload.occurredAt)
+    .slice(0, MATCH_HISTORY_LIMIT)
+
+  const clubNamesById = await loadClubNameMap(c)
+
+  const resolveSide = (
+    side: GameRecordedEvent['home'],
+    won: boolean,
+  ): MatchHistorySide => ({
+    gamerIds: side.gamerIds,
+    gamers: side.gamerIds
+      .map((gamerId) => gamersById.get(gamerId))
+      .filter((gamer): gamer is Gamer => gamer !== undefined),
+    clubId: side.clubId,
+    clubName: clubNamesById.get(side.clubId) ?? null,
+    score: side.score,
+    won,
+  })
+
+  const matches: MatchHistoryEntry[] = recent.map((event) => {
+    const { payload } = event
+    return {
+      eventId: event.id,
+      gameId: payload.gameId,
+      gameNightId: payload.gameNightId,
+      occurredAt: payload.occurredAt,
+      format: payload.format,
+      result: payload.result,
+      home: resolveSide(payload.home, payload.result === 'home'),
+      away: resolveSide(payload.away, payload.result === 'away'),
+    }
+  })
+
+  return { roomId, matches }
+}
+
+/**
+ * Build a clubId -> name map from the latest ingested squad version. Returns an
+ * empty map when no squad data has been ingested yet (the drill-down then shows
+ * the club id sentinel instead of a name).
+ */
+async function loadClubNameMap(c: RouteContext): Promise<Map<number, string>> {
+  const latest = await c.get('deps').squadVersions.latest()
+  if (!latest) return new Map()
+  const clubs = await c.get('deps').squadStorage.getClubs(latest.version)
+  if (!clubs) return new Map()
+  return new Map(clubs.map((club) => [club.id, club.name]))
 }
 
 async function buildScoreboard(

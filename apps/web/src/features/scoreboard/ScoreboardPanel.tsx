@@ -1,5 +1,10 @@
 import { useMemo, useState } from 'react'
-import type { RoomScoreboardResponse } from '@fc26/shared'
+import {
+  GamerTeamKey,
+  type MatchHistoryResponse,
+  type MatchHistoryScope,
+  type RoomScoreboardResponse,
+} from '@fc26/shared'
 import { GamerIdentity } from '../../components/GamerPanel.jsx'
 import { GamerTeamIdentity } from '../../components/GamerTeamPanel.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
@@ -15,14 +20,21 @@ import {
   sortGamerScoreboardRows,
   sortTeamScoreboardRows,
 } from '../../utils/scoreboard.js'
+import { MatchHistoryList } from './MatchHistoryList.jsx'
 
 export function ScoreboardPanel({
   scoreboard,
+  onLoadMatchHistory,
 }: {
   scoreboard: RoomScoreboardResponse | null
+  onLoadMatchHistory: (scope: MatchHistoryScope) => Promise<MatchHistoryResponse>
 }) {
   const [scoreboardView, setScoreboardView] = useState<'gamers' | 'teams'>('gamers')
   const [includeTeamGamesInGamerBoard, setIncludeTeamGamesInGamerBoard] = useState(true)
+  // Which row is expanded into a match-history drill-down. Tracked per view so
+  // switching between Gamers/Teams collapses any open panel naturally.
+  const [expandedGamerId, setExpandedGamerId] = useState<string | null>(null)
+  const [expandedTeamKey, setExpandedTeamKey] = useState<string | null>(null)
 
   const selectedGamerRows = includeTeamGamesInGamerBoard
     ? (scoreboard?.gamerRows ?? [])
@@ -107,44 +119,70 @@ export function ScoreboardPanel({
               />
             ) : (
               <div style={{ display: 'grid', gap: 10 }}>
-                {sortedGamerRows.map((row, index) => (
-                  <article
-                    key={row.gamer.id}
-                    style={{
-                      borderRadius: 18,
-                      padding: 14,
-                      background: '#ffffff',
-                      border: '1px solid #d1fae5',
-                      display: 'grid',
-                      gap: 8,
-                    }}
-                  >
-                    <div
+                {sortedGamerRows.map((row, index) => {
+                  const expanded = expandedGamerId === row.gamer.id
+                  return (
+                    <article
+                      key={row.gamer.id}
                       style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        gap: 12,
+                        borderRadius: 18,
+                        padding: 14,
+                        background: '#ffffff',
+                        border: `1px solid ${expanded ? '#86efac' : '#d1fae5'}`,
+                        display: 'grid',
+                        gap: 8,
                       }}
                     >
-                      <GamerIdentity
-                        gamer={row.gamer}
-                        size={46}
-                        subtitle={`#${index + 1}`}
-                        nameStyle={{ fontSize: 18 }}
-                      />
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 12, opacity: 0.62 }}>Points</div>
-                        <strong style={{ fontSize: 18 }}>{row.points}</strong>
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 14, opacity: 0.76 }}>
-                      {row.points} pts • {row.stats.wins}-{row.stats.draws}-{row.stats.losses} •{' '}
-                      {row.stats.gamesPlayed} games • Win rate {formatPercent(row.winRate)} • GD{' '}
-                      {formatSignedNumber(row.goalDiff)}
-                    </div>
-                  </article>
-                ))}
+                      <button
+                        type="button"
+                        aria-expanded={expanded}
+                        onClick={() =>
+                          setExpandedGamerId(expanded ? null : row.gamer.id)
+                        }
+                        style={{
+                          all: 'unset',
+                          cursor: 'pointer',
+                          display: 'grid',
+                          gap: 8,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: 12,
+                          }}
+                        >
+                          <GamerIdentity
+                            gamer={row.gamer}
+                            size={46}
+                            subtitle={`#${index + 1}`}
+                            nameStyle={{ fontSize: 18 }}
+                          />
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 12, opacity: 0.62 }}>Points</div>
+                            <strong style={{ fontSize: 18 }}>{row.points}</strong>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 14, opacity: 0.76 }}>
+                          {row.points} pts • {row.stats.wins}-{row.stats.draws}-{row.stats.losses} •{' '}
+                          {row.stats.gamesPlayed} games • Win rate {formatPercent(row.winRate)} • GD{' '}
+                          {formatSignedNumber(row.goalDiff)}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#15803d', fontWeight: 600 }}>
+                          {expanded ? 'Hide recent matches ▲' : 'Show recent matches ▼'}
+                        </div>
+                      </button>
+                      {expanded ? (
+                        <MatchHistoryList
+                          scope={{ type: 'gamer', gamerId: row.gamer.id }}
+                          onLoad={onLoadMatchHistory}
+                        />
+                      ) : null}
+                    </article>
+                  )
+                })}
               </div>
             )}
           </>
@@ -155,43 +193,67 @@ export function ScoreboardPanel({
           />
         ) : (
           <div style={{ display: 'grid', gap: 10 }}>
-            {sortedGamerTeamRows.map((row, index) => (
-              <article
-                key={row.gamerTeamKey}
-                style={{
-                  borderRadius: 18,
-                  padding: 14,
-                  background: '#ffffff',
-                  border: '1px solid #d1fae5',
-                  display: 'grid',
-                  gap: 8,
-                }}
-              >
-                <div
+            {sortedGamerTeamRows.map((row, index) => {
+              const expanded = expandedTeamKey === row.gamerTeamKey
+              return (
+                <article
+                  key={row.gamerTeamKey}
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: 12,
+                    borderRadius: 18,
+                    padding: 14,
+                    background: '#ffffff',
+                    border: `1px solid ${expanded ? '#86efac' : '#d1fae5'}`,
+                    display: 'grid',
+                    gap: 8,
                   }}
                 >
-                  <GamerTeamIdentity
-                    members={row.members}
-                    size={48}
-                    subtitle={`#${index + 1}`}
-                    nameStyle={{ fontSize: 18 }}
-                  />
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 12, opacity: 0.62 }}>Points</div>
-                    <strong style={{ fontSize: 18 }}>{row.points}</strong>
-                  </div>
-                </div>
-                <div style={{ fontSize: 14, opacity: 0.76 }}>
-                  {row.stats.wins}-{row.stats.draws}-{row.stats.losses} • {row.stats.gamesPlayed}{' '}
-                  games • Win rate {formatPercent(row.winRate)} • GD {formatSignedNumber(row.goalDiff)}
-                </div>
-              </article>
-            ))}
+                  <button
+                    type="button"
+                    aria-expanded={expanded}
+                    onClick={() =>
+                      setExpandedTeamKey(expanded ? null : row.gamerTeamKey)
+                    }
+                    style={{ all: 'unset', cursor: 'pointer', display: 'grid', gap: 8 }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 12,
+                      }}
+                    >
+                      <GamerTeamIdentity
+                        members={row.members}
+                        size={48}
+                        subtitle={`#${index + 1}`}
+                        nameStyle={{ fontSize: 18 }}
+                      />
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 12, opacity: 0.62 }}>Points</div>
+                        <strong style={{ fontSize: 18 }}>{row.points}</strong>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 14, opacity: 0.76 }}>
+                      {row.stats.wins}-{row.stats.draws}-{row.stats.losses} • {row.stats.gamesPlayed}{' '}
+                      games • Win rate {formatPercent(row.winRate)} • GD {formatSignedNumber(row.goalDiff)}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#15803d', fontWeight: 600 }}>
+                      {expanded ? 'Hide recent matches ▲' : 'Show recent matches ▼'}
+                    </div>
+                  </button>
+                  {expanded ? (
+                    <MatchHistoryList
+                      scope={{
+                        type: 'gamerTeam',
+                        gamerTeamKey: GamerTeamKey(row.gamerTeamKey),
+                      }}
+                      onLoad={onLoadMatchHistory}
+                    />
+                  ) : null}
+                </article>
+              )
+            })}
           </div>
         )}
       </Panel>

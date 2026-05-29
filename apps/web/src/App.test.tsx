@@ -1636,4 +1636,177 @@ describe('App shell', () => {
       expect(within(gamePanel).getByText('Cara')).toBeInTheDocument(),
     )
   })
+
+  it('drills down into a gamer scoreboard row to show recent matches', async () => {
+    localStorage.setItem('fc26:last-room-id', 'room-hist')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input) => {
+        const url = String(input)
+        if (url.endsWith('/api/version')) {
+          return new Response(
+            JSON.stringify({
+              workerVersion: '0.1.0',
+              schemaVersion: 1,
+              minClientVersion: '0.1.0',
+              gitSha: null,
+              builtAt: new Date().toISOString(),
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/api/rooms/room-hist/bootstrap')) {
+          return new Response(
+            JSON.stringify({
+              room: {
+                id: 'room-hist',
+                name: 'History Room',
+                avatarUrl: null,
+                hasPin: false,
+                defaultSelectionStrategy: 'uniform-random',
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              gamers: [
+                {
+                  id: 'g1',
+                  roomId: 'room-hist',
+                  name: 'Alice',
+                  rating: 5,
+                  active: true,
+                  hasPin: false,
+                  avatarUrl: null,
+                  createdAt: 1000,
+                  updatedAt: 1000,
+                },
+              ],
+              activeGameNight: null,
+              activeGameNightGamers: [],
+              currentGame: null,
+              session: { roomId: 'room-hist', expiresAt: Date.now() + 10_000 },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/api/rooms/room-hist/scoreboard')) {
+          const aliceRow = {
+            gamer: {
+              id: 'g1',
+              roomId: 'room-hist',
+              name: 'Alice',
+              rating: 5,
+              active: true,
+              hasPin: false,
+              avatarUrl: null,
+              createdAt: 1000,
+              updatedAt: 1000,
+            },
+            stats: {
+              gamerId: 'g1',
+              roomId: 'room-hist',
+              gamesPlayed: 1,
+              wins: 1,
+              draws: 0,
+              losses: 0,
+              goalsFor: 2,
+              goalsAgainst: 1,
+              lastEventId: 'ev-1',
+              updatedAt: 1100,
+            },
+            points: 3,
+            winRate: 1,
+            goalDiff: 1,
+          }
+          return new Response(
+            JSON.stringify({
+              roomId: 'room-hist',
+              gamerRows: [aliceRow],
+              gamerRowsWithoutTeamGames: [aliceRow],
+              gamerTeamRows: [],
+              updatedAt: 1100,
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        if (url.includes('/api/rooms/room-hist/match-history')) {
+          return new Response(
+            JSON.stringify({
+              roomId: 'room-hist',
+              matches: [
+                {
+                  eventId: 'ev-1',
+                  gameId: 'game-1',
+                  gameNightId: 'gn-1',
+                  occurredAt: 1100,
+                  format: '1v1',
+                  result: 'home',
+                  home: {
+                    gamerIds: ['g1'],
+                    gamers: [
+                      {
+                        id: 'g1',
+                        roomId: 'room-hist',
+                        name: 'Alice',
+                        rating: 5,
+                        active: true,
+                        hasPin: false,
+                        avatarUrl: null,
+                        createdAt: 1000,
+                        updatedAt: 1000,
+                      },
+                    ],
+                    clubId: 1,
+                    clubName: 'Arsenal',
+                    score: 2,
+                    won: true,
+                  },
+                  away: {
+                    gamerIds: ['g2'],
+                    gamers: [
+                      {
+                        id: 'g2',
+                        roomId: 'room-hist',
+                        name: 'Bob',
+                        rating: 4,
+                        active: true,
+                        hasPin: false,
+                        avatarUrl: null,
+                        createdAt: 1000,
+                        updatedAt: 1000,
+                      },
+                    ],
+                    clubId: 2,
+                    clubName: 'Chelsea',
+                    score: 1,
+                    won: false,
+                  },
+                },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      }),
+    )
+
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Scoreboard/i })).toBeInTheDocument(),
+    )
+
+    const scoreboardPanel = screen
+      .getByRole('heading', { name: /Scoreboard/i })
+      .closest('section')!
+    // Match data is hidden until the row is expanded.
+    expect(within(scoreboardPanel).queryByText('Chelsea')).toBeNull()
+
+    fireEvent.click(within(scoreboardPanel).getByRole('button', { name: /Show recent matches/i }))
+
+    await waitFor(() =>
+      expect(within(scoreboardPanel).getByText('Arsenal')).toBeInTheDocument(),
+    )
+    expect(within(scoreboardPanel).getByText('Chelsea')).toBeInTheDocument()
+    expect(within(scoreboardPanel).getByText(/2\s*–\s*1/)).toBeInTheDocument()
+  })
 })

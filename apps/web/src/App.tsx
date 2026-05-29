@@ -8,6 +8,8 @@ import {
   type Gamer,
   type GamerResponse,
   type InterruptCurrentGameRequest,
+  type MatchHistoryResponse,
+  type MatchHistoryScope,
   type RecordCurrentGameResultRequest,
   type RefreshRoomSquadAssetsResponse,
   type RepairRoomSquadsResponse,
@@ -128,6 +130,20 @@ export function App() {
       })
     }
   }
+
+  const loadMatchHistory = useCallback(
+    async (scope: MatchHistoryScope): Promise<MatchHistoryResponse> => {
+      if (!bootstrap) throw new Error('No active room')
+      const query =
+        scope.type === 'gamer'
+          ? `gamerId=${encodeURIComponent(scope.gamerId)}`
+          : `teamKey=${encodeURIComponent(scope.gamerTeamKey)}`
+      return apiJson<MatchHistoryResponse>(
+        `/api/rooms/${bootstrap.room.id}/match-history?${query}`,
+      )
+    },
+    [bootstrap],
+  )
 
   async function refreshSquadAssets(
     roomId: string,
@@ -803,6 +819,7 @@ export function App() {
             latestSquadVersion={worker?.latestSquadVersion ?? null}
             roomSquadPlatform={roomSquadPlatform}
             scoreboard={scoreboard}
+            onLoadMatchHistory={loadMatchHistory}
             gamerName={gamerName}
             gamerRating={gamerRating}
             gamerPin={gamerPin}
