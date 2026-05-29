@@ -1809,4 +1809,115 @@ describe('App shell', () => {
     expect(within(scoreboardPanel).getByText('Chelsea')).toBeInTheDocument()
     expect(within(scoreboardPanel).getByText(/2\s*–\s*1/)).toBeInTheDocument()
   })
+
+  it('shows all recorded games from the "All games" scoreboard tab', async () => {
+    localStorage.setItem('fc26:last-room-id', 'room-hist')
+    const matchHistoryUrls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input) => {
+        const url = String(input)
+        if (url.endsWith('/api/version')) {
+          return new Response(
+            JSON.stringify({
+              workerVersion: '0.1.0',
+              schemaVersion: 1,
+              minClientVersion: '0.1.0',
+              gitSha: null,
+              builtAt: new Date().toISOString(),
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/api/rooms/room-hist/bootstrap')) {
+          return new Response(
+            JSON.stringify({
+              room: {
+                id: 'room-hist',
+                name: 'History Room',
+                avatarUrl: null,
+                hasPin: false,
+                defaultSelectionStrategy: 'uniform-random',
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              gamers: [],
+              activeGameNight: null,
+              activeGameNightGamers: [],
+              currentGame: null,
+              session: { roomId: 'room-hist', expiresAt: Date.now() + 10_000 },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        if (url.endsWith('/api/rooms/room-hist/scoreboard')) {
+          return new Response(
+            JSON.stringify({
+              roomId: 'room-hist',
+              gamerRows: [],
+              gamerRowsWithoutTeamGames: [],
+              gamerTeamRows: [],
+              updatedAt: null,
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        if (url.includes('/api/rooms/room-hist/match-history')) {
+          matchHistoryUrls.push(url)
+          return new Response(
+            JSON.stringify({
+              roomId: 'room-hist',
+              matches: [
+                {
+                  eventId: 'ev-1',
+                  gameId: 'game-1',
+                  gameNightId: 'gn-1',
+                  occurredAt: 1100,
+                  format: '1v1',
+                  result: 'home',
+                  home: {
+                    gamerIds: ['g1'],
+                    gamers: [],
+                    clubId: 1,
+                    clubName: 'Arsenal',
+                    score: 2,
+                    won: true,
+                  },
+                  away: {
+                    gamerIds: ['g2'],
+                    gamers: [],
+                    clubId: 2,
+                    clubName: 'Chelsea',
+                    score: 1,
+                    won: false,
+                  },
+                },
+              ],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      }),
+    )
+
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Scoreboard/i })).toBeInTheDocument(),
+    )
+
+    const scoreboardPanel = screen
+      .getByRole('heading', { name: /Scoreboard/i })
+      .closest('section')!
+    expect(within(scoreboardPanel).queryByText('Chelsea')).toBeNull()
+
+    fireEvent.click(within(scoreboardPanel).getByRole('button', { name: /All games/i }))
+
+    await waitFor(() =>
+      expect(within(scoreboardPanel).getByText('Arsenal')).toBeInTheDocument(),
+    )
+    expect(within(scoreboardPanel).getByText('Chelsea')).toBeInTheDocument()
+    expect(within(scoreboardPanel).getByText(/2\s*–\s*1/)).toBeInTheDocument()
+    expect(matchHistoryUrls.some((url) => url.includes('scope=all'))).toBe(true)
+  })
 })

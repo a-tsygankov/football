@@ -135,7 +135,11 @@ export function MatchHistoryList({
   >({ status: 'loading' })
 
   const scopeKey =
-    scope.type === 'gamer' ? `gamer:${scope.gamerId}` : `team:${scope.gamerTeamKey}`
+    scope.type === 'gamer'
+      ? `gamer:${scope.gamerId}`
+      : scope.type === 'gamerTeam'
+        ? `team:${scope.gamerTeamKey}`
+        : 'all'
 
   useEffect(() => {
     let cancelled = false

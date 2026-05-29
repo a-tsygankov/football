@@ -29,7 +29,9 @@ export function ScoreboardPanel({
   scoreboard: RoomScoreboardResponse | null
   onLoadMatchHistory: (scope: MatchHistoryScope) => Promise<MatchHistoryResponse>
 }) {
-  const [scoreboardView, setScoreboardView] = useState<'gamers' | 'teams'>('gamers')
+  const [scoreboardView, setScoreboardView] = useState<'gamers' | 'teams' | 'all'>(
+    'gamers',
+  )
   const [includeTeamGamesInGamerBoard, setIncludeTeamGamesInGamerBoard] = useState(true)
   // Which row is expanded into a match-history drill-down. Tracked per view so
   // switching between Gamers/Teams collapses any open panel naturally.
@@ -57,7 +59,7 @@ export function ScoreboardPanel({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
+            gridTemplateColumns: '1fr 1fr 1fr',
             gap: 10,
             marginBottom: 14,
           }}
@@ -75,6 +77,13 @@ export function ScoreboardPanel({
             style={scoreboardView === 'teams' ? primaryButtonStyle : secondaryButtonStyle}
           >
             Gamer teams
+          </button>
+          <button
+            type="button"
+            onClick={() => setScoreboardView('all')}
+            style={scoreboardView === 'all' ? primaryButtonStyle : secondaryButtonStyle}
+          >
+            All games
           </button>
         </div>
 
@@ -186,6 +195,13 @@ export function ScoreboardPanel({
               </div>
             )}
           </>
+        ) : scoreboardView === 'all' ? (
+          <div style={{ display: 'grid', gap: 8 }}>
+            <p style={{ margin: '0 0 6px', fontSize: 13, opacity: 0.72 }}>
+              Most recent games across the room (up to 20).
+            </p>
+            <MatchHistoryList scope={{ type: 'all' }} onLoad={onLoadMatchHistory} />
+          </div>
         ) : sortedGamerTeamRows.length === 0 ? (
           <InlineNotice
             tone="info"

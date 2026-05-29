@@ -137,7 +137,9 @@ export function App() {
       const query =
         scope.type === 'gamer'
           ? `gamerId=${encodeURIComponent(scope.gamerId)}`
-          : `teamKey=${encodeURIComponent(scope.gamerTeamKey)}`
+          : scope.type === 'gamerTeam'
+            ? `teamKey=${encodeURIComponent(scope.gamerTeamKey)}`
+            : 'scope=all'
       return apiJson<MatchHistoryResponse>(
         `/api/rooms/${bootstrap.room.id}/match-history?${query}`,
       )

@@ -184,6 +184,7 @@ export interface RoomScoreboardResponse {
 export type MatchHistoryScope =
   | { type: 'gamer'; gamerId: GamerId }
   | { type: 'gamerTeam'; gamerTeamKey: GamerTeamKey }
+  | { type: 'all' }
 
 /** One side of a past match, resolved for display. */
 export interface MatchHistorySide {

@@ -2146,6 +2146,114 @@ describe('room routes', () => {
     expect(match.home.won).toBe(true)
   })
 
+  it('returns all recorded matches for the room with scope=all', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'All Games Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const gamerIds: string[] = []
+    for (const name of ['Alice', 'Bob', 'Cara']) {
+      const res = await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ name }),
+        }),
+        env,
+        execCtx(),
+      )
+      const body = (await res.json()) as { gamer: { id: string } }
+      gamerIds.push(body.gamer.id)
+    }
+    const [aliceId, bobId, caraId] = gamerIds
+
+    const gameNightRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/game-nights`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ activeGamerIds: gamerIds }),
+      }),
+      env,
+      execCtx(),
+    )
+    const gameNightBody = (await gameNightRes.json()) as { gameNight: { id: string } }
+    const gameNightId = gameNightBody.gameNight.id
+
+    const recordSoloGame = async (
+      homeGamerId: string,
+      awayGamerId: string,
+    ): Promise<void> => {
+      const gameRes = await app.fetch(
+        new Request(
+          `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightId}/games`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', Cookie: cookie },
+            body: JSON.stringify({
+              allocationMode: 'manual',
+              homeGamerIds: [homeGamerId],
+              awayGamerIds: [awayGamerId],
+              homeClubId: 1,
+              awayClubId: 2,
+            }),
+          },
+        ),
+        env,
+        execCtx(),
+      )
+      const gameBody = (await gameRes.json()) as { currentGame: { id: string } }
+      const resultRes = await app.fetch(
+        new Request(
+          `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightId}/games/${gameBody.currentGame.id}/result`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', Cookie: cookie },
+            body: JSON.stringify({ result: 'home', homeScore: 1, awayScore: 0 }),
+          },
+        ),
+        env,
+        execCtx(),
+      )
+      expect(resultRes.status).toBe(200)
+    }
+
+    await recordSoloGame(aliceId!, bobId!)
+    await recordSoloGame(bobId!, caraId!)
+
+    const allRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/match-history?scope=all`, {
+        headers: { Cookie: cookie },
+      }),
+      env,
+      execCtx(),
+    )
+    expect(allRes.status).toBe(200)
+    const all = (await allRes.json()) as MatchHistoryResponse
+    expect(all.matches).toHaveLength(2)
+
+    // A per-gamer scope still narrows the same data set.
+    const aliceRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/match-history?gamerId=${aliceId}`,
+        { headers: { Cookie: cookie } },
+      ),
+      env,
+      execCtx(),
+    )
+    const alice = (await aliceRes.json()) as MatchHistoryResponse
+    expect(alice.matches).toHaveLength(1)
+  })
+
   it('rejects a match-history request with no scope or both scopes', async () => {
     const app = buildTestApp()
 

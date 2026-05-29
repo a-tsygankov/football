@@ -290,13 +290,17 @@ roomRoutes.get('/rooms/:roomId/match-history', async (c) => {
 
   const gamerIdParam = c.req.query('gamerId')
   const teamKeyParam = c.req.query('teamKey')
-  if ((gamerIdParam && teamKeyParam) || (!gamerIdParam && !teamKeyParam)) {
+  const allParam = c.req.query('scope') === 'all'
+  const scopeCount = (gamerIdParam ? 1 : 0) + (teamKeyParam ? 1 : 0) + (allParam ? 1 : 0)
+  if (scopeCount !== 1) {
     return c.json({ error: 'invalid_match_history_scope' }, 400)
   }
 
-  const scope = gamerIdParam
-    ? ({ type: 'gamer', gamerId: GamerId(gamerIdParam) } as const)
-    : ({ type: 'gamerTeam', gamerTeamKey: GamerTeamKey(teamKeyParam!) } as const)
+  const scope = allParam
+    ? ({ type: 'all' } as const)
+    : gamerIdParam
+      ? ({ type: 'gamer', gamerId: GamerId(gamerIdParam) } as const)
+      : ({ type: 'gamerTeam', gamerTeamKey: GamerTeamKey(teamKeyParam!) } as const)
 
   return c.json(await buildMatchHistory(c, roomId, scope))
 })
@@ -1294,7 +1298,8 @@ async function buildMatchHistory(
   roomId: RoomIdType,
   scope:
     | { type: 'gamer'; gamerId: GamerId }
-    | { type: 'gamerTeam'; gamerTeamKey: GamerTeamKey },
+    | { type: 'gamerTeam'; gamerTeamKey: GamerTeamKey }
+    | { type: 'all' },
 ): Promise<MatchHistoryResponse> {
   const gamers = await c.get('deps').gamers.listByRoom(roomId)
   const gamersById = new Map(gamers.map((gamer) => [gamer.id, toPublicGamer(gamer)]))
@@ -1306,6 +1311,7 @@ async function buildMatchHistory(
 
   const matchesScoped = recorded.filter((event) => {
     const { home, away } = event.payload
+    if (scope.type === 'all') return true
     if (scope.type === 'gamer') {
       return (
         home.gamerIds.includes(scope.gamerId) || away.gamerIds.includes(scope.gamerId)
