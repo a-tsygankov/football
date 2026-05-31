@@ -13,7 +13,6 @@ import type {
   UpdateGamerRequest,
 } from '@fc26/shared'
 import { useDebugConsole } from '../../debug/console-store.js'
-import { AddGamerPanel } from '../gamers/AddGamerPanel.jsx'
 import { RosterPanel } from '../gamers/RosterPanel.jsx'
 import { GameCreationPanel } from '../gameNight/GameCreationPanel.jsx'
 import { StartGameNightPanel } from '../gameNight/StartGameNightPanel.jsx'
@@ -302,10 +301,14 @@ export function RoomScreen({
         />
       ) : null}
 
-      <section id="fc26-roster-section" style={{ display: 'grid', gap: 14 }}>
-        <AddGamerPanel
+      <section id="fc26-roster-section">
+        <RosterPanel
           bootstrap={bootstrap}
           busy={busy}
+          activeGameNightGamerIds={activeGameNightGamerIds}
+          currentGameGamerIds={currentGameGamerIds}
+          onToggleGamer={onToggleGamer}
+          onUpdateGamerDetails={onUpdateGamerDetails}
           gamerName={gamerName}
           gamerRating={gamerRating}
           gamerPin={gamerPin}
@@ -315,14 +318,6 @@ export function RoomScreen({
           onChangeGamerRating={onChangeGamerRating}
           onChangeGamerAvatar={onChangeGamerAvatar}
           onCreateGamer={onCreateGamer}
-        />
-        <RosterPanel
-          bootstrap={bootstrap}
-          busy={busy}
-          activeGameNightGamerIds={activeGameNightGamerIds}
-          currentGameGamerIds={currentGameGamerIds}
-          onToggleGamer={onToggleGamer}
-          onUpdateGamerDetails={onUpdateGamerDetails}
         />
       </section>
     </>

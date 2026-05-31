@@ -2,7 +2,109 @@
 
 **Stack:** TypeScript · Vite · React · Cloudflare Workers · D1 · R2
 **Target devices:** Android and iPhone phones (mobile-first PWA)
-**Document version:** 2 (2026-04-10) — supersedes the original `.docx` handoff
+**Document version:** 3 (2026-05-31) — supersedes the original `.docx` handoff
+
+---
+
+## Recent Changes (2026-05-29 → 2026-05-31)
+
+Shipped together as part of the `claude/fix-gamer-activation-k7qtZ` line.
+Versions: `@fc26/web` → `0.1.2`, `@fc26/worker` → `0.1.1`, `@fc26/shared` →
+`0.1.1`, `WORKER_VERSION` env → `0.1.1`. Event payload schema unchanged
+(`EVENT_SCHEMA_VERSION = 1`); D1 schema unchanged (`SCHEMA_VERSION = 5`).
+
+### Scoreboard
+- **Drill-down on every row.** Tap a gamer or gamer-team row on the
+  Scoreboard to expand a list of that side's recent matches (up to 20).
+  Backend route `GET /rooms/:roomId/match-history?gamerId|teamKey=…`,
+  `MatchHistoryList` component on the frontend.
+- **All-games tab.** Third tab on Scoreboard next to Gamers / Gamer
+  teams that lists every recorded match in the room (also capped at 20).
+  Same endpoint with `?scope=all`.
+- **Match-card display fixes.** Score column no longer renders `vs` for
+  recorded games without an exact score — shows `Score not recorded`
+  instead. Draw scores (2 – 2 etc.) render correctly. Winner names are
+  green, losers red, draws dark slate.
+- **No more `Club #0`.** Games started without a selected FC team
+  (`clubId` = 0 sentinel) used to render `Club #0`. They now show the
+  recognised club name from the photo (see OCR section below) or render
+  no club row at all when nothing was recognised.
+- **Admin delete.** New `POST /rooms/:roomId/game-nights/:gameNightId/
+  games/:gameId/void` route writes a `game_voided` event, reverses the
+  gamer + gamer-team projections (clamped to 0; `last_event_id` /
+  `updated_at` stamped with the void), and 409s on repeat. The
+  `buildMatchHistory` query filters out voided games. UI: per-match
+  Delete button rendered only when `settingsUnlocked` is true.
+
+### Gamer profiles
+- **Avatar editing in Roster.** Existing `PATCH /rooms/:roomId/gamers/
+  :gamerId` already accepted `avatarUrl`; the Roster edit form now
+  exposes an `AvatarPicker` so admins (or PIN holders) can change a
+  gamer's picture in addition to name / rating / PIN.
+- **Add-gamer button inside Roster.** The Add Gamer panel is collapsed
+  by default behind a `+ Add gamer` toggle at the top of the Roster
+  panel, and auto-collapses after a successful create. Used to be a
+  separate always-visible panel.
+
+### Active game UI
+- **Auto-scroll on room entry.** If `bootstrap.activeGameNight` is
+  present, RoomScreen jumps to `fc26-game-live-section` on mount so the
+  gamer lands on the action. Guarded against jsdom's missing
+  `scrollIntoView`.
+- **Side-by-side Home / Away on phones.** The team columns inside
+  `CurrentGameCard` now force a 2-column grid and switch the inner
+  `EaTeamCard` to the `compact` size so both sides fit a vertical iPhone.
+- **TV photo: auto-analyse + progress bar.** Picking a TV photo kicks
+  off Gemini analysis immediately — no separate "Analyse" button. A
+  green progress bar asymptotes toward 90 % while we wait, then jumps to
+  100 % when the response arrives.
+- **Single "Accept score" button.** When both home and away scores are
+  filled, the three Home/Draw/Away buttons collapse into a single
+  `Accept score` button with the derived result shown as a caption. The
+  three-button winner-only mode stays for blank scores.
+- **Android camera capture.** TV-photo `<input type="file">` now carries
+  `capture="environment"` so Android Chrome / WebView opens the rear
+  camera directly instead of the gallery.
+
+### Recognised club names (OCR)
+- **Persist recognised names on every recorded game.** `GameSide` gained
+  an optional `clubName` field on the event payload; the record route
+  accepts `homeClubName` / `awayClubName` from the OCR accept flow and
+  writes them onto the recorded event. `buildMatchHistory` falls back to
+  the recognised name when the squad map can't resolve `clubId`.
+- **Override the selected club on mismatch.** Record route also accepts
+  optional `homeClubId` / `awayClubId` overrides (positive int / `null`
+  / omitted). When the OCR-recognised name disagrees with the club
+  picked before the game (full / short / EA-alias aware, case-insensitive,
+  generous substring match), the frontend sends `clubId: null` so the
+  recognised name becomes the only label on the recorded event.
+
+### Bottom nav + Teams / Changes
+- **Changes slot → Roster.** Bottom-nav mode swap: the fourth tab is now
+  `Roster` and anchors `fc26-roster-section`. The Changes view was
+  folded into the Teams panel as a `Browse teams / Squad changes` tab
+  toggle; `ChangesPanel` is now content-only (no `<section>` /
+  `<Panel>` wrapper).
+
+### Periodic squad version reminder
+- `App.tsx` polls `GET /api/version` every 5 minutes while a room is
+  open and `settingsUnlocked === true`. RoomScreen shows a yellow
+  banner when the returned `latestSquadVersion` differs from the
+  device-acked one stored in `localStorage` under
+  `fc26:last-acked-squad-version`. First-ever load acks silently;
+  Dismiss writes the current version to localStorage.
+
+### Tests
+- Worker: now **83 tests** across 9 files. New coverage for match-history
+  drill-down (per-gamer, per-team, all-scope, reject-no-scope),
+  recognised-name fallback, club-id mismatch override, gamer avatar
+  PATCH, void-game projection rollback + 409 on repeat.
+- Web: now **38 tests** across 7 files. New coverage for the All-games
+  tab, drill-down row click, gamer avatar edit form, `MatchHistoryList`
+  recognised-name / `Score not recorded` / outcome colours / delete
+  button visibility and click-removes-row, and the BottomNav rewiring.
+
+---
 
 ---
 

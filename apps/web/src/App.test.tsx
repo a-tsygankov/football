@@ -1499,8 +1499,11 @@ describe('App shell', () => {
     expect(within(gamePanel).getByText('Bob')).toBeInTheDocument()
     expect(within(gamePanel).queryByText('Cara')).toBeNull()
 
+    // Add Gamer is hidden behind a toggle inside the Roster now: expand it
+    // first, then fill the form, then click the actual Add-gamer submit.
+    fireEvent.click(screen.getByRole('button', { name: /\+ Add gamer/i }))
     fireEvent.change(screen.getByPlaceholderText(/Alice/i), { target: { value: 'Cara' } })
-    fireEvent.click(screen.getByRole('button', { name: /Add gamer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^Add gamer$/i }))
 
     await waitFor(() =>
       expect(within(gamePanel).getByText('Cara')).toBeInTheDocument(),

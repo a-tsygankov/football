@@ -21,6 +21,7 @@ import {
 } from '../../styles/controls.js'
 import type { BusyState } from '../../types/busyState.js'
 import { getRosterStatusDot } from '../../utils/roster.js'
+import { AddGamerPanel } from './AddGamerPanel.jsx'
 
 export function RosterPanel({
   bootstrap,
@@ -29,6 +30,15 @@ export function RosterPanel({
   currentGameGamerIds,
   onToggleGamer,
   onUpdateGamerDetails,
+  gamerName,
+  gamerRating,
+  gamerPin,
+  gamerAvatarUrl,
+  onChangeGamerName,
+  onChangeGamerPin,
+  onChangeGamerRating,
+  onChangeGamerAvatar,
+  onCreateGamer,
 }: {
   bootstrap: RoomBootstrapResponse
   busy: BusyState
@@ -36,7 +46,20 @@ export function RosterPanel({
   currentGameGamerIds: ReadonlySet<string>
   onToggleGamer: (gamer: Gamer) => Promise<void>
   onUpdateGamerDetails: (gamerId: string, request: UpdateGamerRequest) => Promise<void>
+  gamerName: string
+  gamerRating: string
+  gamerPin: string
+  gamerAvatarUrl: string | null
+  onChangeGamerName: (value: string) => void
+  onChangeGamerPin: (value: string) => void
+  onChangeGamerRating: (value: string) => void
+  onChangeGamerAvatar: (value: string | null) => void
+  onCreateGamer: () => Promise<void>
 }) {
+  // Add-gamer UI is collapsed by default; the trigger button at the top of
+  // the panel expands it on demand and auto-collapses after a successful
+  // create so casual gamers don't see the form unless they want it.
+  const [addingGamer, setAddingGamer] = useState(false)
   const [editingGamerId, setEditingGamerId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [editingRating, setEditingRating] = useState('3')
@@ -91,6 +114,19 @@ export function RosterPanel({
     setEditingNextPin('')
   }
 
+  // Wrap the create handler so a successful add collapses the form. If the
+  // parent throws (validation / collision), the form stays open so the user
+  // can adjust their input.
+  async function handleCreateGamer(): Promise<void> {
+    const beforeCount = bootstrap.gamers.length
+    await onCreateGamer()
+    // App.tsx clears its `gamerName` state on success — use that as the
+    // signal that the create resolved without an error.
+    if (bootstrap.gamers.length !== beforeCount || gamerName.trim().length === 0) {
+      setAddingGamer(false)
+    }
+  }
+
   return (
     <section style={{ marginTop: 18 }}>
       <Panel
@@ -98,6 +134,31 @@ export function RosterPanel({
         subtitle="Dots show who is playing now, who is active but sitting out, and who is inactive."
       >
         <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => setAddingGamer((prev) => !prev)}
+              style={addingGamer ? secondaryButtonStyle : primaryButtonStyle}
+            >
+              {addingGamer ? 'Cancel' : '+ Add gamer'}
+            </button>
+          </div>
+          {addingGamer ? (
+            <AddGamerPanel
+              bootstrap={bootstrap}
+              busy={busy}
+              gamerName={gamerName}
+              gamerRating={gamerRating}
+              gamerPin={gamerPin}
+              gamerAvatarUrl={gamerAvatarUrl}
+              onChangeGamerName={onChangeGamerName}
+              onChangeGamerPin={onChangeGamerPin}
+              onChangeGamerRating={onChangeGamerRating}
+              onChangeGamerAvatar={onChangeGamerAvatar}
+              onCreateGamer={handleCreateGamer}
+            />
+          ) : null}
           {bootstrap.gamers.length === 0 ? (
             <div
               style={{
