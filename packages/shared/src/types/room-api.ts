@@ -145,6 +145,15 @@ export interface RecordCurrentGameResultRequest {
   homeClubName?: string | null
   /** Club name recognised for the away side (e.g. from the TV photo). */
   awayClubName?: string | null
+  /**
+   * Override the home clubId stored on the recorded event. Pass `null` to
+   * clear (the OCR pass uses this when the recognised name doesn't match the
+   * club picked before the game — the recognised label is then the only
+   * truth). Omit to keep the active game's selection.
+   */
+  homeClubId?: number | null
+  /** See {@link homeClubId}. */
+  awayClubId?: number | null
 }
 
 export interface InterruptCurrentGameRequest {

@@ -2437,6 +2437,158 @@ describe('room routes', () => {
     expect(match.away.clubName).toBe('Barcelona')
   })
 
+  it('honors a clubId override on the result so a mismatched OCR name wins', async () => {
+    const app = buildTestApp()
+
+    // Seed two real clubs so the squad map can resolve their names.
+    await app.squadVersions.insert({
+      version: 'fc26-r-override',
+      releasedAt: null,
+      ingestedAt: 3_000,
+      clubsBytes: 1,
+      clubCount: 2,
+      playerCount: 0,
+      sourceUrl: 'https://example.com',
+      notes: null,
+    })
+    await app.squadStorage.putClubs('fc26-r-override', [
+      {
+        id: 1,
+        name: 'Galatasaray',
+        shortName: 'GS',
+        leagueId: 13,
+        leagueName: 'Turkey Süper Lig',
+        nationId: 14,
+        overallRating: 80,
+        attackRating: 83,
+        midfieldRating: 80,
+        defenseRating: 78,
+        avatarUrl: null,
+        logoUrl: 'pending:club:1',
+        starRating: 9,
+      },
+      {
+        id: 2,
+        name: 'Beşiktaş',
+        shortName: 'BJK',
+        leagueId: 13,
+        leagueName: 'Turkey Süper Lig',
+        nationId: 14,
+        overallRating: 78,
+        attackRating: 79,
+        midfieldRating: 78,
+        defenseRating: 77,
+        avatarUrl: null,
+        logoUrl: 'pending:club:2',
+        starRating: 7,
+      },
+    ])
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Mismatch Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const gamerIds: string[] = []
+    for (const name of ['Alice', 'Bob']) {
+      const res = await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ name }),
+        }),
+        env,
+        execCtx(),
+      )
+      const body = (await res.json()) as { gamer: { id: string } }
+      gamerIds.push(body.gamer.id)
+    }
+    const [aliceId, bobId] = gamerIds
+
+    const gameNightRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/game-nights`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ activeGamerIds: gamerIds }),
+      }),
+      env,
+      execCtx(),
+    )
+    const gameNightBody = (await gameNightRes.json()) as { gameNight: { id: string } }
+
+    // Start the game with both clubs picked (1 = Galatasaray, 2 = Beşiktaş).
+    const currentGameRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({
+            allocationMode: 'manual',
+            homeGamerIds: [aliceId],
+            awayGamerIds: [bobId],
+            homeClubId: 1,
+            awayClubId: 2,
+          }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    const currentGameBody = (await currentGameRes.json()) as { currentGame: { id: string } }
+
+    // Record the result with the photo's recognised home name diverging from
+    // the selected club, and an override that clears the home clubId. The
+    // away side keeps its selection — recognised name there is just a
+    // fallback label that won't show because the squad name resolves.
+    const recordRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games/${currentGameBody.currentGame.id}/result`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({
+            result: 'home',
+            homeScore: 2,
+            awayScore: 0,
+            entryMethod: 'ocr',
+            ocrModel: 'gemini',
+            homeClubName: 'Real Madrid',
+            awayClubName: 'Beşiktaş',
+            homeClubId: null,
+          }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(recordRes.status).toBe(200)
+
+    const historyRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/match-history?scope=all`, {
+        headers: { Cookie: cookie },
+      }),
+      env,
+      execCtx(),
+    )
+    const history = (await historyRes.json()) as MatchHistoryResponse
+    expect(history.matches).toHaveLength(1)
+    const match = history.matches[0]!
+    // Home: override cleared the selection, recognised name surfaces.
+    expect(match.home.clubId).toBe(0)
+    expect(match.home.clubName).toBe('Real Madrid')
+    // Away: no override, selected club resolves through the squad map.
+    expect(match.away.clubId).toBe(2)
+    expect(match.away.clubName).toBe('Beşiktaş')
+  })
+
   it('rejects a match-history request with no scope or both scopes', async () => {
     const app = buildTestApp()
 

@@ -158,6 +158,11 @@ const recordCurrentGameSchema = z.object({
   ocrModel: z.string().max(64).optional(),
   homeClubName: z.string().trim().min(1).max(120).nullable().optional(),
   awayClubName: z.string().trim().min(1).max(120).nullable().optional(),
+  // Optional clubId overrides — when provided they replace activeGame's
+  // selection on the recorded event. `null` clears the side (recognised
+  // name becomes the only label); a positive int sets a specific club.
+  homeClubId: z.number().int().positive().nullable().optional(),
+  awayClubId: z.number().int().positive().nullable().optional(),
 })
 
 const interruptCurrentGameSchema = z.object({
@@ -1038,14 +1043,23 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/result', 
       home: {
         gamerIds: activeGame.homeGamerIds,
         gamerTeamKey: buildSideTeamKey(activeGame.homeGamerIds),
-        clubId: activeGame.homeClubId ?? 0,
+        // An explicit override (including `null`) wins; otherwise inherit the
+        // club picked when the game started. The recognised-name OCR path
+        // sends `null` here when the photo disagreed with the selection.
+        clubId:
+          body.homeClubId !== undefined
+            ? (body.homeClubId ?? 0)
+            : (activeGame.homeClubId ?? 0),
         clubName: body.homeClubName ?? null,
         score: scores.homeScore,
       },
       away: {
         gamerIds: activeGame.awayGamerIds,
         gamerTeamKey: buildSideTeamKey(activeGame.awayGamerIds),
-        clubId: activeGame.awayClubId ?? 0,
+        clubId:
+          body.awayClubId !== undefined
+            ? (body.awayClubId ?? 0)
+            : (activeGame.awayClubId ?? 0),
         clubName: body.awayClubName ?? null,
         score: scores.awayScore,
       },

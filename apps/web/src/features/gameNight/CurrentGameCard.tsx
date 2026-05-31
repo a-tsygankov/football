@@ -98,19 +98,26 @@ export function CurrentGameCard({
     model?: string,
     homeClubName?: string | null,
     awayClubName?: string | null,
+    homeClubIdOverride?: number | null,
+    awayClubIdOverride?: number | null,
   ): void {
     setHomeScore(String(hScore))
     setAwayScore(String(aScore))
     setOcrUsed(true)
-    void onRecordGameResult({
+    const request: RecordCurrentGameResultRequest = {
       result,
       homeScore: hScore,
       awayScore: aScore,
-      entryMethod: 'ocr' as const,
+      entryMethod: 'ocr',
       ocrModel: model ?? 'gemini',
       homeClubName: homeClubName ?? null,
       awayClubName: awayClubName ?? null,
-    }).then(() => {
+    }
+    // Forward an override only when one was provided. `undefined` leaves the
+    // active game's selection untouched on the server; `null` clears it.
+    if (homeClubIdOverride !== undefined) request.homeClubId = homeClubIdOverride
+    if (awayClubIdOverride !== undefined) request.awayClubId = awayClubIdOverride
+    void onRecordGameResult(request).then(() => {
       setHomeScore('')
       setAwayScore('')
       setOcrUsed(false)

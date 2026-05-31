@@ -31,6 +31,36 @@ function buildTeamContext(club: Club | null): TeamContext | null {
   return { name: club.name, aliases }
 }
 
+function namesMatch(recognised: string, candidate: string): boolean {
+  const r = recognised.trim().toLowerCase()
+  const c = candidate.trim().toLowerCase()
+  if (!r || !c) return false
+  if (r === c) return true
+  // Generous substring match so "Real Madrid" hits "Real Madrid CF" and vice
+  // versa. ≥3 chars guards against 2-letter accidental hits inside long names.
+  if (r.length >= 3 && c.includes(r)) return true
+  if (c.length >= 3 && r.includes(c)) return true
+  return false
+}
+
+/**
+ * True when the OCR-recognised name lines up with the club picked before the
+ * game (or there's nothing to compare). False means the photo disagrees with
+ * the selection — the caller should use the recognised name and drop the
+ * pre-selected clubId on the recorded event.
+ */
+function recognisedMatchesSelected(recognised: string | null, club: Club | null): boolean {
+  if (!recognised || !club) return true
+  if (namesMatch(recognised, club.name)) return true
+  if (club.shortName && namesMatch(recognised, club.shortName)) return true
+  for (const [eaName, alias] of Object.entries(CLUB_NAME_ALIASES)) {
+    if (alias.name !== club.name) continue
+    if (namesMatch(recognised, eaName)) return true
+    if (namesMatch(recognised, alias.shortName)) return true
+  }
+  return false
+}
+
 export function TvPhotoCapture({
   homeClub,
   awayClub,
@@ -52,6 +82,13 @@ export function TvPhotoCapture({
     model?: string,
     homeClubName?: string | null,
     awayClubName?: string | null,
+    /**
+     * Override clubId for the recorded event. `null` clears the side (used
+     * when the recognised name disagrees with the selected club); `undefined`
+     * leaves the active game's selection in place.
+     */
+    homeClubIdOverride?: number | null,
+    awayClubIdOverride?: number | null,
   ) => void
   onInterruptGame: () => void
 }) {
@@ -132,6 +169,16 @@ export function TvPhotoCapture({
       else result = 'draw'
     }
 
+    // If the photo's recognised team name disagrees with the club picked
+    // before the game (case-insensitive, full / short / EA-alias aware), clear
+    // that side's clubId on the recorded event so the recognised name becomes
+    // the only label. Sides where recognition matches (or wasn't attempted)
+    // keep their selected club.
+    const homeMatches = recognisedMatchesSelected(analysisResult.homeTeam, homeClub)
+    const awayMatches = recognisedMatchesSelected(analysisResult.awayTeam, awayClub)
+    const homeClubIdOverride = homeMatches ? undefined : null
+    const awayClubIdOverride = awayMatches ? undefined : null
+
     onAcceptResult(
       result,
       homeScore,
@@ -139,6 +186,8 @@ export function TvPhotoCapture({
       analysisResult.model,
       analysisResult.homeTeam,
       analysisResult.awayTeam,
+      homeClubIdOverride,
+      awayClubIdOverride,
     )
     resetState()
   }
