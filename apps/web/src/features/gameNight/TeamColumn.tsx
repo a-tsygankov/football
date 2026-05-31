@@ -22,7 +22,7 @@ export function TeamColumn({
     <div
       style={{
         borderRadius: 18,
-        padding: 12,
+        padding: 10,
         background: '#ffffff',
         border: '1px solid #d1fae5',
         minWidth: 0,
@@ -31,7 +31,7 @@ export function TeamColumn({
       <strong style={{ display: 'block', marginBottom: 10 }}>{title}</strong>
       {club ? (
         <div style={{ marginBottom: 10 }}>
-          <EaTeamCard club={club} size="medium" />
+          <EaTeamCard club={club} size="compact" />
         </div>
       ) : null}
       {members.length > 1 ? (

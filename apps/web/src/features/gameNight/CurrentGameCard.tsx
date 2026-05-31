@@ -134,11 +134,14 @@ export function CurrentGameCard({
           ? 'Manual matchup'
           : `Random via ${currentGame.selectionStrategyId}`}
       </div>
+      {/* Force two columns so Home and Away stay side-by-side on a vertical
+          phone screen. The TeamColumn uses the compact EaTeamCard size so each
+          half fits without clipping. */}
       <div
         style={{
           display: 'grid',
-          gap: 10,
-          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',
+          gap: 8,
+          gridTemplateColumns: '1fr 1fr',
         }}
       >
         <TeamColumn
@@ -189,7 +192,6 @@ export function CurrentGameCard({
           <InlineNotice tone="warn" message="Enter both scores or leave both blank." />
         ) : null}
         <TvPhotoCapture
-          busy={busy}
           homeClub={homeClub}
           awayClub={awayClub}
           onAnalysePhoto={onAnalysePhoto}
@@ -238,12 +240,15 @@ export function CurrentGameCard({
 }
 
 /**
- * Three result buttons whose enabled state depends on the entered scores.
+ * Result buttons. Two modes:
  *
- * - Both scores empty → all three enabled (winner-only recording).
- * - Both scores filled → only the button matching the score relationship
- *   is enabled (prevents submitting a contradictory result).
- * - One score filled / invalid pair → all disabled (incomplete entry).
+ * - Both scores empty → three buttons (Home/Draw/Away) for winner-only
+ *   recording, since there is no score to derive a result from.
+ * - Both scores filled → a single "Accept score" button that derives the
+ *   result from the score itself; the previous three-button layout can't
+ *   contradict the entered score and reduces to a single confirmation.
+ * - One score filled / invalid pair → still shows the three buttons, all
+ *   disabled, so the warning notice above stays meaningful.
  */
 function ResultButtons({
   busy,
@@ -263,17 +268,38 @@ function ResultButtons({
   const a = bothFilled ? Number.parseInt(awayScoreValue, 10) : NaN
   const scoresValid = bothFilled && Number.isFinite(h) && Number.isFinite(a)
 
-  // When scores are filled and valid, only the correct outcome is enabled.
-  const homeDisabled = busy !== null || !scorePairReady || (scoresValid && !(h > a))
-  const drawDisabled = busy !== null || !scorePairReady || (scoresValid && h !== a)
-  const awayDisabled = busy !== null || !scorePairReady || (scoresValid && !(a > h))
+  if (scoresValid && scorePairReady) {
+    const derived: 'home' | 'away' | 'draw' =
+      h > a ? 'home' : h < a ? 'away' : 'draw'
+    const outcomeLabel =
+      derived === 'home' ? 'Home win' : derived === 'away' ? 'Away win' : 'Draw'
+    return (
+      <div style={{ display: 'grid', gap: 6 }}>
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => onSubmit(derived)}
+          style={{ ...primaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
+        >
+          {busy === 'recording-game' ? 'Saving...' : 'Accept score'}
+        </button>
+        <p style={{ margin: 0, fontSize: 13, opacity: 0.72 }}>
+          Score {h} : {a} — {outcomeLabel}.
+        </p>
+      </div>
+    )
+  }
 
+  // Scores incomplete or invalid: three winner-only buttons. All are disabled
+  // when the pair isn't ready (one filled, one blank), letting the notice
+  // above explain why.
+  const allDisabled = busy !== null || !scorePairReady
   return (
     <div style={{ display: 'grid', gap: 6 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
         <button
           type="button"
-          disabled={homeDisabled}
+          disabled={allDisabled}
           onClick={() => onSubmit('home')}
           style={{ ...primaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
         >
@@ -281,7 +307,7 @@ function ResultButtons({
         </button>
         <button
           type="button"
-          disabled={drawDisabled}
+          disabled={allDisabled}
           onClick={() => onSubmit('draw')}
           style={{ ...secondaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
         >
@@ -289,7 +315,7 @@ function ResultButtons({
         </button>
         <button
           type="button"
-          disabled={awayDisabled}
+          disabled={allDisabled}
           onClick={() => onSubmit('away')}
           style={{ ...primaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
         >
@@ -297,9 +323,7 @@ function ResultButtons({
         </button>
       </div>
       <p style={{ margin: 0, fontSize: 13, opacity: 0.72 }}>
-        {scoresValid
-          ? `Score ${h} : ${a} — only the matching result is available.`
-          : 'Scores are optional. Enter both or leave both blank.'}
+        Scores are optional. Enter both to lock the result, or leave both blank.
       </p>
     </div>
   )

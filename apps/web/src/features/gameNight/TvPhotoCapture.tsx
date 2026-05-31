@@ -5,12 +5,7 @@ import {
   CLUB_NAME_ALIASES,
 } from '@fc26/shared'
 import { Field } from '../../components/Field.jsx'
-import {
-  inputStyle,
-  primaryButtonStyle,
-  secondaryButtonStyle,
-} from '../../styles/controls.js'
-import type { BusyState } from '../../types/busyState.js'
+import { inputStyle, secondaryButtonStyle } from '../../styles/controls.js'
 import { PhotoResultPreview } from './PhotoResultPreview.jsx'
 
 interface TeamContext {
@@ -37,14 +32,12 @@ function buildTeamContext(club: Club | null): TeamContext | null {
 }
 
 export function TvPhotoCapture({
-  busy,
   homeClub,
   awayClub,
   onAnalysePhoto,
   onAcceptResult,
   onInterruptGame,
 }: {
-  busy: BusyState
   homeClub: Club | null
   awayClub: Club | null
   onAnalysePhoto: (
@@ -66,6 +59,10 @@ export function TvPhotoCapture({
   const [scorePhotoUrl, setScorePhotoUrl] = useState<string | null>(null)
   const [analysisResult, setAnalysisResult] = useState<AnalysePhotoResponse | null>(null)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
+  // Estimated analysis progress (null = not running). Gemini doesn't stream
+  // progress, so this is a smooth asymptote toward 90% that jumps to 100%
+  // once the response actually arrives — good enough to communicate "working".
+  const [progress, setProgress] = useState<number | null>(null)
 
   useEffect(() => {
     if (!scorePhoto) {
@@ -79,21 +76,45 @@ export function TvPhotoCapture({
     }
   }, [scorePhoto])
 
-  async function handleAnalysePhoto(): Promise<void> {
-    if (!scorePhoto) return
+  // Drive the fake progress: tick toward 90% while we're waiting. Once the
+  // response arrives `runAnalysis` jumps to 100% and a delayed reset clears
+  // the bar.
+  useEffect(() => {
+    if (progress === null || progress >= 90) return
+    const id = setInterval(() => {
+      setProgress((p) => {
+        if (p === null || p >= 90) return p
+        return Math.min(90, p + Math.max(1.5, (90 - p) * 0.08))
+      })
+    }, 200)
+    return () => clearInterval(id)
+  }, [progress])
+
+  async function runAnalysis(file: File): Promise<void> {
     setAnalysisError(null)
     setAnalysisResult(null)
-
+    setProgress(5)
     try {
       const { scaleImageForAnalysis } = await import('../../lib/image.js')
-      const base64 = await scaleImageForAnalysis(scorePhoto)
+      const base64 = await scaleImageForAnalysis(file)
       const homeTeam = buildTeamContext(homeClub)
       const awayTeam = buildTeamContext(awayClub)
       const result = await onAnalysePhoto(base64, homeTeam, awayTeam)
       setAnalysisResult(result)
+      setProgress(100)
     } catch (err) {
       setAnalysisError(err instanceof Error ? err.message : String(err))
+    } finally {
+      // Brief pause at 100% before clearing so the user sees the bar finish.
+      setTimeout(() => setProgress(null), 400)
     }
+  }
+
+  function handleSelectFile(file: File | null): void {
+    setAnalysisResult(null)
+    setAnalysisError(null)
+    setScorePhoto(file)
+    if (file) void runAnalysis(file)
   }
 
   function handleAccept(): void {
@@ -135,7 +156,11 @@ export function TvPhotoCapture({
     setScorePhoto(null)
     setAnalysisResult(null)
     setAnalysisError(null)
+    setProgress(null)
   }
+
+  const analysing = progress !== null && progress < 100
+  const progressValue = progress ?? 0
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
@@ -145,9 +170,7 @@ export function TvPhotoCapture({
             type="file"
             accept="image/*"
             onChange={(event) => {
-              setScorePhoto(event.target.files?.[0] ?? null)
-              setAnalysisResult(null)
-              setAnalysisError(null)
+              handleSelectFile(event.target.files?.[0] ?? null)
             }}
             style={inputStyle}
           />
@@ -183,20 +206,39 @@ export function TvPhotoCapture({
                   Remove photo
                 </button>
               </div>
-              {!analysisResult ? (
-                <button
-                  type="button"
-                  disabled={busy !== null}
-                  onClick={() => void handleAnalysePhoto()}
-                  style={{ ...primaryButtonStyle, fontSize: 14 }}
+              {progress !== null ? (
+                <div
+                  role="progressbar"
+                  aria-label="Analysing photo"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(progressValue)}
+                  style={{
+                    height: 8,
+                    borderRadius: 999,
+                    background: '#e2e8f0',
+                    overflow: 'hidden',
+                  }}
                 >
-                  {busy === 'analysing-photo' ? 'Analysing...' : 'Analyse photo'}
-                </button>
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${Math.round(progressValue)}%`,
+                      background: '#15803d',
+                      transition: 'width 200ms ease',
+                    }}
+                  />
+                </div>
+              ) : null}
+              {analysing ? (
+                <span style={{ fontSize: 12, opacity: 0.7 }}>
+                  Analysing photo… {Math.round(progressValue)}%
+                </span>
               ) : null}
             </div>
           ) : (
             <span style={{ fontSize: 13, opacity: 0.72 }}>
-              Optional. Take a picture of the TV score to auto-fill the result.
+              Optional. Pick a TV photo and analysis starts automatically.
             </span>
           )}
         </div>

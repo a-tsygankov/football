@@ -1798,6 +1798,14 @@ describe('App shell', () => {
     const scoreboardPanel = screen
       .getByRole('heading', { name: /Scoreboard/i })
       .closest('section')!
+    // Wait for the scoreboard fetch to populate the row — the heading appears
+    // as soon as bootstrap loads, before the separate scoreboard request
+    // resolves, so without this wait the test races the data.
+    await waitFor(() =>
+      expect(
+        within(scoreboardPanel).getByRole('button', { name: /Show recent matches/i }),
+      ).toBeInTheDocument(),
+    )
     // Match data is hidden until the row is expanded.
     expect(within(scoreboardPanel).queryByText('Chelsea')).toBeNull()
 

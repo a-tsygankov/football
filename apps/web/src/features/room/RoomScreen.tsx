@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import type {
   AnalysePhotoResponse,
   CreateCurrentGameRequest,
@@ -129,6 +129,22 @@ export function RoomScreen({
   function scrollToSection(sectionId: string): void {
     document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
+
+  // On room entry, jump straight to the live game/night section when there is
+  // one, so the gamer doesn't have to scroll past the header/start panels to
+  // reach the action. Mount-only — won't fight subsequent scroll positions.
+  useEffect(() => {
+    if (!bootstrap.activeGameNight) return
+    requestAnimationFrame(() => {
+      const el = document.getElementById('fc26-game-live-section')
+      // `scrollIntoView` is missing in jsdom — guard the call so test renders
+      // don't blow up when the active-night bootstrap path is exercised.
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ behavior: 'auto', block: 'start' })
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // After a successful game-creation request the panel content swaps from the
   // creation form to `CurrentGameCard`. On phones that swap happens off-screen

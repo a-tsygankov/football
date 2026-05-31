@@ -15,11 +15,34 @@ const RESULT_LABEL: Record<MatchHistoryEntry['result'], string> = {
   draw: 'Draw',
 }
 
+type Outcome = 'won' | 'lost' | 'draw'
+
+// Green winner, red loser, dark slate for draws. Reused for the side block
+// title and the score in the middle.
+const OUTCOME_COLOR: Record<Outcome, string> = {
+  won: '#15803d',
+  lost: '#b91c1c',
+  draw: '#475569',
+}
+
+function sideOutcome(result: MatchHistoryEntry['result'], side: MatchHistorySide): Outcome {
+  if (result === 'draw') return 'draw'
+  return side.won ? 'won' : 'lost'
+}
+
 function clubLogoSrc(clubId: number): string | undefined {
   return resolveAssetUrl(`pending:club:${clubId}`) ?? undefined
 }
 
-function SideBlock({ side, align }: { side: MatchHistorySide; align: 'left' | 'right' }) {
+function SideBlock({
+  side,
+  align,
+  outcome,
+}: {
+  side: MatchHistorySide
+  align: 'left' | 'right'
+  outcome: Outcome
+}) {
   const names = side.gamers.length > 0
     ? side.gamers.map((gamer) => gamer.name).join(' + ')
     : side.gamerIds.join(' + ')
@@ -41,7 +64,7 @@ function SideBlock({ side, align }: { side: MatchHistorySide; align: 'left' | 'r
       <strong
         style={{
           fontSize: 14,
-          color: side.won ? '#15803d' : '#0f172a',
+          color: OUTCOME_COLOR[outcome],
           overflowWrap: 'anywhere',
         }}
       >
@@ -78,6 +101,11 @@ function MatchCard({ match }: { match: MatchHistoryEntry }) {
   const homeScore = match.home.score
   const awayScore = match.away.score
   const hasScore = homeScore !== null && awayScore !== null
+  const homeOutcome = sideOutcome(match.result, match.home)
+  const awayOutcome = sideOutcome(match.result, match.away)
+  // Centre column color: dark slate for draws, otherwise the default dark
+  // navy — winners/losers are already coloured on the side blocks.
+  const centreColor = match.result === 'draw' ? OUTCOME_COLOR.draw : '#0f172a'
 
   return (
     <article
@@ -112,19 +140,37 @@ function MatchCard({ match }: { match: MatchHistoryEntry }) {
           gap: 10,
         }}
       >
-        <SideBlock side={match.home} align="left" />
-        <div
-          style={{
-            fontSize: 18,
-            fontWeight: 700,
-            fontVariantNumeric: 'tabular-nums',
-            whiteSpace: 'nowrap',
-            color: '#0f172a',
-          }}
-        >
-          {hasScore ? `${homeScore} – ${awayScore}` : 'vs'}
-        </div>
-        <SideBlock side={match.away} align="right" />
+        <SideBlock side={match.home} align="left" outcome={homeOutcome} />
+        {hasScore ? (
+          <div
+            style={{
+              fontSize: 18,
+              fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+              whiteSpace: 'nowrap',
+              color: centreColor,
+            }}
+          >
+            {homeScore} – {awayScore}
+          </div>
+        ) : (
+          // The match was recorded without an exact score (e.g. winner-only or
+          // legacy history that predates score capture). Make the gap explicit
+          // instead of pretending the game hasn't been played yet ("vs").
+          <div
+            style={{
+              fontSize: 11,
+              fontStyle: 'italic',
+              color: '#64748b',
+              whiteSpace: 'nowrap',
+              maxWidth: 96,
+              textAlign: 'center',
+            }}
+          >
+            Score not recorded
+          </div>
+        )}
+        <SideBlock side={match.away} align="right" outcome={awayOutcome} />
       </div>
     </article>
   )
