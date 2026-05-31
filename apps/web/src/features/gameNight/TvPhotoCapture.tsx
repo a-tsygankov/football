@@ -218,6 +218,13 @@ export function TvPhotoCapture({
           <input
             type="file"
             accept="image/*"
+            // Hint to mobile browsers that this input wants the rear camera.
+            // Without `capture`, Android Chrome / WebView typically opens the
+            // gallery first instead of the camera, so users couldn't actually
+            // take a TV photo. iOS already offered a "Take Photo" sheet, but
+            // `capture="environment"` makes both platforms go straight to the
+            // camera which is the common case for snapping a TV score.
+            capture="environment"
             onChange={(event) => {
               handleSelectFile(event.target.files?.[0] ?? null)
             }}
