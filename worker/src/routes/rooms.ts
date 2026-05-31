@@ -23,6 +23,7 @@ import {
   type GamerScoreboardRow,
   type GamerTeamScoreboardRow,
   type GameInterruptedEvent,
+  type GameVoidedEvent,
   GameId,
   type GameRecordedEvent,
   getStrategy,
@@ -168,6 +169,10 @@ const recordCurrentGameSchema = z.object({
 const interruptCurrentGameSchema = z.object({
   comment: z.string().trim().max(280).nullable().optional(),
   occurredAt: z.number().int().positive().optional(),
+})
+
+const voidGameSchema = z.object({
+  reason: z.string().trim().min(1).max(280).optional(),
 })
 
 export const roomRoutes = new Hono<AppContext>()
@@ -1281,6 +1286,74 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/interrupt
   })
 })
 
+/**
+ * Admin "delete game from history" endpoint. Recorded games stay in the
+ * event log for audit; we add a paired `game_voided` event and reverse the
+ * scoreboard projections so the game stops counting. `buildMatchHistory`
+ * filters voided games out of the drill-down. There is no server-side admin
+ * gate beyond the room session — the UI hides the delete button behind the
+ * triple-tap Settings unlock (same pattern as `bypassPin`).
+ */
+roomRoutes.post(
+  '/rooms/:roomId/game-nights/:gameNightId/games/:gameId/void',
+  async (c) => {
+    const roomId = RoomId(c.req.param('roomId'))
+    const session = await requireRoomSession(c, roomId)
+    if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+    const gameNightId = GameNightId(c.req.param('gameNightId'))
+    const gameId = GameId(c.req.param('gameId'))
+
+    const rawBody = await parseJson(c).catch(() => ({}))
+    const parsed = voidGameSchema.safeParse(rawBody)
+    if (!parsed.success) {
+      return c.json({ error: 'invalid_body', issues: parsed.error.flatten() }, 400)
+    }
+    const body = parsed.data
+
+    const events = await c.get('deps').events.listByRoom(roomId)
+    const recordedEnvelope = events.find(
+      (event): event is typeof event & { payload: GameRecordedEvent } =>
+        event.payload.type === 'game_recorded' && event.payload.gameId === gameId,
+    )
+    if (!recordedEnvelope) {
+      return c.json({ error: 'recorded_game_not_found', gameId }, 404)
+    }
+    if (recordedEnvelope.payload.gameNightId !== gameNightId) {
+      return c.json({ error: 'game_night_mismatch' }, 400)
+    }
+    const alreadyVoided = events.some(
+      (event) =>
+        event.payload.type === 'game_voided' && event.payload.gameId === gameId,
+    )
+    if (alreadyVoided) {
+      return c.json({ error: 'already_voided', gameId }, 409)
+    }
+
+    const now = Date.now()
+    const voidedEvent: GameVoidedEvent = {
+      type: 'game_voided',
+      schemaVersion: EVENT_SCHEMA_VERSION,
+      gameId,
+      gameNightId,
+      roomId,
+      occurredAt: now,
+      reason: body.reason ?? 'admin_delete',
+    }
+    const persistedEvent = buildPersistedEvent(c, voidedEvent, roomId, now, now)
+
+    await c.get('deps').events.insert(persistedEvent)
+    await c
+      .get('deps')
+      .projections.reverseRecordedEvent(recordedEnvelope, persistedEvent.id, now)
+
+    return c.json({
+      eventId: persistedEvent.id,
+      eventType: persistedEvent.eventType,
+    })
+  },
+)
+
 async function buildBootstrap(
   c: RouteContext,
   roomId: RoomIdType,
@@ -1322,9 +1395,18 @@ async function buildMatchHistory(
   const gamers = await c.get('deps').gamers.listByRoom(roomId)
   const gamersById = new Map(gamers.map((gamer) => [gamer.id, toPublicGamer(gamer)]))
 
-  const recorded = (await c.get('deps').events.listByRoom(roomId)).filter(
+  const allEvents = await c.get('deps').events.listByRoom(roomId)
+  // Games marked voided by the admin "delete" route are excluded from
+  // history. Projections were already rolled back at void time, so this
+  // keeps the drill-down list in sync with the scoreboard.
+  const voidedGameIds = new Set(
+    allEvents
+      .filter((event) => event.payload.type === 'game_voided')
+      .map((event) => (event.payload as GameVoidedEvent).gameId),
+  )
+  const recorded = allEvents.filter(
     (event): event is typeof event & { payload: GameRecordedEvent } =>
-      event.payload.type === 'game_recorded',
+      event.payload.type === 'game_recorded' && !voidedGameIds.has(event.payload.gameId),
   )
 
   const matchesScoped = recorded.filter((event) => {
@@ -1642,7 +1724,7 @@ function nextPinAttempt(
   }
 }
 
-function buildPersistedEvent<TPayload extends GameRecordedEvent | GameInterruptedEvent>(
+function buildPersistedEvent<TPayload extends GameRecordedEvent | GameInterruptedEvent | GameVoidedEvent>(
   c: RouteContext,
   payload: TPayload,
   roomId: RoomIdType,

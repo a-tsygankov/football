@@ -3,7 +3,6 @@ import { ClubIdentity } from '../../components/FcClubPanel.jsx'
 import { Field } from '../../components/Field.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
 import { MiniStat } from '../../components/MiniStat.jsx'
-import { Panel } from '../../components/Panel.jsx'
 import { inputStyle } from '../../styles/controls.js'
 import {
   formatClubChangeField,
@@ -12,6 +11,10 @@ import {
 import { HistoricalRatingsChart } from './HistoricalRatingsChart.jsx'
 import type { SquadBrowserState } from './useSquadBrowser.js'
 
+/**
+ * Squad comparison view. Renders content only (no <section> / <Panel>
+ * wrappers) because it lives inside the Teams panel as a tab.
+ */
 export function ChangesPanel({
   latestSquadVersion,
   squadVersions,
@@ -24,11 +27,7 @@ export function ChangesPanel({
   changes: SquadBrowserState['changes']
 }) {
   return (
-    <section id="fc26-changes-section" style={{ marginTop: 18 }}>
-      <Panel
-        title="Changes"
-        subtitle="Compare stored squad snapshots to see club rating shifts and player updates between versions."
-      >
+    <>
         {!latestSquadVersion ? (
           <InlineNotice
             tone="warn"
@@ -292,7 +291,6 @@ export function ChangesPanel({
             )}
           </div>
         )}
-      </Panel>
-    </section>
+    </>
   )
 }

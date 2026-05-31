@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type {
   AnalysePhotoResponse,
   CreateCurrentGameRequest,
@@ -18,7 +18,6 @@ import { RosterPanel } from '../gamers/RosterPanel.jsx'
 import { GameCreationPanel } from '../gameNight/GameCreationPanel.jsx'
 import { StartGameNightPanel } from '../gameNight/StartGameNightPanel.jsx'
 import { ScoreboardPanel } from '../scoreboard/ScoreboardPanel.jsx'
-import { ChangesPanel } from '../squads/ChangesPanel.jsx'
 import { TeamsPanel } from '../squads/TeamsPanel.jsx'
 import { useSquadBrowser } from '../squads/useSquadBrowser.js'
 import { ActiveRoomHeader } from './ActiveRoomHeader.jsx'
@@ -32,6 +31,7 @@ export function RoomScreen({
   roomSquadPlatform,
   scoreboard,
   onLoadMatchHistory,
+  onVoidGame,
   gamerName,
   gamerRating,
   gamerPin,
@@ -63,6 +63,7 @@ export function RoomScreen({
   roomSquadPlatform: SquadPlatform
   scoreboard: RoomScoreboardResponse | null
   onLoadMatchHistory: (scope: MatchHistoryScope) => Promise<MatchHistoryResponse>
+  onVoidGame: (gameNightId: string, gameId: string) => Promise<void>
   gamerName: string
   gamerRating: string
   gamerPin: string
@@ -126,6 +127,32 @@ export function RoomScreen({
   // across reloads without having to re-trigger the gesture.
   const settingsUnlocked = useDebugConsole((s) => s.everOpened)
 
+  // Admin-only reminder when a new squad version becomes available. We
+  // localStorage-ack the latest version the admin has seen so the banner
+  // only fires on genuine new arrivals (App.tsx polls /api/version while
+  // Settings is unlocked, so a fresh ingest reaches us without a reload).
+  const SQUAD_ACK_KEY = 'fc26:last-acked-squad-version'
+  const [ackedSquadVersion, setAckedSquadVersion] = useState<string | null>(
+    () => (typeof localStorage !== 'undefined' ? localStorage.getItem(SQUAD_ACK_KEY) : null),
+  )
+  useEffect(() => {
+    if (!latestSquadVersion || ackedSquadVersion !== null) return
+    // First time we've seen any squad version on this device — ack silently
+    // so existing admins don't get a phantom reminder right after install.
+    localStorage.setItem(SQUAD_ACK_KEY, latestSquadVersion)
+    setAckedSquadVersion(latestSquadVersion)
+  }, [latestSquadVersion, ackedSquadVersion])
+  function dismissSquadReminder(): void {
+    if (!latestSquadVersion) return
+    localStorage.setItem(SQUAD_ACK_KEY, latestSquadVersion)
+    setAckedSquadVersion(latestSquadVersion)
+  }
+  const showSquadReminder =
+    settingsUnlocked &&
+    latestSquadVersion !== null &&
+    ackedSquadVersion !== null &&
+    latestSquadVersion !== ackedSquadVersion
+
   function scrollToSection(sectionId: string): void {
     document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
@@ -173,14 +200,48 @@ export function RoomScreen({
         onRefresh={onRefresh}
       />
 
+      {showSquadReminder ? (
+        <div
+          style={{
+            marginTop: 14,
+            padding: '10px 12px',
+            borderRadius: 14,
+            background: '#fef3c7',
+            border: '1px solid #f59e0b',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+          }}
+        >
+          <span style={{ fontSize: 13, color: '#78350f' }}>
+            New squad version <strong>{latestSquadVersion}</strong> is available. Sync it
+            from the Settings panel.
+          </span>
+          <button
+            type="button"
+            onClick={dismissSquadReminder}
+            style={{
+              border: '1px solid #b45309',
+              background: '#fde68a',
+              color: '#78350f',
+              borderRadius: 999,
+              padding: '4px 12px',
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
+      {/* Keeps the BottomNav "Game" anchor — falls through to the live
+          section when there is one, otherwise lands on Start Game Night. */}
       <section
         id="fc26-game-section"
-        style={{
-          marginTop: 18,
-          display: 'grid',
-          gap: 14,
-          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))',
-        }}
+        style={{ marginTop: 18 }}
       >
         {bootstrap.activeGameNight ? null : (
           <StartGameNightPanel
@@ -189,19 +250,6 @@ export function RoomScreen({
             onStartGameNight={onStartGameNight}
           />
         )}
-        <AddGamerPanel
-          bootstrap={bootstrap}
-          busy={busy}
-          gamerName={gamerName}
-          gamerRating={gamerRating}
-          gamerPin={gamerPin}
-          gamerAvatarUrl={gamerAvatarUrl}
-          onChangeGamerName={onChangeGamerName}
-          onChangeGamerPin={onChangeGamerPin}
-          onChangeGamerRating={onChangeGamerRating}
-          onChangeGamerAvatar={onChangeGamerAvatar}
-          onCreateGamer={onCreateGamer}
-        />
       </section>
 
       {bootstrap.activeGameNight ? (
@@ -223,22 +271,20 @@ export function RoomScreen({
         </section>
       ) : null}
 
-      <ScoreboardPanel scoreboard={scoreboard} onLoadMatchHistory={onLoadMatchHistory} />
+      <ScoreboardPanel
+        scoreboard={scoreboard}
+        onLoadMatchHistory={onLoadMatchHistory}
+        onVoidGame={settingsUnlocked ? onVoidGame : undefined}
+      />
 
       <TeamsPanel
         latestSquadVersion={latestSquadVersion}
         squadPanelError={squadBrowser.squadPanelError}
         squadVersions={squadBrowser.squadVersions}
         teams={squadBrowser.teams}
+        changes={squadBrowser.changes}
         settingsUnlocked={settingsUnlocked}
         roomSquadPlatform={roomSquadPlatform}
-      />
-
-      <ChangesPanel
-        latestSquadVersion={latestSquadVersion}
-        squadVersions={squadBrowser.squadVersions}
-        squadPanelError={squadBrowser.squadPanelError}
-        changes={squadBrowser.changes}
       />
 
       {settingsUnlocked ? (
@@ -256,7 +302,20 @@ export function RoomScreen({
         />
       ) : null}
 
-      <section id="fc26-roster-section">
+      <section id="fc26-roster-section" style={{ display: 'grid', gap: 14 }}>
+        <AddGamerPanel
+          bootstrap={bootstrap}
+          busy={busy}
+          gamerName={gamerName}
+          gamerRating={gamerRating}
+          gamerPin={gamerPin}
+          gamerAvatarUrl={gamerAvatarUrl}
+          onChangeGamerName={onChangeGamerName}
+          onChangeGamerPin={onChangeGamerPin}
+          onChangeGamerRating={onChangeGamerRating}
+          onChangeGamerAvatar={onChangeGamerAvatar}
+          onCreateGamer={onCreateGamer}
+        />
         <RosterPanel
           bootstrap={bootstrap}
           busy={busy}

@@ -1167,7 +1167,11 @@ describe('App shell', () => {
       'src',
       'https://example.com/saka.png',
     )
-    expect(screen.getByText(/Overall changed from 84 to 85/i)).toBeInTheDocument()
+
+    // The Changes content lives inside the Teams panel as a tab now — flip
+    // to it before asserting the diff rendering.
+    fireEvent.click(screen.getByRole('button', { name: /Squad changes/i }))
+    expect(await screen.findByText(/Overall changed from 84 to 85/i)).toBeInTheDocument()
     expect(screen.getByText(/OVR 86 → 87/i)).toBeInTheDocument()
   })
 

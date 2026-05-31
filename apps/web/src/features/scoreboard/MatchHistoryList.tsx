@@ -97,7 +97,32 @@ function SideBlock({
   )
 }
 
-function MatchCard({ match }: { match: MatchHistoryEntry }) {
+function MatchCard({
+  match,
+  onVoidGame,
+}: {
+  match: MatchHistoryEntry
+  onVoidGame?: (gameNightId: string, gameId: string) => Promise<void>
+}) {
+  const [deleting, setDeleting] = useState(false)
+  async function handleDelete(): Promise<void> {
+    if (!onVoidGame || deleting) return
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      if (!window.confirm('Delete this match from history? It will no longer count on the scoreboard.')) {
+        return
+      }
+    }
+    setDeleting(true)
+    try {
+      await onVoidGame(match.gameNightId, match.gameId)
+    } catch (err) {
+      // Surface the failure via alert — the row will refetch on next drill-down.
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(`Could not delete: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      setDeleting(false)
+    }
+  }
   const homeScore = match.home.score
   const awayScore = match.away.score
   const hasScore = homeScore !== null && awayScore !== null
@@ -172,6 +197,27 @@ function MatchCard({ match }: { match: MatchHistoryEntry }) {
         )}
         <SideBlock side={match.away} align="right" outcome={awayOutcome} />
       </div>
+      {onVoidGame ? (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={() => void handleDelete()}
+            style={{
+              border: '1px solid #fecaca',
+              background: '#fef2f2',
+              color: '#991b1b',
+              borderRadius: 999,
+              padding: '4px 10px',
+              fontSize: 11,
+              cursor: deleting ? 'default' : 'pointer',
+              opacity: deleting ? 0.6 : 1,
+            }}
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      ) : null}
     </article>
   )
 }
@@ -179,9 +225,12 @@ function MatchCard({ match }: { match: MatchHistoryEntry }) {
 export function MatchHistoryList({
   scope,
   onLoad,
+  onVoidGame,
 }: {
   scope: MatchHistoryScope
   onLoad: (scope: MatchHistoryScope) => Promise<MatchHistoryResponse>
+  /** Pass an admin "delete game" callback to expose the per-match delete UI. */
+  onVoidGame?: (gameNightId: string, gameId: string) => Promise<void>
 }) {
   const [state, setState] = useState<
     | { status: 'loading' }
@@ -231,7 +280,27 @@ export function MatchHistoryList({
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       {state.matches.map((match) => (
-        <MatchCard key={match.eventId} match={match} />
+        <MatchCard
+          key={match.eventId}
+          match={match}
+          onVoidGame={
+            onVoidGame
+              ? async (gameNightId, gameId) => {
+                  await onVoidGame(gameNightId, gameId)
+                  // Drop the row locally so the drill-down updates without
+                  // a roundtrip; backend already marked the game voided.
+                  setState((prev) =>
+                    prev.status === 'ready'
+                      ? {
+                          ...prev,
+                          matches: prev.matches.filter((m) => m.eventId !== match.eventId),
+                        }
+                      : prev,
+                  )
+                }
+              : undefined
+          }
+        />
       ))}
     </div>
   )

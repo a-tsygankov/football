@@ -64,9 +64,9 @@ describe('BottomNav', () => {
     }))
     document.body.appendChild(teamsSection)
 
-    const changesSection = document.createElement('section')
-    changesSection.id = 'fc26-changes-section'
-    changesSection.getBoundingClientRect = vi.fn(() => ({
+    const rosterSection = document.createElement('section')
+    rosterSection.id = 'fc26-roster-section'
+    rosterSection.getBoundingClientRect = vi.fn(() => ({
       top: 1280,
       left: 0,
       bottom: 1540,
@@ -77,7 +77,7 @@ describe('BottomNav', () => {
       y: 1280,
       toJSON: () => ({}),
     }))
-    document.body.appendChild(changesSection)
+    document.body.appendChild(rosterSection)
 
     render(<BottomNav />)
 
@@ -93,7 +93,7 @@ describe('BottomNav', () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
 
     scrollIntoView.mockClear()
-    fireEvent.click(screen.getByRole('button', { name: 'Changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Roster' }))
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
   })
 
@@ -145,7 +145,7 @@ describe('BottomNav', () => {
     expect(screen.getByRole('button', { name: 'Game' })).not.toHaveAttribute('aria-current')
   })
 
-  it('enables the teams and changes tabs when their sections exist', () => {
+  it('enables the teams and roster tabs when their sections exist', () => {
     const teamsSection = document.createElement('section')
     teamsSection.id = 'fc26-teams-section'
     teamsSection.getBoundingClientRect = vi.fn(() => ({
@@ -161,9 +161,9 @@ describe('BottomNav', () => {
     }))
     document.body.appendChild(teamsSection)
 
-    const changesSection = document.createElement('section')
-    changesSection.id = 'fc26-changes-section'
-    changesSection.getBoundingClientRect = vi.fn(() => ({
+    const rosterSection = document.createElement('section')
+    rosterSection.id = 'fc26-roster-section'
+    rosterSection.getBoundingClientRect = vi.fn(() => ({
       top: 500,
       left: 0,
       bottom: 700,
@@ -174,10 +174,10 @@ describe('BottomNav', () => {
       y: 500,
       toJSON: () => ({}),
     }))
-    document.body.appendChild(changesSection)
+    document.body.appendChild(rosterSection)
 
     render(<BottomNav />)
     expect(screen.getByRole('button', { name: 'Teams' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Changes' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Roster' })).toBeEnabled()
   })
 })

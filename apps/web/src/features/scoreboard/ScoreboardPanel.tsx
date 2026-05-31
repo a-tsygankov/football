@@ -25,9 +25,12 @@ import { MatchHistoryList } from './MatchHistoryList.jsx'
 export function ScoreboardPanel({
   scoreboard,
   onLoadMatchHistory,
+  onVoidGame,
 }: {
   scoreboard: RoomScoreboardResponse | null
   onLoadMatchHistory: (scope: MatchHistoryScope) => Promise<MatchHistoryResponse>
+  /** Admin "delete game" callback. Pass undefined to hide the delete UI. */
+  onVoidGame?: (gameNightId: string, gameId: string) => Promise<void>
 }) {
   const [scoreboardView, setScoreboardView] = useState<'gamers' | 'teams' | 'all'>(
     'gamers',
@@ -187,6 +190,7 @@ export function ScoreboardPanel({
                         <MatchHistoryList
                           scope={{ type: 'gamer', gamerId: row.gamer.id }}
                           onLoad={onLoadMatchHistory}
+                          onVoidGame={onVoidGame}
                         />
                       ) : null}
                     </article>
@@ -200,7 +204,11 @@ export function ScoreboardPanel({
             <p style={{ margin: '0 0 6px', fontSize: 13, opacity: 0.72 }}>
               Most recent games across the room (up to 20).
             </p>
-            <MatchHistoryList scope={{ type: 'all' }} onLoad={onLoadMatchHistory} />
+            <MatchHistoryList
+              scope={{ type: 'all' }}
+              onLoad={onLoadMatchHistory}
+              onVoidGame={onVoidGame}
+            />
           </div>
         ) : sortedGamerTeamRows.length === 0 ? (
           <InlineNotice
@@ -265,6 +273,7 @@ export function ScoreboardPanel({
                         gamerTeamKey: GamerTeamKey(row.gamerTeamKey),
                       }}
                       onLoad={onLoadMatchHistory}
+                      onVoidGame={onVoidGame}
                     />
                   ) : null}
                 </article>

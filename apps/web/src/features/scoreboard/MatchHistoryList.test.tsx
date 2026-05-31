@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { MatchHistoryResponse } from '@fc26/shared'
 import { MatchHistoryList } from './MatchHistoryList.jsx'
 
@@ -94,6 +94,39 @@ describe('MatchHistoryList', () => {
     // Legacy/winner-only entry: explicit "Score not recorded" label, never "vs".
     expect(screen.getByText('Score not recorded')).toBeInTheDocument()
     expect(screen.queryByText(/^vs$/)).toBeNull()
+  })
+
+  it('hides the delete button when no onVoidGame is supplied', async () => {
+    const response = buildResponse()
+    render(<MatchHistoryList scope={{ type: 'all' }} onLoad={async () => response} />)
+    await waitFor(() => expect(screen.getByText('Real Madrid')).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /Delete/i })).toBeNull()
+  })
+
+  it('voids a match when the admin clicks Delete', async () => {
+    // Auto-confirm the native confirm() dialog so the click proceeds.
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const onVoidGame = vi.fn(async () => {})
+    const response = buildResponse()
+    render(
+      <MatchHistoryList
+        scope={{ type: 'all' }}
+        onLoad={async () => response}
+        onVoidGame={onVoidGame}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText('Real Madrid')).toBeInTheDocument())
+
+    const deleteButtons = screen.getAllByRole('button', { name: /Delete/i })
+    expect(deleteButtons.length).toBeGreaterThan(0)
+    fireEvent.click(deleteButtons[0]!)
+
+    await waitFor(() => expect(onVoidGame).toHaveBeenCalledWith('gn-1', 'game-1'))
+    // The row drops locally so the panel stays in sync without a refetch.
+    await waitFor(() => expect(screen.queryByText('Real Madrid')).toBeNull())
+    // The other match remains visible.
+    expect(screen.getByText('Arsenal')).toBeInTheDocument()
+    confirmSpy.mockRestore()
   })
 
   it('colours winners green, losers red, and draws dark slate', async () => {

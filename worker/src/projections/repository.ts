@@ -10,6 +10,19 @@ type RecordedGameEnvelope = PersistedGameEvent & { payload: GameRecordedEvent }
 
 export interface IGameProjectionRepository {
   applyRecordedEvent(event: RecordedGameEnvelope): Promise<void>
+  /**
+   * Reverse the deltas that `applyRecordedEvent` originally added for the
+   * given recorded event. Used by the admin "void game" route to roll back
+   * a game's contribution to the scoreboard without losing the audit trail
+   * (the original recorded event stays; a game_voided event marks it).
+   * `voidedAt` and `voidEventId` become the projection row's latest
+   * touchpoint so consumers see the rollback as the most recent event.
+   */
+  reverseRecordedEvent(
+    event: RecordedGameEnvelope,
+    voidEventId: string,
+    voidedAt: number,
+  ): Promise<void>
   listGamerPointsByRoom(roomId: string): Promise<ReadonlyArray<GamerPoints>>
   listGamerTeamPointsByRoom(roomId: string): Promise<ReadonlyArray<GamerTeamPoints>>
 }
@@ -76,6 +89,43 @@ export class InMemoryGameProjectionRepository implements IGameProjectionReposito
         goalsAgainst: (current?.goalsAgainst ?? 0) + delta.goalsAgainst,
         lastEventId: delta.lastEventId,
         updatedAt: delta.updatedAt,
+      })
+    }
+  }
+
+  async reverseRecordedEvent(
+    event: RecordedGameEnvelope,
+    voidEventId: string,
+    voidedAt: number,
+  ): Promise<void> {
+    for (const delta of buildGamerPointDeltas(event)) {
+      const current = this.gamerPoints.get(delta.gamerId)
+      if (!current) continue
+      this.gamerPoints.set(delta.gamerId, {
+        ...current,
+        gamesPlayed: Math.max(0, current.gamesPlayed - delta.gamesPlayed),
+        wins: Math.max(0, current.wins - delta.wins),
+        draws: Math.max(0, current.draws - delta.draws),
+        losses: Math.max(0, current.losses - delta.losses),
+        goalsFor: Math.max(0, current.goalsFor - delta.goalsFor),
+        goalsAgainst: Math.max(0, current.goalsAgainst - delta.goalsAgainst),
+        lastEventId: voidEventId,
+        updatedAt: voidedAt,
+      })
+    }
+    for (const delta of buildGamerTeamPointDeltas(event)) {
+      const current = this.gamerTeamPoints.get(delta.gamerTeamKey)
+      if (!current) continue
+      this.gamerTeamPoints.set(delta.gamerTeamKey, {
+        ...current,
+        gamesPlayed: Math.max(0, current.gamesPlayed - delta.gamesPlayed),
+        wins: Math.max(0, current.wins - delta.wins),
+        draws: Math.max(0, current.draws - delta.draws),
+        losses: Math.max(0, current.losses - delta.losses),
+        goalsFor: Math.max(0, current.goalsFor - delta.goalsFor),
+        goalsAgainst: Math.max(0, current.goalsAgainst - delta.goalsAgainst),
+        lastEventId: voidEventId,
+        updatedAt: voidedAt,
       })
     }
   }
@@ -158,6 +208,70 @@ export class D1GameProjectionRepository implements IGameProjectionRepository {
       ),
     ]
 
+    if (statements.length > 0) {
+      await this.db.batch(statements)
+    }
+  }
+
+  async reverseRecordedEvent(
+    event: RecordedGameEnvelope,
+    voidEventId: string,
+    voidedAt: number,
+  ): Promise<void> {
+    const statements = [
+      ...buildGamerPointDeltas(event).map((delta) =>
+        this.db
+          .prepare(
+            `UPDATE gamer_points SET
+               games_played = MAX(0, games_played - ?),
+               wins = MAX(0, wins - ?),
+               draws = MAX(0, draws - ?),
+               losses = MAX(0, losses - ?),
+               goals_for = MAX(0, goals_for - ?),
+               goals_against = MAX(0, goals_against - ?),
+               last_event_id = ?,
+               updated_at = ?
+             WHERE gamer_id = ?`,
+          )
+          .bind(
+            delta.gamesPlayed,
+            delta.wins,
+            delta.draws,
+            delta.losses,
+            delta.goalsFor,
+            delta.goalsAgainst,
+            voidEventId,
+            voidedAt,
+            delta.gamerId,
+          ),
+      ),
+      ...buildGamerTeamPointDeltas(event).map((delta) =>
+        this.db
+          .prepare(
+            `UPDATE gamer_team_points SET
+               games_played = MAX(0, games_played - ?),
+               wins = MAX(0, wins - ?),
+               draws = MAX(0, draws - ?),
+               losses = MAX(0, losses - ?),
+               goals_for = MAX(0, goals_for - ?),
+               goals_against = MAX(0, goals_against - ?),
+               last_event_id = ?,
+               updated_at = ?
+             WHERE gamer_team_key = ?`,
+          )
+          .bind(
+            delta.gamesPlayed,
+            delta.wins,
+            delta.draws,
+            delta.losses,
+            delta.goalsFor,
+            delta.goalsAgainst,
+            voidEventId,
+            voidedAt,
+            delta.gamerTeamKey,
+          ),
+      ),
+    ]
     if (statements.length > 0) {
       await this.db.batch(statements)
     }

@@ -6,7 +6,8 @@ import { FcPlayerIdentity } from '../../components/EntityIdentity.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
 import { LeaguePills } from '../../components/LeaguePills.jsx'
 import { Panel } from '../../components/Panel.jsx'
-import { primaryButtonStyle } from '../../styles/controls.js'
+import { primaryButtonStyle, secondaryButtonStyle } from '../../styles/controls.js'
+import { ChangesPanel } from './ChangesPanel.jsx'
 import type { SquadBrowserState } from './useSquadBrowser.js'
 
 const EA_FLAG_URL_TEMPLATE =
@@ -21,6 +22,7 @@ export function TeamsPanel({
   squadPanelError,
   squadVersions,
   teams,
+  changes,
   settingsUnlocked = false,
   roomSquadPlatform,
 }: {
@@ -28,12 +30,18 @@ export function TeamsPanel({
   squadPanelError: string | null
   squadVersions: ReadonlyArray<SquadVersion>
   teams: SquadBrowserState['teams']
+  /** Squad version-comparison state for the embedded Changes tab. */
+  changes: SquadBrowserState['changes']
   settingsUnlocked?: boolean
   roomSquadPlatform?: SquadPlatform
 }) {
   // Touch swipe tracking for carousel navigation.
   const touchStartX = useRef<number | null>(null)
   const [lastTapTime, setLastTapTime] = useState(0)
+  // Browse the latest stored version vs. compare two versions. The Changes
+  // view used to be its own bottom-nav section; folded in here as a tab so
+  // the bottom nav can give Roster the slot instead.
+  const [view, setView] = useState<'browse' | 'changes'>('browse')
 
   const currentClub =
     teams.filteredClubs.length > 0
@@ -127,7 +135,32 @@ export function TeamsPanel({
         subtitle="Pick a country and league to browse FC clubs."
       >
         <div style={{ display: 'grid', gap: 14 }}>
-          {!latestSquadVersion ? (
+          {/* Browse the latest stored squads, or compare two stored versions.
+              The Changes view used to live in its own bottom-nav slot. */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => setView('browse')}
+              style={view === 'browse' ? primaryButtonStyle : secondaryButtonStyle}
+            >
+              Browse teams
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('changes')}
+              style={view === 'changes' ? primaryButtonStyle : secondaryButtonStyle}
+            >
+              Squad changes
+            </button>
+          </div>
+          {view === 'changes' ? (
+            <ChangesPanel
+              latestSquadVersion={latestSquadVersion}
+              squadVersions={squadVersions}
+              squadPanelError={squadPanelError}
+              changes={changes}
+            />
+          ) : !latestSquadVersion ? (
             <InlineNotice
               tone="warn"
               message="Retrieve club and player data in Settings to unlock the stored Teams view."

@@ -2333,6 +2333,161 @@ describe('room routes', () => {
     expect(alice.matches).toHaveLength(1)
   })
 
+  it('voids a recorded game and rolls back scoreboard + match history', async () => {
+    const app = buildTestApp()
+
+    const createRes = await app.fetch(
+      new Request('http://localhost/api/rooms', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Void Room' }),
+      }),
+      env,
+      execCtx(),
+    )
+    const room = (await createRes.json()) as RoomBootstrapResponse
+    const cookie = cookieFrom(createRes)
+
+    const gamerIds: string[] = []
+    for (const name of ['Alice', 'Bob']) {
+      const res = await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/gamers`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ name }),
+        }),
+        env,
+        execCtx(),
+      )
+      const body = (await res.json()) as { gamer: { id: string } }
+      gamerIds.push(body.gamer.id)
+    }
+    const [aliceId, bobId] = gamerIds
+
+    const gameNightRes = await app.fetch(
+      new Request(`http://localhost/api/rooms/${room.room.id}/game-nights`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Cookie: cookie },
+        body: JSON.stringify({ activeGamerIds: gamerIds }),
+      }),
+      env,
+      execCtx(),
+    )
+    const gameNightBody = (await gameNightRes.json()) as { gameNight: { id: string } }
+
+    const currentGameRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({
+            allocationMode: 'manual',
+            homeGamerIds: [aliceId],
+            awayGamerIds: [bobId],
+          }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    const currentGameBody = (await currentGameRes.json()) as { currentGame: { id: string } }
+    const gameId = currentGameBody.currentGame.id
+
+    await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games/${gameId}/result`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ result: 'home', homeScore: 2, awayScore: 1 }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+
+    // Confirm baseline: the match is in history and Alice has a win.
+    const beforeHistory = (await (
+      await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/match-history?scope=all`, {
+          headers: { Cookie: cookie },
+        }),
+        env,
+        execCtx(),
+      )
+    ).json()) as MatchHistoryResponse
+    expect(beforeHistory.matches).toHaveLength(1)
+    const beforeBoard = (await (
+      await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/scoreboard`, {
+          headers: { Cookie: cookie },
+        }),
+        env,
+        execCtx(),
+      )
+    ).json()) as RoomScoreboardResponse
+    const aliceBefore = beforeBoard.gamerRows.find((row) => row.gamer.id === aliceId)
+    expect(aliceBefore?.stats.wins).toBe(1)
+
+    // Void the game.
+    const voidRes = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games/${gameId}/void`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({ reason: 'admin_delete' }),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(voidRes.status).toBe(200)
+
+    // Match history no longer surfaces the voided game.
+    const afterHistory = (await (
+      await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/match-history?scope=all`, {
+          headers: { Cookie: cookie },
+        }),
+        env,
+        execCtx(),
+      )
+    ).json()) as MatchHistoryResponse
+    expect(afterHistory.matches).toHaveLength(0)
+
+    // Scoreboard projections were reversed.
+    const afterBoard = (await (
+      await app.fetch(
+        new Request(`http://localhost/api/rooms/${room.room.id}/scoreboard`, {
+          headers: { Cookie: cookie },
+        }),
+        env,
+        execCtx(),
+      )
+    ).json()) as RoomScoreboardResponse
+    const aliceAfter = afterBoard.gamerRows.find((row) => row.gamer.id === aliceId)
+    // Either the row was zeroed out or filtered (depending on projection
+    // pruning); the win count must be back to 0 either way.
+    expect(aliceAfter?.stats.wins ?? 0).toBe(0)
+
+    // Voiding the same game again is rejected.
+    const repeatVoid = await app.fetch(
+      new Request(
+        `http://localhost/api/rooms/${room.room.id}/game-nights/${gameNightBody.gameNight.id}/games/${gameId}/void`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Cookie: cookie },
+          body: JSON.stringify({}),
+        },
+      ),
+      env,
+      execCtx(),
+    )
+    expect(repeatVoid.status).toBe(409)
+  })
+
   it('stores recognised club names and shows them when no club was selected', async () => {
     const app = buildTestApp()
 

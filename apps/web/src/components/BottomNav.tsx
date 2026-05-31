@@ -3,20 +3,20 @@ import { useDebugConsole } from '../debug/console-store.js'
 import { useTripleTap } from '../debug/use-triple-tap.js'
 import { logger } from '../lib/logger.js'
 
-type Mode = 'game' | 'dashboard' | 'teams' | 'changes'
+type Mode = 'game' | 'dashboard' | 'teams' | 'roster'
 
 const SECTION_TARGETS: Readonly<Partial<Record<Mode, string>>> = {
   game: 'fc26-game-section',
   dashboard: 'fc26-scoreboard-section',
   teams: 'fc26-teams-section',
-  changes: 'fc26-changes-section',
+  roster: 'fc26-roster-section',
 }
 
 const MODES: ReadonlyArray<{ id: Mode; label: string; targetId?: string }> = [
   { id: 'game', label: 'Game', targetId: SECTION_TARGETS.game },
   { id: 'dashboard', label: 'Scoreboard', targetId: SECTION_TARGETS.dashboard },
   { id: 'teams', label: 'Teams', targetId: SECTION_TARGETS.teams },
-  { id: 'changes', label: 'Changes', targetId: SECTION_TARGETS.changes },
+  { id: 'roster', label: 'Roster', targetId: SECTION_TARGETS.roster },
 ]
 
 export function BottomNav() {

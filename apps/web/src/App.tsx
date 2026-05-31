@@ -26,6 +26,7 @@ import {
 } from '@fc26/shared'
 import { BottomNav } from './components/BottomNav.jsx'
 import { StatusCard } from './components/StatusCard.jsx'
+import { useDebugConsole } from './debug/console-store.js'
 import { DebugConsole } from './debug/DebugConsole.jsx'
 import { apiJson, clearPersistedRoomSession, persistRoomSession } from './lib/api.js'
 import { logger } from './lib/logger.js'
@@ -81,6 +82,25 @@ export function App() {
         logger.warn('system', 'worker version fetch failed', { error: message })
       })
   }, [])
+
+  // Periodically re-fetch /api/version so a fresh `latestSquadVersion` lights
+  // up the "new squads available" reminder in RoomScreen. Only runs while a
+  // room is open and Settings is unlocked — admins are the only ones who care
+  // about the reminder, and gating saves bandwidth for everyone else.
+  const settingsUnlocked = useDebugConsole((s) => s.everOpened)
+  useEffect(() => {
+    if (!bootstrap || !settingsUnlocked) return
+    const intervalMs = 5 * 60 * 1000
+    const tick = (): void => {
+      void apiJson<WorkerVersionInfo>('/api/version')
+        .then((value) => setWorker(value))
+        .catch(() => {
+          // Polling is best-effort — silent on failure.
+        })
+    }
+    const handle = setInterval(tick, intervalMs)
+    return () => clearInterval(handle)
+  }, [bootstrap, settingsUnlocked])
 
   useEffect(() => {
     if (!joinRoomId) return
@@ -143,6 +163,28 @@ export function App() {
       return apiJson<MatchHistoryResponse>(
         `/api/rooms/${bootstrap.room.id}/match-history?${query}`,
       )
+    },
+    [bootstrap],
+  )
+
+  /**
+   * Admin "delete game" — posts a void event for the recorded game and
+   * refreshes the scoreboard so the row stops counting immediately. The
+   * MatchHistoryList drops the entry locally; there's no need to refetch
+   * the drill-down because the void event also removes it server-side.
+   */
+  const voidGame = useCallback(
+    async (gameNightId: string, gameId: string): Promise<void> => {
+      if (!bootstrap) throw new Error('No active room')
+      await apiJson<{ eventId: string; eventType: string }>(
+        `/api/rooms/${bootstrap.room.id}/game-nights/${gameNightId}/games/${gameId}/void`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ reason: 'admin_delete' }),
+        },
+      )
+      await refreshScoreboard(bootstrap.room.id)
     },
     [bootstrap],
   )
@@ -822,6 +864,7 @@ export function App() {
             roomSquadPlatform={roomSquadPlatform}
             scoreboard={scoreboard}
             onLoadMatchHistory={loadMatchHistory}
+            onVoidGame={voidGame}
             gamerName={gamerName}
             gamerRating={gamerRating}
             gamerPin={gamerPin}
