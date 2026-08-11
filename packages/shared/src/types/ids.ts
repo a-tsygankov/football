@@ -11,6 +11,7 @@ export type GameId = Brand<string, 'GameId'>
 export type GameNightId = Brand<string, 'GameNightId'>
 export type EventId = Brand<string, 'EventId'>
 export type GamerTeamKey = Brand<string, 'GamerTeamKey'>
+export type BetId = Brand<string, 'BetId'>
 
 export const RoomId = (s: string): RoomId => s as RoomId
 export const GamerId = (s: string): GamerId => s as GamerId
@@ -18,3 +19,4 @@ export const GameId = (s: string): GameId => s as GameId
 export const GameNightId = (s: string): GameNightId => s as GameNightId
 export const EventId = (s: string): EventId => s as EventId
 export const GamerTeamKey = (s: string): GamerTeamKey => s as GamerTeamKey
+export const BetId = (s: string): BetId => s as BetId

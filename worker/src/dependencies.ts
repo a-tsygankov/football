@@ -15,6 +15,11 @@ import {
   type IGameRepository,
 } from './games/repository.js'
 import {
+  D1BetRepository,
+  InMemoryBetRepository,
+  type IBetRepository,
+} from './bets/repository.js'
+import {
   D1GameNightRepository,
   InMemoryGameNightRepository,
   type IGameNightRepository,
@@ -53,6 +58,7 @@ const inMemoryFallbacks = {
   pinAttempts: new InMemoryPinAttemptRepository(),
   squadStorage: new InMemorySquadStorage(),
   squadVersions: new InMemorySquadVersionRepository(),
+  bets: new InMemoryBetRepository(),
 } as const
 
 /**
@@ -72,6 +78,7 @@ export interface AppDependencies {
   readonly pinAttempts: IPinAttemptRepository
   readonly squadStorage: ISquadStorage
   readonly squadVersions: ISquadVersionRepository
+  readonly bets: IBetRepository
 }
 
 /**
@@ -103,5 +110,6 @@ export function buildDependencies(env: Env): AppDependencies {
     squadVersions: env.DB
       ? new D1SquadVersionRepository(env.DB)
       : inMemoryFallbacks.squadVersions,
+    bets: env.DB ? new D1BetRepository(env.DB) : inMemoryFallbacks.bets,
   }
 }

@@ -26,6 +26,7 @@ import { InMemoryGameEventRepository } from '../events/repository.js'
 import { InMemoryGamerRepository } from '../gamers/repository.js'
 import { InMemoryGameRepository } from '../games/repository.js'
 import { InMemoryGameNightRepository } from '../game-nights/repository.js'
+import { InMemoryBetRepository } from '../bets/repository.js'
 import { InMemoryGameProjectionRepository } from '../projections/repository.js'
 import { InMemoryRoomRepository } from '../rooms/repository.js'
 import { InMemorySquadStorage } from '../squad/in-memory-storage.js'
@@ -56,6 +57,7 @@ function buildTestApp() {
   const pinAttempts = new InMemoryPinAttemptRepository()
   const squadStorage = new InMemorySquadStorage()
   const squadVersions = new InMemorySquadVersionRepository()
+  const bets = new InMemoryBetRepository()
   const app = buildApp({
     dependencies: () => ({
       rooms,
@@ -67,6 +69,7 @@ function buildTestApp() {
       pinAttempts,
       squadStorage,
       squadVersions,
+      bets,
     }),
   })
   return Object.assign(app, {
@@ -74,6 +77,7 @@ function buildTestApp() {
     squadVersions,
     games,
     events,
+    bets,
   })
 }
 
@@ -655,6 +659,7 @@ describe('room routes', () => {
       awayClubId: 100,
       selectionStrategyId: 'manual',
       randomSeed: null,
+      betsLockedAt: null,
       createdAt: 10,
       updatedAt: 10,
     })
@@ -671,6 +676,7 @@ describe('room routes', () => {
       awayClubId: 100,
       selectionStrategyId: 'manual',
       randomSeed: null,
+      betsLockedAt: null,
       createdAt: 10,
       updatedAt: 11,
     })

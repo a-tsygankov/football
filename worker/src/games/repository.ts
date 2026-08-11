@@ -77,6 +77,7 @@ interface GameRow {
   away_club_id: number | null
   selection_strategy_id: string
   random_seed: number | null
+  bets_locked_at: number | null
   created_at: number
   updated_at: number
 }
@@ -100,6 +101,7 @@ function rowToCurrentGame(row: GameRow): CurrentGame {
     awayClubId: row.away_club_id,
     selectionStrategyId: row.selection_strategy_id,
     randomSeed: row.random_seed,
+    betsLockedAt: row.bets_locked_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -127,8 +129,8 @@ export class D1GameRepository implements IGameRepository {
         `INSERT INTO games
            (id, room_id, game_night_id, status, allocation_mode, format,
             home_gamer_ids_json, away_gamer_ids_json, home_club_id, away_club_id, selection_strategy_id,
-            random_seed, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+            random_seed, created_at, updated_at, bets_locked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         game.id,
@@ -145,6 +147,7 @@ export class D1GameRepository implements IGameRepository {
         game.randomSeed,
         game.createdAt,
         game.updatedAt,
+        game.betsLockedAt,
       )
       .run()
   }
@@ -155,7 +158,7 @@ export class D1GameRepository implements IGameRepository {
         `UPDATE games
          SET status = ?, allocation_mode = ?, format = ?, home_gamer_ids_json = ?,
              away_gamer_ids_json = ?, home_club_id = ?, away_club_id = ?,
-             selection_strategy_id = ?, random_seed = ?, updated_at = ?
+             selection_strategy_id = ?, random_seed = ?, bets_locked_at = ?, updated_at = ?
          WHERE id = ? AND room_id = ? AND game_night_id = ?`,
       )
       .bind(
@@ -168,6 +171,7 @@ export class D1GameRepository implements IGameRepository {
         game.awayClubId,
         game.selectionStrategyId,
         game.randomSeed,
+        game.betsLockedAt,
         game.updatedAt,
         game.id,
         game.roomId,

@@ -16,7 +16,7 @@ port = 8787
 # - GIT_SHA (build metadata)
 [vars]
 WORKER_VERSION = "0.1.1"
-SCHEMA_VERSION = "5"
+SCHEMA_VERSION = "6"
 MIN_CLIENT_VERSION = "0.1.0"
 SESSION_SECRET = "fc26-local-dev-session-secret"
 

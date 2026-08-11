@@ -940,6 +940,7 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games', async (c) => {
       awayClubId: body.awayClubId ?? null,
       selectionStrategyId: 'manual',
       randomSeed: null,
+      betsLockedAt: null,
       createdAt: now,
       updatedAt: now,
     }
@@ -997,6 +998,7 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games', async (c) => {
       awayClubId: body.awayClubId ?? null,
       selectionStrategyId: strategyId,
       randomSeed: seed,
+      betsLockedAt: null,
       createdAt: now,
       updatedAt: now,
     }
