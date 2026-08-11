@@ -286,3 +286,15 @@ export interface Bet {
   createdAt: number
   updatedAt: number
 }
+
+export interface PlaceBetRequest {
+  gamerId: string
+  outcome: GameResult
+  stake: number
+}
+
+export interface BetsResponse {
+  bets: ReadonlyArray<Bet>
+  /** Null while the book is open. Mirrors `CurrentGame.betsLockedAt`. */
+  betsLockedAt: number | null
+}

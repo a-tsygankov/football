@@ -9,6 +9,7 @@ import { buildDependencies, type AppDependencies } from './dependencies.js'
 import { versionRoutes } from './routes/version.js'
 import { healthRoutes } from './routes/health.js'
 import { roomRoutes } from './routes/rooms.js'
+import { betRoutes } from './routes/bets.js'
 import { squadRoutes } from './routes/squads.js'
 import { squadSyncRoutes, SQUAD_SYNC_SECRET_HEADER } from './routes/squad-sync.js'
 
@@ -65,6 +66,7 @@ export function buildApp(options: BuildAppOptions = {}): Hono<AppContext> {
   app.route('/api', versionRoutes)
   app.route('/api', healthRoutes)
   app.route('/api', roomRoutes)
+  app.route('/api', betRoutes)
   app.route('/api', squadRoutes)
   app.route('/api', squadSyncRoutes)
 

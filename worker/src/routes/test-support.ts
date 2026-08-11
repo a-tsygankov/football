@@ -134,7 +134,7 @@ export async function seedLiveGame(
 
   const ann = await createGamer(app, roomId, cookie, 'Ann')
   const bob = await createGamer(app, roomId, cookie, 'Bob')
-  const cy = await createGamer(app, roomId, cookie, 'Cy')
+  const cy = await createGamer(app, roomId, cookie, 'Cyd')
 
   const nightRes = await req(
     app,
