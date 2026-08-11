@@ -37,6 +37,7 @@
 | `worker/src/bets/repository.ts` | `IBetRepository`, in-memory + D1 |
 | `worker/src/bets/settlement-service.ts` | `settleGameWagers`, `discardGameWagers` |
 | `worker/src/routes/room-context.ts` | route guards extracted from `rooms.ts` |
+| `worker/src/routes/test-support.ts` | shared route-test fixtures and seeding helpers |
 | `worker/src/routes/bets.ts` | the four bet routes |
 | `apps/web/src/features/gameNight/BetsPanel.tsx` | live betting UI |
 | `apps/web/src/features/gameNight/ChipStandingsPanel.tsx` | night chip standings |
@@ -1217,6 +1218,167 @@ git commit --no-gpg-sign -m "Extract room route guards for reuse"
 
 ---
 
+### Task 5b: Shared worker test fixtures
+
+Tasks 6, 7 and 8 each need a room, a pool and a live game before they can assert anything. Without this task each would copy `buildTestApp` from `rooms.test.ts`, giving four copies that drift apart every time the dependency graph changes. Extract them once.
+
+**Files:**
+- Create: `worker/src/routes/test-support.ts`
+- Modify: `worker/src/routes/rooms.test.ts`
+
+**Interfaces:**
+- Produces: `env`, `execCtx()`, `cookieFrom(res)`, `buildTestApp()`, `req(app, path, init)`, `createGamer(app, roomId, cookie, name)`, `seedLiveGame(app)`, `placeBet(app, seed, gamerId, outcome, stake)`, `recordResult(app, seed, body)`.
+
+- [ ] **Step 1: Create the support module**
+
+Create `worker/src/routes/test-support.ts`. Move `env`, `execCtx`, `cookieFrom` and `buildTestApp` out of `rooms.test.ts` verbatim (they are already written there — do not rewrite them), adding `export` to each and including the `bets` repository from Task 4. Then add:
+
+```ts
+/**
+ * Every worker route test drives the app through `app.fetch(new Request(...))`
+ * — Hono's `app.request` shorthand does not take the `env` and
+ * `ExecutionContext` arguments these routes need. This wrapper keeps that
+ * shape in one place.
+ */
+export async function req(
+  app: ReturnType<typeof buildTestApp>,
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  return app.fetch(new Request(`http://localhost${path}`, init), env, execCtx())
+}
+
+function jsonInit(cookie: string, body: unknown): RequestInit {
+  return {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', Cookie: cookie },
+    body: JSON.stringify(body),
+  }
+}
+
+export async function createGamer(
+  app: ReturnType<typeof buildTestApp>,
+  roomId: string,
+  cookie: string,
+  name: string,
+): Promise<string> {
+  const res = await req(app, `/api/rooms/${roomId}/gamers`, jsonInit(cookie, { name }))
+  const body = (await res.json()) as { gamer: { id: string } }
+  return body.gamer.id
+}
+
+export interface LiveGameSeed {
+  roomId: string
+  nightId: string
+  gameId: string
+  /** Home side. */
+  ann: string
+  /** Away side. */
+  bob: string
+  /** In the pool but not playing, so it may back any outcome. */
+  cy: string
+  cookie: string
+}
+
+/**
+ * Room + three gamers, all three in the night's pool, with a live 1v1 between
+ * ann (home) and bob (away). cy sits out, which is what makes it possible to
+ * test both the participant and non-participant betting rules.
+ */
+export async function seedLiveGame(
+  app: ReturnType<typeof buildTestApp>,
+): Promise<LiveGameSeed> {
+  const createRes = await req(app, '/api/rooms', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Wager Night' }),
+  })
+  const room = (await createRes.json()) as { room: { id: string } }
+  const roomId = room.room.id
+  const cookie = cookieFrom(createRes)
+
+  const ann = await createGamer(app, roomId, cookie, 'Ann')
+  const bob = await createGamer(app, roomId, cookie, 'Bob')
+  const cy = await createGamer(app, roomId, cookie, 'Cy')
+
+  const nightRes = await req(
+    app,
+    `/api/rooms/${roomId}/game-nights`,
+    jsonInit(cookie, { activeGamerIds: [ann, bob, cy] }),
+  )
+  const night = (await nightRes.json()) as { gameNight: { id: string } }
+  const nightId = night.gameNight.id
+
+  const gameRes = await req(
+    app,
+    `/api/rooms/${roomId}/game-nights/${nightId}/games`,
+    jsonInit(cookie, {
+      allocationMode: 'manual',
+      homeGamerIds: [ann],
+      awayGamerIds: [bob],
+    }),
+  )
+  const game = (await gameRes.json()) as { currentGame: { id: string } }
+
+  return { roomId, nightId, gameId: game.currentGame.id, ann, bob, cy, cookie }
+}
+
+export async function placeBet(
+  app: ReturnType<typeof buildTestApp>,
+  seed: LiveGameSeed,
+  gamerId: string,
+  outcome: 'home' | 'away' | 'draw',
+  stake: number,
+): Promise<Response> {
+  return req(
+    app,
+    `/api/rooms/${seed.roomId}/game-nights/${seed.nightId}/games/${seed.gameId}/bets`,
+    jsonInit(seed.cookie, { gamerId, outcome, stake }),
+  )
+}
+
+export async function recordResult(
+  app: ReturnType<typeof buildTestApp>,
+  seed: LiveGameSeed,
+  body: { result: 'home' | 'away' | 'draw'; homeScore?: number; awayScore?: number },
+): Promise<Response> {
+  return req(
+    app,
+    `/api/rooms/${seed.roomId}/game-nights/${seed.nightId}/games/${seed.gameId}/result`,
+    jsonInit(seed.cookie, body),
+  )
+}
+```
+
+`seedLiveGame` and the helpers below it are new code, so assert nothing inside them — a failing seed surfaces as a failing assertion in the test that used it. `cookieFrom` already calls `expect`, which is why it stays as-is.
+
+- [ ] **Step 2: Point `rooms.test.ts` at the module**
+
+Delete the moved declarations from `worker/src/routes/rooms.test.ts` and import them instead:
+
+```ts
+import { buildTestApp, cookieFrom, env, execCtx } from './test-support.js'
+```
+
+Leave every existing test body unchanged.
+
+- [ ] **Step 3: Verify nothing changed**
+
+Run: `pnpm --filter @fc26/worker test:run`
+Expected: PASS, the same test count as before this task. This is a pure move.
+
+Run: `pnpm -r typecheck`
+Expected: clean.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add worker/src/routes/test-support.ts worker/src/routes/rooms.test.ts
+git commit --no-gpg-sign -m "Extract shared worker route test fixtures"
+```
+
+---
+
 ### Task 6: Bet routes
 
 Place, replace, remove and lock. All validation lives here; the maths is already done.
@@ -1251,7 +1413,13 @@ export interface BetsResponse {
 
 - [ ] **Step 2: Write the failing route tests**
 
-Create `worker/src/routes/bets.test.ts`. Reuse the fixture helpers already in `rooms.test.ts` — copy `env`, `execCtx`, `buildTestApp` and `cookieFrom` into this file, extending `buildTestApp` to also expose `bets`, `gamers` and `gameNights`.
+Create `worker/src/routes/bets.test.ts`, importing every fixture from Task 5b:
+
+```ts
+import { buildTestApp, createGamer, env, execCtx, placeBet, req, seedLiveGame } from './test-support.js'
+```
+
+**The test snippets below are written with `app.request(path, init, env, execCtx())` for brevity. Write them as `req(app, path, init)` instead** — that is the wrapper Task 5b provides, and it matches how every existing worker route test drives the app. The same applies to the snippets in Tasks 7 and 8.
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -1447,7 +1615,7 @@ describe('bet routes', () => {
 })
 ```
 
-Write the `placeBet` and `createGamer` helpers in the same file — small wrappers around `app.request` that keep the tests readable.
+`placeBet` and `createGamer` already exist in `test-support.js` — import them rather than redefining them here.
 
 - [ ] **Step 3: Run the tests to verify they fail**
 
@@ -1649,7 +1817,11 @@ Wires the maths into the game lifecycle. Two call sites, one service.
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `worker/src/routes/bets-settlement.test.ts`, reusing the same fixture helpers as `bets.test.ts`:
+Create `worker/src/routes/bets-settlement.test.ts`, importing the fixtures from Task 5b:
+
+```ts
+import { buildTestApp, env, execCtx, placeBet, recordResult, req, seedLiveGame } from './test-support.js'
+```
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -1720,7 +1892,7 @@ describe('wager settlement', () => {
 })
 ```
 
-Add a `recordResult` helper that POSTs to the existing `/result` route.
+`recordResult` comes from `test-support.js` — do not redefine it.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -1848,7 +2020,11 @@ Add `bets: ReadonlyArray<Bet>` to `RoomBootstrapResponse` and to `CurrentGameRes
 
 - [ ] **Step 2: Write the failing tests**
 
-Create `worker/src/routes/bets-chips.test.ts`, reusing the shared fixture helpers:
+Create `worker/src/routes/bets-chips.test.ts`, importing the fixtures from Task 5b:
+
+```ts
+import { buildTestApp, env, execCtx, placeBet, recordResult, req, seedLiveGame } from './test-support.js'
+```
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -2673,6 +2849,6 @@ Checked against the spec:
 - **Event payload extension** → Task 1 Step 1.
 - **Components** → Tasks 1–3 (`packages/shared/src/wager/`), Task 4 + 7 (`worker/src/bets/`), Task 6 + 8 (`worker/src/routes/bets.ts`), Tasks 9–10 (web).
 - **Device-remembered bettor** → Task 9 Step 1 (`readLastBettor` / `persistLastBettor`).
-- **Testing plan** → every listed case has a test in Tasks 1, 2, 3, 4, 6, 7, 8, 9, 10.
+- **Testing plan** → every listed case has a test in Tasks 1, 2, 3, 4, 6, 7, 8, 9, 10, on fixtures from Task 5b.
 
 Two places where the plan tells the implementer to verify against real code rather than trusting the sketch, because these were not read in full while planning: `IGameNightRepository`'s active-gamer list method name (Task 6 Step 4) and `InlineNotice`'s prop names (Task 9 Step 4). Both are one-line confirmations at implementation time.
