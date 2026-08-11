@@ -66,6 +66,7 @@ import {
   type ResolvedRoomSession,
   type RouteContext,
 } from './room-context.js'
+import { discardGameWagers, settleGameWagers } from '../bets/settlement-service.js'
 import type { PinAttempt } from '../auth/pin-attempt-repository.js'
 import { hashPin, isValidPin, verifyPin } from '../auth/pin.js'
 import {
@@ -1035,6 +1036,7 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/result', 
   const now = Date.now()
   const occurredAt = body.occurredAt ?? now
   const latestSquadVersion = await c.get('deps').squadVersions.latest()
+  const wagers = await settleGameWagers(c.get('deps'), activeGame.id, body.result)
   const recordedEvent: GameRecordedEvent = {
     type: 'game_recorded',
     schemaVersion: EVENT_SCHEMA_VERSION,
@@ -1072,6 +1074,7 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/result', 
     selectionStrategyId: activeGame.selectionStrategyId,
     entryMethod: body.entryMethod ?? 'manual',
     ...(body.ocrModel ? { ocrModel: body.ocrModel } : {}),
+    ...(wagers.length > 0 ? { wagers } : {}),
   }
   const persistedEvent = buildPersistedEvent(c, recordedEvent, roomId, occurredAt, now)
 
@@ -1275,6 +1278,7 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/interrupt
     status: 'interrupted',
     updatedAt: now,
   })
+  await discardGameWagers(c.get('deps'), activeGame.id)
   await c.get('deps').gameNights.touchLastGameAt(gameNight.id, occurredAt)
 
   return c.json({
