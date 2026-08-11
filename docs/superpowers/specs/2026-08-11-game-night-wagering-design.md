@@ -137,7 +137,11 @@ A bet is accepted only when all of these hold:
 
 - The gamer is in the game night's active gamer pool.
 - The game is live and its book is open (`bets_locked_at` is null).
-- The stake is an integer greater than zero. There is no upper bound.
+- The stake is an integer in `1..1_000_000`. The cap exists because
+  `settleWagers` multiplies `stake × pot` in ordinary JS numbers; past `2^53`
+  that loses integer precision and the pot stops balancing to the chip, which
+  would break the zero-sum invariant. A million chips is far beyond any real
+  bet here, so the cap costs nothing and keeps the maths exact.
 - The outcome is permitted for that gamer:
   - in `homeGamerIds` → only `home`
   - in `awayGamerIds` → only `away`

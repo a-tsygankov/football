@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Chips are integers only. Stakes must be `> 0`, with no upper bound.
+- Chips are integers only. Stakes must be in `1..1_000_000` inclusive. The cap keeps `stake × pot` well below `2^53`, where JS number arithmetic would lose integer precision and the pot would stop balancing to the chip.
 - One bet per gamer per game. Placing again replaces; it never adds a second row.
 - A participant may back only their own side: home players `home` only, away players `away` only. Non-participants may back any of `home`, `draw`, `away`.
 - Only gamers in the game night's active pool may bet.
@@ -1524,7 +1524,7 @@ describe('bet routes', () => {
     expect(res.status).toBe(201)
   })
 
-  it.each([0, -5, 2.5])('rejects a stake of %s', async (stake) => {
+  it.each([0, -5, 2.5, 1_000_001])('rejects a stake of %s', async (stake) => {
     const app = buildTestApp()
     const seed = await seedLiveGame(app)
 
@@ -1649,10 +1649,17 @@ import {
   type RouteContext,
 } from './room-context.js'
 
+/**
+ * The stake cap keeps `stake × pot` well below 2^53 inside `settleWagers`,
+ * where JS number arithmetic would start losing integer precision and the
+ * pot would stop balancing to the chip.
+ */
+const MAX_STAKE = 1_000_000
+
 const placeBetSchema = z.object({
   gamerId: z.string().min(1),
   outcome: z.enum(['home', 'away', 'draw']),
-  stake: z.number().int().positive(),
+  stake: z.number().int().positive().max(MAX_STAKE),
 })
 
 export const betRoutes = new Hono<AppContext>()
