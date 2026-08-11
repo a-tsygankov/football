@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react'
 import {
   type AnalysePhotoResponse,
+  type Bet,
+  type BetId,
   type Club,
   type CurrentGame,
   type Gamer,
+  type GamerId,
+  type GameResult,
   GAME_FORMATS,
   type InterruptCurrentGameRequest,
   type RecordCurrentGameResultRequest,
@@ -16,6 +20,7 @@ import {
   secondaryButtonStyle,
 } from '../../styles/controls.js'
 import type { BusyState } from '../../types/busyState.js'
+import { BetsPanel } from './BetsPanel.jsx'
 import { TeamColumn } from './TeamColumn.jsx'
 import { TvPhotoCapture } from './TvPhotoCapture.jsx'
 
@@ -24,14 +29,21 @@ export function CurrentGameCard({
   currentGame,
   gamers,
   squadClubs,
+  bets,
+  poolGamerIds,
   onInterruptGame,
   onRecordGameResult,
   onAnalysePhoto,
+  onPlaceBet,
+  onRemoveBet,
+  onLockBets,
 }: {
   busy: BusyState
   currentGame: CurrentGame
   gamers: ReadonlyArray<Gamer>
   squadClubs: ReadonlyArray<Club>
+  bets: ReadonlyArray<Bet>
+  poolGamerIds: ReadonlyArray<GamerId>
   onInterruptGame: (request: InterruptCurrentGameRequest) => Promise<void>
   onRecordGameResult: (request: RecordCurrentGameResultRequest) => Promise<void>
   onAnalysePhoto: (
@@ -39,6 +51,9 @@ export function CurrentGameCard({
     homeTeam?: { name: string; aliases: string[] } | null,
     awayTeam?: { name: string; aliases: string[] } | null,
   ) => Promise<AnalysePhotoResponse>
+  onPlaceBet: (request: { gamerId: GamerId; outcome: GameResult; stake: number }) => void
+  onRemoveBet: (betId: BetId) => void
+  onLockBets: () => void
 }) {
   const [homeScore, setHomeScore] = useState('')
   const [awayScore, setAwayScore] = useState('')
@@ -164,6 +179,16 @@ export function CurrentGameCard({
           gamers={gamers}
         />
       </div>
+      <BetsPanel
+        busy={busy}
+        currentGame={currentGame}
+        gamers={gamers}
+        poolGamerIds={poolGamerIds}
+        bets={bets}
+        onPlaceBet={onPlaceBet}
+        onRemoveBet={onRemoveBet}
+        onLockBets={onLockBets}
+      />
       <div
         style={{
           padding: 12,
@@ -204,6 +229,7 @@ export function CurrentGameCard({
           onAnalysePhoto={onAnalysePhoto}
           onAcceptResult={handleAcceptResult}
           onInterruptGame={() => void submitInterrupt()}
+          onOpen={onLockBets}
         />
         <ResultButtons
           busy={busy}

@@ -67,6 +67,7 @@ export function TvPhotoCapture({
   onAnalysePhoto,
   onAcceptResult,
   onInterruptGame,
+  onOpen,
 }: {
   homeClub: Club | null
   awayClub: Club | null
@@ -91,6 +92,8 @@ export function TvPhotoCapture({
     awayClubIdOverride?: number | null,
   ) => void
   onInterruptGame: () => void
+  /** Fired when the capture opens, before a photo is taken. */
+  onOpen?: () => void
 }) {
   const [scorePhoto, setScorePhoto] = useState<File | null>(null)
   const [scorePhotoUrl, setScorePhotoUrl] = useState<string | null>(null)
@@ -225,6 +228,10 @@ export function TvPhotoCapture({
             // `capture="environment"` makes both platforms go straight to the
             // camera which is the common case for snapping a TV score.
             capture="environment"
+            // Opening the camera means a result is imminent — close the
+            // betting book before the score can be seen. The lock route is
+            // idempotent, so firing on every open is safe.
+            onClick={() => onOpen?.()}
             onChange={(event) => {
               handleSelectFile(event.target.files?.[0] ?? null)
             }}

@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  type BetId,
   type Club,
   type CreateCurrentGameRequest,
   GAME_FORMATS,
   type Gamer,
+  type GamerId,
+  type GameResult,
   type AnalysePhotoResponse,
   type InterruptCurrentGameRequest,
   type RecordCurrentGameResultRequest,
@@ -100,6 +103,9 @@ export function GameCreationPanel({
   onInterruptGame,
   onRecordGameResult,
   onAnalysePhoto,
+  onPlaceBet,
+  onRemoveBet,
+  onLockBets,
 }: {
   bootstrap: RoomBootstrapResponse
   busy: BusyState
@@ -127,6 +133,9 @@ export function GameCreationPanel({
     homeTeam?: { name: string; aliases: string[] } | null,
     awayTeam?: { name: string; aliases: string[] } | null,
   ) => Promise<AnalysePhotoResponse>
+  onPlaceBet: (request: { gamerId: GamerId; outcome: GameResult; stake: number }) => void
+  onRemoveBet: (betId: BetId) => void
+  onLockBets: () => void
 }) {
   const strategyOptions = useMemo(() => listStrategies(), [])
   const [allocationMode, setAllocationMode] = useState<'manual' | 'random'>('manual')
@@ -251,6 +260,11 @@ export function GameCreationPanel({
           currentGame={bootstrap.currentGame}
           gamers={bootstrap.gamers}
           squadClubs={squadClubs}
+          bets={bootstrap.bets}
+          poolGamerIds={bootstrap.activeGameNightGamers.map((item) => item.gamerId)}
+          onPlaceBet={onPlaceBet}
+          onRemoveBet={onRemoveBet}
+          onLockBets={onLockBets}
           onInterruptGame={(request) =>
             bootstrap.activeGameNight
               ? onInterruptGame(
