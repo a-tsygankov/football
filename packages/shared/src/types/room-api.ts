@@ -40,6 +40,7 @@ export interface RoomBootstrapResponse {
   activeGameNight: GameNight | null
   activeGameNightGamers: ReadonlyArray<GameNightActiveGamer>
   currentGame: CurrentGame | null
+  bets: ReadonlyArray<Bet>
   session: RoomSessionInfo
 }
 
@@ -133,6 +134,7 @@ export type CreateCurrentGameRequest =
 
 export interface CurrentGameResponse {
   currentGame: CurrentGame
+  bets: ReadonlyArray<Bet>
 }
 
 export interface RecordCurrentGameResultRequest {
@@ -297,4 +299,17 @@ export interface BetsResponse {
   bets: ReadonlyArray<Bet>
   /** Null while the book is open. Mirrors `CurrentGame.betsLockedAt`. */
   betsLockedAt: number | null
+}
+
+export interface ChipPosition {
+  gamerId: GamerId
+  /** Net chips tonight: winnings minus stakes. */
+  net: number
+}
+
+export interface GameNightChipsResponse {
+  gameNightId: GameNightId
+  positions: ReadonlyArray<ChipPosition>
+  /** Per-gamer deltas from the most recently settled game, for highlighting. */
+  lastGameDeltas: ReadonlyArray<ChipPosition>
 }

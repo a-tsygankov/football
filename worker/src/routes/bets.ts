@@ -3,10 +3,13 @@ import {
   type Bet,
   BetId,
   canBack,
+  type ChipPosition,
   type CurrentGame,
   GameId,
   GameNightId,
   GamerId,
+  lastSettledGameDeltas,
+  nightChipPositions,
   type PlaceBetRequest,
   RoomId,
 } from '@fc26/shared'
@@ -149,4 +152,27 @@ betRoutes.post(`${BETS_PATH}/lock`, async (c) => {
   const locked = { ...game, betsLockedAt: now, updatedAt: now }
   await c.get('deps').games.update(locked)
   return c.json(await betsResponse(c, locked))
+})
+
+function toPositions(net: ReadonlyMap<ReturnType<typeof GamerId>, number>): ChipPosition[] {
+  return [...net.entries()]
+    .map(([gamerId, value]) => ({ gamerId, net: value }))
+    .sort((a, b) => b.net - a.net)
+}
+
+// Deliberately no requireActiveGameNight here — standings stay readable after
+// the night completes.
+betRoutes.get('/rooms/:roomId/game-nights/:gameNightId/chips', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const gameNightId = GameNightId(c.req.param('gameNightId'))
+  const events = await c.get('deps').events.listByRoom(roomId)
+
+  return c.json({
+    gameNightId,
+    positions: toPositions(nightChipPositions(events, gameNightId)),
+    lastGameDeltas: toPositions(lastSettledGameDeltas(events, gameNightId)),
+  })
 })

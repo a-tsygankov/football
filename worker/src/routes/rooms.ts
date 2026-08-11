@@ -1004,7 +1004,7 @@ roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games', async (c) => {
 
   await c.get('deps').games.create(currentGame)
   await c.get('deps').gameNights.touchLastGameAt(gameNight.id, now)
-  return c.json({ currentGame }, 201)
+  return c.json({ currentGame, bets: [] }, 201)
 })
 
 roomRoutes.post('/rooms/:roomId/game-nights/:gameNightId/games/:gameId/result', async (c) => {
@@ -1373,6 +1373,7 @@ async function buildBootstrap(
   const currentGame = activeGameNight
     ? await c.get('deps').games.getActive(activeGameNight.id)
     : null
+  const bets = currentGame ? await c.get('deps').bets.listByGame(currentGame.id) : []
 
   return {
     room: toRoomSummary(room),
@@ -1380,6 +1381,7 @@ async function buildBootstrap(
     activeGameNight,
     activeGameNightGamers,
     currentGame,
+    bets,
     session: { roomId, expiresAt: session.exp, token: session.token },
   }
 }
