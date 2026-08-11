@@ -31,3 +31,6 @@ pnpm-debug.log*
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Claude Code local settings (per-developer, not shared)
+.claude/settings.local.json
