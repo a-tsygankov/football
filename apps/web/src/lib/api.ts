@@ -160,3 +160,27 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return (await res.json()) as T
 }
+
+const LAST_BETTOR_KEY = 'fc26:last-bettor'
+
+/**
+ * The gamer who last bet from this device, per room. Defaults the picker so a
+ * shared phone saves a tap and a stale name is less likely to be left
+ * selected by the previous bettor.
+ */
+export function readLastBettor(roomId: string): string | null {
+  try {
+    return window.localStorage.getItem(`${LAST_BETTOR_KEY}:${roomId}`)
+  } catch {
+    return null
+  }
+}
+
+export function persistLastBettor(roomId: string, gamerId: string): void {
+  try {
+    window.localStorage.setItem(`${LAST_BETTOR_KEY}:${roomId}`, gamerId)
+  } catch {
+    // Private-mode Safari throws on localStorage writes. The default is a
+    // convenience, so losing it is not worth surfacing.
+  }
+}
