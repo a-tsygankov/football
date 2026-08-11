@@ -1,0 +1,62 @@
+<!-- @dsCard group="Wagering walkthrough" name="Step 1 — Book opens" subtitle="Live game starts, empty book" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step 1 — the book opens</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 20px; display: grid; justify-content: center;
+    font-family: ui-serif, Georgia, Cambria, 'Times New Roman', serif;
+    background: linear-gradient(180deg, #f8fafc 0%, #ecfdf5 60%, #d1fae5 100%);
+    color: #052e16;
+  }
+  .phone { width: 360px; display: grid; gap: 12px; }
+  .caption { font-size: 13px; opacity: .75; margin: 0 0 2px; }
+  .banner {
+    padding: 10px 12px; border-radius: 14px; background: #ecfdf5;
+    border: 1px solid #86efac; font-size: 13px; opacity: .9;
+  }
+  .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .team {
+    padding: 12px; border-radius: 16px; background: #ffffff;
+    border: 1px solid #d1fae5; display: grid; gap: 6px; font-size: 13px;
+  }
+  .team .side { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; opacity: .6; }
+  .team .name { font-size: 16px; font-weight: 700; }
+  .panel {
+    padding: 12px; border-radius: 18px; background: #ffffff;
+    border: 1px solid #c7d2fe; display: grid; gap: 10px;
+  }
+  .panel strong { font-size: 16px; }
+  .pot { font-size: 13px; opacity: .8; }
+  .mults { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-size: 12px; opacity: .75; }
+  .empty { margin: 0; font-size: 13px; opacity: .7; }
+  .note {
+    margin-top: 4px; padding: 10px 12px; border-radius: 14px; font-size: 12.5px;
+    background: #eff6ff; border: 1px solid #93c5fd; line-height: 1.45;
+  }
+</style>
+</head>
+<body>
+  <div class="phone">
+    <p class="caption"><strong>Step 1.</strong> A 1v1 goes live — the Bets panel appears with an open, empty book.</p>
+    <div class="banner">1 vs 1 • Manual matchup</div>
+    <div class="teams">
+      <div class="team"><span class="side">Home</span><span class="name">Ann</span></div>
+      <div class="team"><span class="side">Away</span><span class="name">Bob</span></div>
+    </div>
+    <div class="panel">
+      <strong>Bets</strong>
+      <div class="pot">Pot 0 chips</div>
+      <div class="mults">
+        <div>Home pays —</div><div>Draw pays —</div><div>Away pays —</div>
+      </div>
+      <p class="empty">No bets yet.</p>
+    </div>
+    <div class="note">The multipliers show a dash until an outcome has backing — a winning chip returns <em>pot ÷ chips backing that outcome</em>, and there is no pot yet.</div>
+  </div>
+</body>
+</html>

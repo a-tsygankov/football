@@ -1,0 +1,51 @@
+<!-- @dsCard group="Wagering walkthrough" name="Step 6 — Chips tonight" subtitle="Standings derived from the event log" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step 6 — chips tonight</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 20px; display: grid; justify-content: center;
+    font-family: ui-serif, Georgia, Cambria, 'Times New Roman', serif;
+    background: linear-gradient(180deg, #f8fafc 0%, #ecfdf5 60%, #d1fae5 100%);
+    color: #052e16;
+  }
+  .phone { width: 380px; display: grid; gap: 12px; }
+  .caption { font-size: 13px; opacity: .75; margin: 0 0 2px; }
+  .panel {
+    padding: 12px; border-radius: 18px; background: #ffffff;
+    border: 1px solid #c7d2fe; display: grid; gap: 8px;
+  }
+  .panel strong.h { font-size: 16px; }
+  ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+  li { display: flex; align-items: baseline; gap: 8px; font-size: 14px; }
+  li .name { flex: 1; }
+  li .delta { font-size: 12px; opacity: .7; }
+  .pos { color: #15803d; font-weight: 700; }
+  .neg { color: #b91c1c; font-weight: 700; }
+  .note {
+    padding: 10px 12px; border-radius: 14px; font-size: 12.5px;
+    background: #eff6ff; border: 1px solid #93c5fd; line-height: 1.5;
+  }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; background: #f1f5f9; padding: 1px 5px; border-radius: 6px; }
+</style>
+</head>
+<body>
+  <div class="phone">
+    <p class="caption"><strong>Step 6.</strong> After settlement the game card clears and &ldquo;Chips tonight&rdquo; appears below the live section — so the result doesn't flash and vanish with the card.</p>
+    <div class="panel">
+      <strong class="h">Chips tonight</strong>
+      <ul>
+        <li><span class="name">Ann</span><span class="delta">+50 last game</span><span class="pos">+50</span></li>
+        <li><span class="name">Cyd</span><span class="delta">−50 last game</span><span class="neg">−50</span></li>
+      </ul>
+    </div>
+    <div class="note">
+      Positions are <strong>derived, not stored</strong>: every read replays the night's <code>game_recorded</code> events and sums each gamer's <code>payout − stake</code>. That's why voided games disappear from the standings automatically, and why the panel stays readable after the night completes. The next game starts a fresh, empty book — back to Step&nbsp;1.
+    </div>
+  </div>
+</body>
+</html>
