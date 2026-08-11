@@ -17,75 +17,7 @@ import {
   type RoomBootstrapResponse,
   type RoomScoreboardResponse,
 } from '@fc26/shared'
-import { buildApp } from '../app.js'
-import {
-  InMemoryPinAttemptRepository,
-} from '../auth/pin-attempt-repository.js'
-import type { Env } from '../env.js'
-import { InMemoryGameEventRepository } from '../events/repository.js'
-import { InMemoryGamerRepository } from '../gamers/repository.js'
-import { InMemoryGameRepository } from '../games/repository.js'
-import { InMemoryGameNightRepository } from '../game-nights/repository.js'
-import { InMemoryBetRepository } from '../bets/repository.js'
-import { InMemoryGameProjectionRepository } from '../projections/repository.js'
-import { InMemoryRoomRepository } from '../rooms/repository.js'
-import { InMemorySquadStorage } from '../squad/in-memory-storage.js'
-import { InMemorySquadVersionRepository } from '../squad/version-repository.js'
-
-const env: Env = {
-  WORKER_VERSION: '0.1.0-test',
-  SCHEMA_VERSION: '1',
-  MIN_CLIENT_VERSION: '0.1.0',
-  SESSION_SECRET: 'test-session-secret',
-}
-
-function execCtx(): ExecutionContext {
-  return {
-    waitUntil: () => undefined,
-    passThroughOnException: () => undefined,
-    props: {},
-  } as unknown as ExecutionContext
-}
-
-function buildTestApp() {
-  const rooms = new InMemoryRoomRepository()
-  const gamers = new InMemoryGamerRepository()
-  const games = new InMemoryGameRepository()
-  const events = new InMemoryGameEventRepository()
-  const projections = new InMemoryGameProjectionRepository()
-  const gameNights = new InMemoryGameNightRepository()
-  const pinAttempts = new InMemoryPinAttemptRepository()
-  const squadStorage = new InMemorySquadStorage()
-  const squadVersions = new InMemorySquadVersionRepository()
-  const bets = new InMemoryBetRepository()
-  const app = buildApp({
-    dependencies: () => ({
-      rooms,
-      gamers,
-      games,
-      events,
-      projections,
-      gameNights,
-      pinAttempts,
-      squadStorage,
-      squadVersions,
-      bets,
-    }),
-  })
-  return Object.assign(app, {
-    squadStorage,
-    squadVersions,
-    games,
-    events,
-    bets,
-  })
-}
-
-function cookieFrom(res: Response): string {
-  const raw = res.headers.get('set-cookie')
-  expect(raw).toBeTruthy()
-  return raw!.split(';')[0]!
-}
+import { buildTestApp, cookieFrom, env, execCtx } from './test-support.js'
 
 describe('room routes', () => {
   it('creates a room, sets a cookie, and allows bootstrap with that cookie', async () => {
