@@ -365,11 +365,29 @@ Build-time defines (set by `vite.config.ts`, do not edit):
 
 ```bash
 cd worker
-pnpm exec wrangler secret put GEMINI_API_KEY      # OCR (Phase 10)
-pnpm exec wrangler secret put SESSION_JWT_SECRET  # PIN session signing
+pnpm exec wrangler secret put SESSION_SECRET      # room session signing (required)
+pnpm exec wrangler secret put GEMINI_API_KEY      # OCR (Phase 10, optional)
+pnpm exec wrangler secret put SQUAD_SYNC_ADMIN_SECRET  # guards /internal/squads/sync
 ```
 
 Secrets are encrypted and never appear in logs.
+
+The name is `SESSION_SECRET` — matching `worker/src/env.ts`. This document
+previously said `SESSION_JWT_SECRET`, which the Worker never reads, so anyone
+following it set a secret with no effect and left the plaintext `[vars]`
+placeholder signing production cookies.
+
+A secret cannot share a name with a `[vars]` binding; Cloudflare rejects it
+with `Binding name '<X>' already in use [code: 10053]`. If you hit that,
+remove the var, `wrangler deploy` so the binding disappears, then set the
+secret.
+
+Rotating `SESSION_SECRET` invalidates every existing room session — everyone
+has to rejoin.
+
+For local development, put values in `worker/.dev.vars` (gitignored) rather
+than `wrangler.toml`; copy `worker/.dev.vars.example` to get started.
+`scripts/setup-secrets.ps1 -All` automates the production side.
 
 > **Never commit `.env*` files or secrets.** The repo's `.gitignore` covers
 > the common patterns; double-check before pushing.

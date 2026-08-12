@@ -305,7 +305,24 @@ if ($Cloudflare) {
     Write-Ok 'generated SQUAD_SYNC_ADMIN_SECRET'
   }
 
-  foreach ($name in $workerSecrets.Keys) {
+  # A Worker secret cannot share a name with a [vars] binding — Cloudflare
+  # rejects it with "Binding name '<X>' already in use [code: 10053]" rather
+  # than letting the secret win. Catch that here instead of failing mid-run
+  # with a raw wrangler error, since the fix is a specific ordered sequence.
+  $tomlVars = ''
+  if (Test-Path $WranglerToml) { $tomlVars = Get-Content $WranglerToml -Raw }
+
+  foreach ($name in @($workerSecrets.Keys)) {
+    if ($tomlVars -match "(?m)^\s*$name\s*=") {
+      Write-Warn2 "$name is still declared in wrangler.toml [vars] - skipping."
+      Write-Info  'Cloudflare will not accept a secret whose name collides with a var.'
+      Write-Info  'Remove the line, redeploy so the binding disappears, then set it:'
+      Write-Info  "  1. delete `"$name`" from worker/wrangler.toml [vars]"
+      Write-Info  '  2. cd worker; npx wrangler deploy'
+      Write-Info  "  3. npx wrangler secret put $name"
+      continue
+    }
+
     if ($DryRun) {
       Write-Warn2 "DryRun: would set Worker secret $name"
       continue
@@ -318,10 +335,9 @@ if ($Cloudflare) {
     } finally { Pop-Location }
   }
 
-  if ($workerSecrets.ContainsKey('SESSION_SECRET') -and -not $DryRun) {
-    Write-Warn2 'Now delete the SESSION_SECRET line from worker/wrangler.toml [vars].'
-    Write-Info  'It is a committed placeholder in a public repo; the secret you just set'
-    Write-Info  'overrides it, but leaving it there invites confusion.'
+  if ($workerSecrets.ContainsKey('SESSION_SECRET')) {
+    Write-Warn2 'Rotating SESSION_SECRET invalidates every existing room session.'
+    Write-Info  'Everyone will have to rejoin their room once the new value is live.'
   }
 }
 
