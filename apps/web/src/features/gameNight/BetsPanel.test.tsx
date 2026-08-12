@@ -100,6 +100,20 @@ describe('BetsPanel', () => {
     expect(screen.getByText(/away pays —/i)).toBeInTheDocument()
   })
 
+  it('renders an empty book instead of crashing when bets is missing', () => {
+    // A worker older than the wagering feature answers /bootstrap without
+    // `bets`. That reaches us as undefined despite the required prop type,
+    // and reducing over it used to throw during render — taking down the
+    // whole room screen rather than just this panel. The cast mimics the
+    // unvalidated API response that `apiJson` hands us.
+    expect(() =>
+      renderPanel({ bets: undefined as unknown as Bet[] }),
+    ).not.toThrow()
+
+    expect(screen.getByText(/no bets yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/pot 0/i)).toBeInTheDocument()
+  })
+
   it('disables outcomes a participant may not back, with a reason', () => {
     renderPanel()
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: ann } })
