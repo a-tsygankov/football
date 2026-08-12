@@ -8,6 +8,9 @@
     "node": ">=20"
   },
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
+    "version:check": "BASE_REF=${BASE_REF:-origin/main} python3 scripts/check_version_bump.py",
+    "version:bump": "python3 scripts/bump_versions.py",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "test:run": "pnpm -r test:run",

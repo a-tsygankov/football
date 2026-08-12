@@ -1,0 +1,16 @@
+#!/bin/sh
+# Auto-bump tier versions for whatever this commit stages.
+#
+# Enabled by `pnpm install` (the root prepare script points
+# core.hooksPath at .githooks/). To enable by hand:
+#
+#     git config core.hooksPath .githooks
+#
+# Skips silently when python3 is unavailable so the hook can never block
+# a commit on a machine without it — check_version_bump.py is the CI
+# backstop that actually enforces the rule.
+if ! command -v python3 >/dev/null 2>&1; then
+  exit 0
+fi
+
+python3 "$(git rev-parse --show-toplevel)/scripts/bump_versions.py" || exit 0
