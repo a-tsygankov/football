@@ -45,15 +45,22 @@ export function BetsPanel({
   const [error, setError] = useState<string | null>(null)
 
   const locked = currentGame.betsLockedAt !== null
-  const pot = useMemo(() => bets.reduce((sum, item) => sum + item.stake, 0), [bets])
+
+  // Defence in depth: `bets` is a required prop, but it ultimately comes from
+  // an unvalidated API response, and an undefined list here throws during
+  // render — which unmounts the entire room screen rather than just degrading
+  // the book. App.tsx normalises at the boundary; this keeps a missing list
+  // from being fatal no matter which path reaches us.
+  const betList = useMemo(() => bets ?? [], [bets])
+  const pot = useMemo(() => betList.reduce((sum, item) => sum + item.stake, 0), [betList])
 
   const backedByOutcome = useMemo(() => {
     const totals = new Map<GameResult, number>()
-    for (const item of bets) {
+    for (const item of betList) {
       totals.set(item.outcome, (totals.get(item.outcome) ?? 0) + item.stake)
     }
     return totals
-  }, [bets])
+  }, [betList])
 
   const pool = useMemo(
     () => gamers.filter((gamer) => poolGamerIds.includes(gamer.id)),
@@ -127,11 +134,11 @@ export function BetsPanel({
         ))}
       </div>
 
-      {bets.length === 0 ? (
+      {betList.length === 0 ? (
         <p style={{ margin: 0, fontSize: 13, opacity: 0.7 }}>No bets yet.</p>
       ) : (
         <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 6 }}>
-          {bets.map((item) => (
+          {betList.map((item) => (
             <li
               key={item.id}
               style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}

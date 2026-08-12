@@ -810,8 +810,16 @@ export function App() {
 
   function applyBootstrap(next: RoomBootstrapResponse): void {
     persistRoomSession(next.session)
+    // `apiJson` casts the response to its type without validating it, so the
+    // declared shape is a promise the server may not keep. A worker older
+    // than the wagering feature answers /bootstrap without `bets`, and an
+    // undefined list used to crash the whole room screen on first render
+    // (BetsPanel reduces over it). Normalise here — the single entry point
+    // for server bootstraps — so every consumer sees a real array. The other
+    // setBootstrap callers spread from already-normalised state.
+    const normalised: RoomBootstrapResponse = { ...next, bets: next.bets ?? [] }
     startTransition(() => {
-      setBootstrap(next)
+      setBootstrap(normalised)
       setJoinRoomId(next.room.id)
     })
     if (typeof localStorage !== 'undefined') {
