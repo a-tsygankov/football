@@ -1,77 +1,41 @@
-import { useEffect, useState } from 'react'
 import { useDebugConsole } from '../debug/console-store.js'
 import { useTripleTap } from '../debug/use-triple-tap.js'
 import { logger } from '../lib/logger.js'
+import type { Route } from '../hooks/useHashRoute.js'
 
-type Mode = 'game' | 'dashboard' | 'teams' | 'roster'
-
-const SECTION_TARGETS: Readonly<Partial<Record<Mode, string>>> = {
-  game: 'fc26-game-section',
-  dashboard: 'fc26-scoreboard-section',
-  teams: 'fc26-teams-section',
-  roster: 'fc26-roster-section',
-}
-
-const MODES: ReadonlyArray<{ id: Mode; label: string; targetId?: string }> = [
-  { id: 'game', label: 'Game', targetId: SECTION_TARGETS.game },
-  { id: 'dashboard', label: 'Scoreboard', targetId: SECTION_TARGETS.dashboard },
-  { id: 'teams', label: 'Teams', targetId: SECTION_TARGETS.teams },
-  { id: 'roster', label: 'Roster', targetId: SECTION_TARGETS.roster },
+/**
+ * The four tabs, in bar order. Teams gave up its slot to Wager; it is still
+ * reachable at #/teams (the Game page links there when picking FC clubs)
+ * because the squad browser remains the only way to look up club ratings.
+ */
+const MODES: ReadonlyArray<{ id: Route; label: string }> = [
+  { id: 'game', label: 'Game' },
+  { id: 'scoreboard', label: 'Scoreboard' },
+  { id: 'wager', label: 'Wager' },
+  { id: 'roster', label: 'Roster' },
 ]
 
-export function BottomNav() {
+/**
+ * Bottom navigation.
+ *
+ * Previously these were scroll anchors into one long page, and the active tab
+ * was inferred by measuring which section sat nearest the top of the viewport.
+ * Now each tab is a real page, so the active state is simply the current route
+ * — no scroll listener, no measuring, and no ambiguity when two sections were
+ * visible at once.
+ */
+export function BottomNav({
+  route,
+  onNavigate,
+}: {
+  route: Route
+  onNavigate: (route: Route) => void
+}) {
   const toggleConsole = useDebugConsole((s) => s.toggle)
-  const [activeMode, setActiveMode] = useState<Mode | null>(null)
   const onLogoTap = useTripleTap(() => {
     logger.info('system', 'debug console toggled')
     toggleConsole()
   })
-
-  useEffect(() => {
-    const enabledModes = MODES.filter((mode) => mode.targetId)
-    const anchorOffset = 96
-
-    function updateActiveMode(): void {
-      let nextActiveMode: Mode | null = null
-      let bestDistance = Number.POSITIVE_INFINITY
-
-      for (const mode of enabledModes) {
-        const target = document.getElementById(mode.targetId!)
-        if (!target) continue
-        const distance = Math.abs(target.getBoundingClientRect().top - anchorOffset)
-        if (distance < bestDistance) {
-          bestDistance = distance
-          nextActiveMode = mode.id
-        }
-      }
-
-      setActiveMode(nextActiveMode)
-    }
-
-    updateActiveMode()
-    window.addEventListener('scroll', updateActiveMode, { passive: true })
-    window.addEventListener('resize', updateActiveMode)
-    return () => {
-      window.removeEventListener('scroll', updateActiveMode)
-      window.removeEventListener('resize', updateActiveMode)
-    }
-  }, [])
-
-  function scrollToSection(targetId?: string): void {
-    if (!targetId) return
-    // "Game" should prefer the live game section when it exists, otherwise
-    // fall back to the creation/start section.
-    if (targetId === SECTION_TARGETS.game) {
-      const live = document.getElementById('fc26-game-live-section')
-      if (live) {
-        live.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        return
-      }
-    }
-    const target = document.getElementById(targetId)
-    if (!target) return
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
 
   return (
     <nav
@@ -92,8 +56,8 @@ export function BottomNav() {
         zIndex: 10,
       }}
     >
-      <ModeButton mode={MODES[0]!} active={activeMode === MODES[0]!.id} onSelect={scrollToSection} />
-      <ModeButton mode={MODES[1]!} active={activeMode === MODES[1]!.id} onSelect={scrollToSection} />
+      <ModeButton mode={MODES[0]!} active={route === MODES[0]!.id} onSelect={onNavigate} />
+      <ModeButton mode={MODES[1]!} active={route === MODES[1]!.id} onSelect={onNavigate} />
       <button
         type="button"
         aria-label="FC26 Team Picker"
@@ -112,8 +76,8 @@ export function BottomNav() {
       >
         FC26
       </button>
-      <ModeButton mode={MODES[2]!} active={false} onSelect={scrollToSection} />
-      <ModeButton mode={MODES[3]!} active={false} onSelect={scrollToSection} />
+      <ModeButton mode={MODES[2]!} active={route === MODES[2]!.id} onSelect={onNavigate} />
+      <ModeButton mode={MODES[3]!} active={route === MODES[3]!.id} onSelect={onNavigate} />
     </nav>
   )
 }
@@ -123,18 +87,15 @@ function ModeButton({
   active,
   onSelect,
 }: {
-  mode: { id: Mode; label: string; targetId?: string }
+  mode: { id: Route; label: string }
   active: boolean
-  onSelect: (targetId?: string) => void
+  onSelect: (route: Route) => void
 }) {
-  const enabled = Boolean(mode.targetId)
   return (
     <button
       type="button"
-      disabled={!enabled}
-      aria-disabled={!enabled}
       aria-current={active ? 'page' : undefined}
-      onClick={() => onSelect(mode.targetId)}
+      onClick={() => onSelect(mode.id)}
       style={{
         background: active ? 'rgba(148,163,184,0.16)' : 'transparent',
         border: active ? '1px solid #475569' : '1px solid transparent',
@@ -142,9 +103,9 @@ function ModeButton({
         color: 'inherit',
         fontSize: 13,
         padding: '8px 0',
-        cursor: enabled ? 'pointer' : 'default',
+        cursor: 'pointer',
         fontWeight: active ? 700 : 500,
-        opacity: enabled ? (active ? 1 : 0.7) : 0.35,
+        opacity: active ? 1 : 0.7,
         transition: 'background 120ms ease, border-color 120ms ease, opacity 120ms ease',
       }}
     >

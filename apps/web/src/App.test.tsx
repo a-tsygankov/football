@@ -20,10 +20,21 @@ function emptyScoreboardResponse(roomId: string): Response {
   )
 }
 
+/**
+ * Each tab is now its own page, so a test has to say which one it is looking
+ * at. Set before render() — the router reads the hash for its initial state,
+ * which avoids needing act() around a hashchange.
+ */
+function startAt(route: string): void {
+  window.location.hash = `#/${route}`
+}
+
 describe('App shell', () => {
   beforeEach(async () => {
     vi.restoreAllMocks()
     localStorage.clear()
+    // Routes leak between tests otherwise: the hash is real browser state.
+    window.location.hash = ''
     // The debug-console store reads its `everOpened` flag from localStorage
     // at module init and would otherwise leak across tests after the first
     // unlock. Reset it explicitly so every test starts with Settings hidden.
@@ -63,6 +74,7 @@ describe('App shell', () => {
   })
 
   it('creates a room and renders the roster screen', async () => {
+    startAt('roster')
     vi.stubGlobal('fetch', vi.fn(async (input, init) => {
       const url = String(input)
       const scoreboardRoomId = roomIdFromScoreboardUrl(url)
@@ -207,6 +219,11 @@ describe('App shell', () => {
     expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull()
     const { useDebugConsole } = await import('./debug/console-store.js')
     useDebugConsole.getState().toggle() // simulates the third tap
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument(),
+    )
+    // Unlocking reveals the way in; the panel itself is its own page now.
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument(),
     )
@@ -442,6 +459,7 @@ describe('App shell', () => {
   })
 
   it('shows roster dots for playing, sitting-out, and inactive gamers during a live game', async () => {
+    startAt('roster')
     localStorage.setItem('fc26:last-room-id', 'room-5')
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input)
@@ -588,6 +606,7 @@ describe('App shell', () => {
   })
 
   it('does not show green play-state dots when there is no active game', async () => {
+    startAt('roster')
     localStorage.setItem('fc26:last-room-id', 'room-6')
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input)
@@ -682,6 +701,7 @@ describe('App shell', () => {
   })
 
   it('renders the scoreboard for gamers and paired gamer teams', async () => {
+    startAt('scoreboard')
     localStorage.setItem('fc26:last-room-id', 'room-7')
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input)
@@ -932,6 +952,7 @@ describe('App shell', () => {
   })
 
   it('renders the teams and changes sections from the squad endpoints', async () => {
+    startAt('teams')
     localStorage.setItem('fc26:last-room-id', 'room-8')
     vi.stubGlobal('fetch', vi.fn(async (input) => {
       const url = String(input)
@@ -1501,13 +1522,18 @@ describe('App shell', () => {
 
     // Add Gamer is hidden behind a toggle inside the Roster now: expand it
     // first, then fill the form, then click the actual Add-gamer submit.
+    // Adding lives on Roster now; the pool it feeds is back on Game.
+    fireEvent.click(screen.getByRole('button', { name: 'Roster' }))
     fireEvent.click(screen.getByRole('button', { name: /\+ Add gamer/i }))
     fireEvent.change(screen.getByPlaceholderText(/Alice/i), { target: { value: 'Cara' } })
     fireEvent.click(screen.getByRole('button', { name: /^Add gamer$/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Game' }))
 
-    await waitFor(() =>
-      expect(within(gamePanel).getByText('Cara')).toBeInTheDocument(),
-    )
+    await waitFor(() => {
+      // Re-query: leaving the Game page detached the node captured earlier.
+      const panel = screen.getByRole('heading', { name: /Game creation/i }).closest('section')!
+      expect(within(panel).getByText('Cara')).toBeInTheDocument()
+    })
   })
 
   it('shows a reactivated gamer in the Game Creation pool', async () => {
@@ -1637,14 +1663,19 @@ describe('App shell', () => {
 
     // Cara sits in the Roster as inactive; the reactivate button is labelled
     // "Reactivate". Clicking it triggers a PATCH with active: true.
+    fireEvent.click(screen.getByRole('button', { name: 'Roster' }))
     fireEvent.click(screen.getByRole('button', { name: /Reactivate/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Game' }))
 
-    await waitFor(() =>
-      expect(within(gamePanel).getByText('Cara')).toBeInTheDocument(),
-    )
+    await waitFor(() => {
+      // Re-query: leaving the Game page detached the node captured earlier.
+      const panel = screen.getByRole('heading', { name: /Game creation/i }).closest('section')!
+      expect(within(panel).getByText('Cara')).toBeInTheDocument()
+    })
   })
 
   it('drills down into a gamer scoreboard row to show recent matches', async () => {
+    startAt('scoreboard')
     localStorage.setItem('fc26:last-room-id', 'room-hist')
     vi.stubGlobal(
       'fetch',
@@ -1826,6 +1857,7 @@ describe('App shell', () => {
   })
 
   it('shows all recorded games from the "All games" scoreboard tab', async () => {
+    startAt('scoreboard')
     localStorage.setItem('fc26:last-room-id', 'room-hist')
     const matchHistoryUrls: string[] = []
     vi.stubGlobal(
@@ -1937,6 +1969,7 @@ describe('App shell', () => {
   })
 
   it('edits a gamer profile name and avatar from the roster', async () => {
+    startAt('roster')
     localStorage.setItem('fc26:last-room-id', 'room-edit')
     const existingAvatar =
       'data:image/webp;base64,UklGRhYAAABXRUJQVlA4TAoAAAAvAAAAAAfQ//73v/+BiOh/AAA='
