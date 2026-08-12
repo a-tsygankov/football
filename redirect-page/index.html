@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FC 26 Team Picker has moved</title>
+    <!--
+      Served from the old GitHub Pages origin after the client moved to
+      Cloudflare. The placeholder token below is substituted at deploy time
+      from the CLIENT_ORIGIN repo variable (see .github/workflows/deploy.yml)
+      — this sentence avoids spelling it out so the note stays readable in the
+      rendered file.
+
+      CI publishes this as both index.html and 404.html. GitHub Pages serves
+      404.html for any unmatched path, so deep links redirect too rather than
+      dead-ending on Pages' default error page.
+
+      The script does the real work — a 1:1 map preserving pathname, query and
+      hash, since the new origin keeps the same /football/ prefix. The meta
+      refresh is the no-JS fallback and can only manage the entry point,
+      because a static URL cannot carry the current path.
+    -->
+    <meta http-equiv="refresh" content="0; url=__CLIENT_ORIGIN__/football/" />
+    <link rel="canonical" href="__CLIENT_ORIGIN__/football/" />
+    <script>
+      ;(function () {
+        var origin = '__CLIENT_ORIGIN__'
+        // Guard against the placeholder shipping unsubstituted: sending people
+        // to a literal "__CLIENT_ORIGIN__/..." URL would be worse than leaving
+        // them on this page with a visible link.
+        if (origin.indexOf('__CLIENT') === 0) return
+        var loc = window.location
+        window.location.replace(origin + loc.pathname + loc.search + loc.hash)
+      })()
+    </script>
+    <style>
+      body {
+        font-family: ui-serif, Georgia, serif;
+        background: #ecfdf5;
+        color: #052e16;
+        display: grid;
+        place-items: center;
+        min-height: 100dvh;
+        margin: 0;
+        padding: 24px;
+        text-align: center;
+      }
+      a {
+        color: #15803d;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>FC 26 Team Picker has moved</h1>
+      <p>
+        Taking you to
+        <a href="__CLIENT_ORIGIN__/football/">the new address</a>…
+      </p>
+      <p>Update your bookmark if this page keeps appearing.</p>
+    </main>
+  </body>
+</html>
