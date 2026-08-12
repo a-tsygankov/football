@@ -1,8 +1,13 @@
 import { nanoid } from 'nanoid'
 import {
   type Bet,
+  type BetPlacedEvent,
+  type BetRemovedEvent,
+  type BetSnapshot,
+  type BetsLockedEvent,
   BetId,
   canBack,
+  EVENT_SCHEMA_VERSION,
   type ChipPosition,
   type CurrentGame,
   GameId,
@@ -16,6 +21,7 @@ import {
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { AppContext } from '../app.js'
+import { recordBetEvent, toSnapshot } from '../bets/event-log.js'
 import {
   parseJson,
   requireActiveGameNight,
@@ -116,7 +122,25 @@ betRoutes.post(BETS_PATH, async (c) => {
     createdAt: now,
     updatedAt: now,
   }
+  // One bet per gamer per game, so an upsert silently overwrites. Capture what
+  // it replaced before writing, or the previous stake and outcome would be
+  // gone from the record entirely.
+  const existing = (await c.get('deps').bets.listByGame(game.id)).find(
+    (item) => item.gamerId === gamerId,
+  )
   await c.get('deps').bets.upsert(bet)
+
+  const placed: BetPlacedEvent = {
+    type: 'bet_placed',
+    schemaVersion: EVENT_SCHEMA_VERSION,
+    roomId,
+    gameNightId: game.gameNightId,
+    gameId: game.id,
+    occurredAt: now,
+    ...toSnapshot(bet),
+    ...(existing ? { replaced: toSnapshot(existing) } : {}),
+  }
+  await recordBetEvent(c, placed)
 
   return c.json(await betsResponse(c, game), 201)
 })
@@ -130,7 +154,26 @@ betRoutes.delete(`${BETS_PATH}/:betId`, async (c) => {
     return c.json({ error: 'bets_locked' }, 409)
   }
 
-  await c.get('deps').bets.remove(BetId(c.req.param('betId')), game.id)
+  const betId = BetId(c.req.param('betId'))
+  // Read before deleting: the event needs the stake and outcome being undone.
+  const removed = (await c.get('deps').bets.listByGame(game.id)).find(
+    (item) => item.id === betId,
+  )
+  await c.get('deps').bets.remove(betId, game.id)
+
+  if (removed) {
+    const event: BetRemovedEvent = {
+      type: 'bet_removed',
+      schemaVersion: EVENT_SCHEMA_VERSION,
+      roomId: removed.roomId,
+      gameNightId: game.gameNightId,
+      gameId: game.id,
+      occurredAt: Date.now(),
+      ...toSnapshot(removed),
+    }
+    await recordBetEvent(c, event)
+  }
+
   return c.json(await betsResponse(c, game))
 })
 
@@ -151,6 +194,23 @@ betRoutes.post(`${BETS_PATH}/lock`, async (c) => {
   const now = Date.now()
   const locked = { ...game, betsLockedAt: now, updatedAt: now }
   await c.get('deps').games.update(locked)
+
+  // Snapshot the book as it closed. After settlement the live rows are gone,
+  // so this is the only record of what everyone was actually playing for.
+  const openBets = await c.get('deps').bets.listByGame(game.id)
+  const snapshots: BetSnapshot[] = openBets.map(toSnapshot)
+  const lockedEvent: BetsLockedEvent = {
+    type: 'bets_locked',
+    schemaVersion: EVENT_SCHEMA_VERSION,
+    roomId: resolved.roomId,
+    gameNightId: game.gameNightId,
+    gameId: game.id,
+    occurredAt: now,
+    bets: snapshots,
+    pot: snapshots.reduce((sum, item) => sum + item.stake, 0),
+  }
+  await recordBetEvent(c, lockedEvent)
+
   return c.json(await betsResponse(c, locked))
 })
 

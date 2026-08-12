@@ -1,0 +1,26 @@
+# Static-asset Worker that serves the web client, replacing GitHub Pages.
+#
+# Mirrors the approach taken in the sibling tarot repo (PR #27): a Worker with
+# an [assets] directory rather than Cloudflare Pages, so the client sits on the
+# same platform as the API.
+#
+# Layout of ./site, which CI assembles — it is not committed:
+#
+#   site/index.html        redirect to /football/ (from ./site-root)
+#   site/football/*        the built client (from apps/web/dist)
+#
+# The /football/ prefix is deliberate. The client is built with vite
+# `base: '/football/'`, and the PWA manifest declares start_url and scope as
+# /football/. Keeping the prefix on the new origin means existing bookmarks and
+# iPhone home-screen shortcuts map 1:1, and no client code has to change.
+#
+# No not_found_handling: the client has no path-based routing (navigation is
+# planned as hash routes, which never miss on the server). Add
+# `not_found_handling = "single-page-application"` here if that changes — note
+# it serves the assets-root index.html, so the /football/ prefix would need
+# rethinking at the same time.
+name = "football-app"
+compatibility_date = "2025-04-01"
+
+[assets]
+directory = "./site"

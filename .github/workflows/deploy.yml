@@ -13,6 +13,8 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - 'package.json'
+      - 'workers/**'
+      - 'redirect-page/**'
       - '.github/workflows/deploy.yml'
   push:
     branches: [main]
@@ -23,12 +25,15 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - 'package.json'
+      - 'workers/**'
+      - 'redirect-page/**'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 # ── Deploy targets ────────────────────────────────────────────────
-#   apps/web   → GitHub Pages (static SPA)
-#   worker/    → Cloudflare Workers (+ D1 + R2, bindings in wrangler.toml)
+#   apps/web        → Cloudflare Workers static assets (workers/football-app)
+#   redirect-page/  → GitHub Pages, redirecting the old origin 1:1
+#   worker/         → Cloudflare Workers (+ D1 + R2, bindings in wrangler.toml)
 #
 # The monorepo uses pnpm workspaces, so we install once per job and run
 # workspace-wide `typecheck` / `test:run` through the `ci` job before
@@ -79,17 +84,15 @@ jobs:
       - name: Test (all packages)
         run: pnpm -r test:run
 
-  # ── Build and deploy apps/web to GitHub Pages ──
-  deploy-web:
+  # ── Build the client and deploy it to Cloudflare Workers ──
+  #
+  # Replaces the old GitHub Pages deploy so the client sits on the same
+  # platform as the API. Mirrors the sibling tarot repo's move (PR #27):
+  # a Worker with an [assets] directory rather than Cloudflare Pages.
+  deploy-client:
     runs-on: ubuntu-latest
     needs: ci
-    # Publish only from main (or a manual dispatch). Without this guard the
-    # new pull_request trigger would push every PR branch live to Pages —
-    # deploy-worker already carried the equivalent condition.
     if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -116,13 +119,71 @@ jobs:
           GIT_SHA: ${{ github.sha }}
           VITE_API_BASE: ${{ vars.VITE_API_BASE }}
 
+      # The client is built with base '/football/' and its PWA manifest
+      # declares that scope, so it is served under the same prefix here.
+      # Bookmarks and home-screen shortcuts then map 1:1 to the new origin
+      # and no client code has to change.
+      - name: Stage site
+        run: |
+          mkdir -p workers/football-app/site/football
+          cp -r apps/web/dist/. workers/football-app/site/football/
+          cp workers/football-app/site-root/index.html workers/football-app/site/index.html
+
+      - name: Deploy client worker (wrangler)
+        working-directory: workers/football-app
+        # Pinned to the version the worker package already uses, so CI cannot
+        # drift onto an untested wrangler.
+        run: npx --yes wrangler@3.114.17 deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  # ── Publish the redirect page to the old GitHub Pages origin ──
+  #
+  # Keeps existing links alive: the page maps pathname, query and hash 1:1
+  # onto the new origin, which uses the same /football/ prefix.
+  deploy-redirect:
+    runs-on: ubuntu-latest
+    needs: deploy-client
+    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Render redirect page
+        env:
+          CLIENT_ORIGIN: ${{ vars.CLIENT_ORIGIN }}
+        run: |
+          mkdir -p build/redirect
+          # Defaults to the account's workers.dev origin, derived from the
+          # worker name in workers/football-app/wrangler.toml and the same
+          # tarotoracle subdomain the API worker uses
+          # (fc26-worker.tarotoracle.workers.dev). Set the CLIENT_ORIGIN repo
+          # variable to override, e.g. once a custom domain exists.
+          origin="${CLIENT_ORIGIN:-https://football-app.tarotoracle.workers.dev}"
+          # Trailing slashes would produce a double slash once the pathname is
+          # appended, so normalise.
+          origin="${origin%/}"
+          echo "Redirecting old origin to: $origin"
+          sed "s|__CLIENT_ORIGIN__|${origin}|g" redirect-page/index.html > build/redirect/index.html
+          # GitHub Pages serves 404.html for unmatched paths, so deep links
+          # redirect too instead of hitting Pages' default error page.
+          cp build/redirect/index.html build/redirect/404.html
+          if grep -q "__CLIENT_ORIGIN__" build/redirect/index.html; then
+            echo "::error::placeholder survived substitution"
+            exit 1
+          fi
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/web/dist
+          path: build/redirect
 
       - name: Deploy to GitHub Pages
         id: deployment

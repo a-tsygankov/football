@@ -1,4 +1,5 @@
 import type {
+  BetId,
   EventId,
   GameNightId,
   GamerId,
@@ -15,7 +16,14 @@ import type { GameFormat, GameSize } from './domain.js'
  */
 export const EVENT_SCHEMA_VERSION = 1 as const
 
-export type EventType = 'game_recorded' | 'game_interrupted' | 'game_voided'
+export type EventType =
+  | 'game_recorded'
+  | 'game_interrupted'
+  | 'game_voided'
+  | 'bet_placed'
+  | 'bet_removed'
+  | 'bets_locked'
+  | 'bets_discarded'
 
 export type GameResult = 'home' | 'away' | 'draw'
 
@@ -46,6 +54,61 @@ export interface WagerSettlement {
   stake: number
   /** 0 for a losing bet; equals `stake` when the pool was refunded. */
   payout: number
+}
+
+/**
+ * Fields every bet event carries so the log can be read without joining back
+ * to the live `bets` table — which is deliberately transient, since rows are
+ * deleted at settlement.
+ */
+interface BetEventBase {
+  schemaVersion: typeof EVENT_SCHEMA_VERSION
+  roomId: RoomId
+  gameNightId: GameNightId
+  gameId: GameId
+  /** When the action happened. */
+  occurredAt: number
+}
+
+/** One bet as it stood at the moment an event was written. */
+export interface BetSnapshot {
+  betId: BetId
+  /** The gamer who placed the wager, not the gamers playing the game. */
+  gamerId: GamerId
+  outcome: GameResult
+  stake: number
+}
+
+export interface BetPlacedEvent extends BetEventBase, BetSnapshot {
+  type: 'bet_placed'
+  /**
+   * Set when this bet replaced one the same gamer already had on the game.
+   * The schema allows one bet per gamer per game, so a re-bet overwrites —
+   * without this the previous stake and outcome would vanish from history.
+   */
+  replaced?: BetSnapshot
+}
+
+export interface BetRemovedEvent extends BetEventBase, BetSnapshot {
+  type: 'bet_removed'
+}
+
+export interface BetsLockedEvent extends BetEventBase {
+  type: 'bets_locked'
+  /** The book as it stood when it closed — what everyone is playing for. */
+  bets: readonly BetSnapshot[]
+  pot: number
+}
+
+/**
+ * Written when a game's book is thrown away without settling — an interrupted
+ * game, or a night that ended with a game unresolved. Stakes are returned, so
+ * this is a wash, but the attempt still belongs in the record.
+ */
+export interface BetsDiscardedEvent extends BetEventBase {
+  type: 'bets_discarded'
+  bets: readonly BetSnapshot[]
+  reason: 'game_interrupted' | 'game_night_ended' | 'game_voided'
 }
 
 export interface GameRecordedEvent {
@@ -102,6 +165,26 @@ export type GameEventPayload =
   | GameRecordedEvent
   | GameInterruptedEvent
   | GameVoidedEvent
+  | BetPlacedEvent
+  | BetRemovedEvent
+  | BetsLockedEvent
+  | BetsDiscardedEvent
+
+/** Narrowing helper — the bet events share a shape the game events do not. */
+export type BetEventPayload =
+  | BetPlacedEvent
+  | BetRemovedEvent
+  | BetsLockedEvent
+  | BetsDiscardedEvent
+
+export function isBetEvent(payload: GameEventPayload): payload is BetEventPayload {
+  return (
+    payload.type === 'bet_placed' ||
+    payload.type === 'bet_removed' ||
+    payload.type === 'bets_locked' ||
+    payload.type === 'bets_discarded'
+  )
+}
 
 /** Wire/storage envelope around a payload. Always written by the worker. */
 export interface PersistedGameEvent {
