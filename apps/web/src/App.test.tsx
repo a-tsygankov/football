@@ -2036,4 +2036,64 @@ describe('App shell', () => {
     // Name change is sent and the existing avatar is threaded through the save.
     expect(patchBody).toMatchObject({ name: 'Alicia', avatarUrl: existingAvatar })
   })
+  it('shows the update banner when this build is below minClientVersion', async () => {
+    // Landing screen only — no stored room id, so /api/version is the sole
+    // request and the banner decision is isolated from room state.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input) => {
+        const url = String(input)
+        if (url.endsWith('/api/version')) {
+          return new Response(
+            JSON.stringify({
+              workerVersion: '9.9.9',
+              schemaVersion: 1,
+              // Far above whatever this bundle is built as, so the
+              // assertion never depends on the real package version.
+              minClientVersion: '99.0.0',
+              gitSha: null,
+              builtAt: new Date().toISOString(),
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      }),
+    )
+
+    render(<App />)
+
+    const banner = await screen.findByRole('alert')
+    expect(within(banner).getByText('99.0.0')).toBeInTheDocument()
+    expect(within(banner).getByRole('button', { name: /reload/i })).toBeInTheDocument()
+  })
+
+  it('stays quiet when this build meets minClientVersion', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input) => {
+        const url = String(input)
+        if (url.endsWith('/api/version')) {
+          return new Response(
+            JSON.stringify({
+              workerVersion: '0.1.0',
+              schemaVersion: 1,
+              minClientVersion: '0.0.1',
+              gitSha: null,
+              builtAt: new Date().toISOString(),
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      }),
+    )
+
+    render(<App />)
+
+    // Wait for the version fetch to land before asserting absence, so this
+    // can't pass simply by checking before the response arrives.
+    await screen.findByText(/schema 1/)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
 })

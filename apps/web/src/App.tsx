@@ -29,10 +29,11 @@ import {
   type UpdateGamerRequest,
   type UpdateRoomSettingsRequest,
   type UpdateRoomSettingsResponse,
+  isClientOutdated,
 } from '@fc26/shared'
 import { BottomNav } from './components/BottomNav.jsx'
 import { StatusCard } from './components/StatusCard.jsx'
-import { useDebugConsole } from './debug/console-store.js'
+import { UpdateBanner } from './components/UpdateBanner.jsx'
 import { DebugConsole } from './debug/DebugConsole.jsx'
 import {
   apiJson,
@@ -95,13 +96,14 @@ export function App() {
       })
   }, [])
 
-  // Periodically re-fetch /api/version so a fresh `latestSquadVersion` lights
-  // up the "new squads available" reminder in RoomScreen. Only runs while a
-  // room is open and Settings is unlocked — admins are the only ones who care
-  // about the reminder, and gating saves bandwidth for everyone else.
-  const settingsUnlocked = useDebugConsole((s) => s.everOpened)
+  // Periodically re-fetch /api/version. This feeds two things: the admin-only
+  // "new squads available" reminder in RoomScreen, and the update banner
+  // below, which every user needs — a long-lived PWA tab is exactly how a
+  // client drifts below `minClientVersion` without anyone noticing. So this
+  // is gated on having a room open, not on Settings being unlocked; the
+  // squad reminder does its own admin check.
   useEffect(() => {
-    if (!bootstrap || !settingsUnlocked) return
+    if (!bootstrap) return
     const intervalMs = 5 * 60 * 1000
     const tick = (): void => {
       void apiJson<WorkerVersionInfo>('/api/version')
@@ -112,7 +114,7 @@ export function App() {
     }
     const handle = setInterval(tick, intervalMs)
     return () => clearInterval(handle)
-  }, [bootstrap, settingsUnlocked])
+  }, [bootstrap])
 
   useEffect(() => {
     if (!joinRoomId) return
@@ -843,6 +845,13 @@ export function App() {
     logger.info('system', 'left room')
   }
 
+  // The worker publishes a floor for client builds; warn when this bundle has
+  // dropped below it. Rendered outside <main> so it pins to the top of the
+  // viewport on both the landing and room screens — a stale client is worth
+  // flagging whether or not you have joined a room yet.
+  const clientOutdated =
+    worker !== null && isClientOutdated(APP_VERSION, worker.minClientVersion)
+
   return (
     <div
       style={{
@@ -854,6 +863,13 @@ export function App() {
         color: '#052e16',
       }}
     >
+      {clientOutdated && worker ? (
+        <UpdateBanner
+          clientVersion={APP_VERSION}
+          minClientVersion={worker.minClientVersion}
+          onReload={() => window.location.reload()}
+        />
+      ) : null}
       <main style={{ padding: 20, maxWidth: 560, margin: '0 auto' }}>
         <section
           style={{
