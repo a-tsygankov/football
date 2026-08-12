@@ -153,28 +153,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Deliberately fails rather than skipping when unset. A silently skipped
-      # deploy step is exactly how the D1 migration gap went unnoticed for
-      # weeks; here it would leave the old origin serving a redirect to the
-      # literal string "__CLIENT_ORIGIN__".
-      - name: Require CLIENT_ORIGIN
-        env:
-          CLIENT_ORIGIN: ${{ vars.CLIENT_ORIGIN }}
-        run: |
-          if [ -z "$CLIENT_ORIGIN" ]; then
-            echo "::error::CLIENT_ORIGIN repo variable is not set. Set it to the" \
-                 "client Worker origin, e.g. https://football-app.<subdomain>.workers.dev"
-            exit 1
-          fi
-
       - name: Render redirect page
         env:
           CLIENT_ORIGIN: ${{ vars.CLIENT_ORIGIN }}
         run: |
           mkdir -p build/redirect
+          # Defaults to the account's workers.dev origin, derived from the
+          # worker name in workers/football-app/wrangler.toml and the same
+          # tarotoracle subdomain the API worker uses
+          # (fc26-worker.tarotoracle.workers.dev). Set the CLIENT_ORIGIN repo
+          # variable to override, e.g. once a custom domain exists.
+          origin="${CLIENT_ORIGIN:-https://football-app.tarotoracle.workers.dev}"
           # Trailing slashes would produce a double slash once the pathname is
-          # appended, so normalise first.
-          origin="${CLIENT_ORIGIN%/}"
+          # appended, so normalise.
+          origin="${origin%/}"
+          echo "Redirecting old origin to: $origin"
           sed "s|__CLIENT_ORIGIN__|${origin}|g" redirect-page/index.html > build/redirect/index.html
           # GitHub Pages serves 404.html for unmatched paths, so deep links
           # redirect too instead of hitting Pages' default error page.
