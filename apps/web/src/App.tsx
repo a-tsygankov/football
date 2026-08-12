@@ -29,6 +29,7 @@ import {
   type UpdateGamerRequest,
   type UpdateRoomSettingsRequest,
   type UpdateRoomSettingsResponse,
+  type BetHistoryResponse,
   isClientOutdated,
 } from '@fc26/shared'
 import { BottomNav } from './components/BottomNav.jsx'
@@ -40,6 +41,7 @@ import {
   clearPersistedRoomSession,
   persistLastBettor,
   persistRoomSession,
+  readLastBettor,
 } from './lib/api.js'
 import { logger } from './lib/logger.js'
 import { APP_VERSION, type WorkerVersionInfo } from './lib/version.js'
@@ -47,6 +49,7 @@ import { LandingScreen } from './features/landing/LandingScreen.jsx'
 import { RoomScreen } from './features/room/RoomScreen.jsx'
 import type { BusyState } from './types/busyState.js'
 import { useInstallPrompt } from './hooks/useInstallPrompt.js'
+import { useHashRoute } from './hooks/useHashRoute.js'
 
 const LAST_ROOM_ID_KEY = 'fc26:last-room-id'
 
@@ -66,6 +69,15 @@ export function App() {
     if (install.status === 'ready') install.prompt()
     else if (install.status === 'ios') setIosHint(h => !h)
   }, [install])
+
+  const { route, navigate } = useHashRoute()
+
+  // Which gamer the Wager page is scoped to. Reuses the bettor already
+  // remembered for placing bets, so the ledger opens on the person using this
+  // device rather than asking again. Purely local — the server has no idea who
+  // is holding the phone, which is why this filter is a convenience and not a
+  // permission.
+  const [viewerId, setViewerId] = useState<GamerId | null>(null)
 
   const [createName, setCreateName] = useState('')
   const [createPin, setCreatePin] = useState('')
@@ -120,6 +132,15 @@ export function App() {
     if (!joinRoomId) return
     void refreshRoom(joinRoomId, { silentUnauthorized: true })
   }, [])
+
+  // Seed the wager viewer from the remembered bettor, falling back to the
+  // first gamer so the page is never empty on a fresh device.
+  useEffect(() => {
+    if (!bootstrap || viewerId !== null) return
+    const remembered = readLastBettor(bootstrap.room.id)
+    const known = bootstrap.gamers.find((g) => g.id === remembered)
+    setViewerId((known?.id ?? bootstrap.gamers[0]?.id) ?? null)
+  }, [bootstrap, viewerId])
 
   useEffect(() => {
     if (!bootstrap) {
@@ -287,6 +308,11 @@ export function App() {
    * MatchHistoryList drops the entry locally; there's no need to refetch
    * the drill-down because the void event also removes it server-side.
    */
+  const loadBetHistory = useCallback(async (): Promise<BetHistoryResponse> => {
+    if (!bootstrap) throw new Error('No active room')
+    return apiJson<BetHistoryResponse>(`/api/rooms/${bootstrap.room.id}/bet-history`)
+  }, [bootstrap])
+
   const voidGame = useCallback(
     async (gameNightId: string, gameId: string): Promise<void> => {
       if (!bootstrap) throw new Error('No active room')
@@ -1003,6 +1029,11 @@ export function App() {
 
         {bootstrap ? (
           <RoomScreen
+            route={route}
+            onNavigate={navigate}
+            viewerId={viewerId}
+            onChangeViewer={setViewerId}
+            onLoadBetHistory={loadBetHistory}
             bootstrap={bootstrap}
             busy={busy}
             chips={chips}
@@ -1060,7 +1091,7 @@ export function App() {
         </p>
       </main>
 
-      <BottomNav />
+      <BottomNav route={route} onNavigate={navigate} />
       <DebugConsole />
     </div>
   )

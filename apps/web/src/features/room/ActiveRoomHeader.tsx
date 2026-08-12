@@ -13,6 +13,7 @@ export function ActiveRoomHeader({
   onLeaveRoom,
   onOpenGamePanel,
   onOpenRoster,
+  onOpenSettings,
   onRefresh,
 }: {
   bootstrap: RoomBootstrapResponse
@@ -20,6 +21,12 @@ export function ActiveRoomHeader({
   onLeaveRoom: () => void
   onOpenGamePanel: () => void
   onOpenRoster: () => void
+  /**
+   * Shown only once Settings is unlocked. With each tab now a page and no nav
+   * slot for Settings, unlocking it used to leave it unreachable except by
+   * typing the hash — this is the way in.
+   */
+  onOpenSettings?: () => void
   onRefresh: () => Promise<void>
 }) {
   return (
@@ -58,6 +65,20 @@ export function ActiveRoomHeader({
           >
             {busy === 'refreshing-room' ? 'Refreshing...' : 'Refresh'}
           </button>
+          {onOpenSettings ? (
+            <button
+              type="button"
+              onClick={() => onOpenSettings()}
+              style={{
+                ...secondaryButtonStyle,
+                background: 'rgba(236,253,245,0.12)',
+                color: '#ecfdf5',
+                borderColor: 'rgba(236,253,245,0.2)',
+              }}
+            >
+              Settings
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={busy !== null}

@@ -1,142 +1,38 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BottomNav } from './BottomNav.jsx'
 
 describe('BottomNav', () => {
-  const scrollIntoView = vi.fn()
-
-  beforeEach(() => {
-    vi.restoreAllMocks()
-    scrollIntoView.mockReset()
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value: scrollIntoView,
-    })
-  })
-
   afterEach(() => {
     document.body.innerHTML = ''
   })
 
-  it('scrolls to the implemented sections', () => {
-    const gameSection = document.createElement('section')
-    gameSection.id = 'fc26-game-section'
-    gameSection.getBoundingClientRect = vi.fn(() => ({
-      top: 96,
-      left: 0,
-      bottom: 300,
-      right: 0,
-      width: 0,
-      height: 204,
-      x: 0,
-      y: 96,
-      toJSON: () => ({}),
-    }))
-    document.body.appendChild(gameSection)
+  it('shows the four tabs, with Wager in place of Teams', () => {
+    render(<BottomNav route="game" onNavigate={vi.fn()} />)
 
-    const scoreboardSection = document.createElement('section')
-    scoreboardSection.id = 'fc26-scoreboard-section'
-    scoreboardSection.getBoundingClientRect = vi.fn(() => ({
-      top: 540,
-      left: 0,
-      bottom: 800,
-      right: 0,
-      width: 0,
-      height: 260,
-      x: 0,
-      y: 540,
-      toJSON: () => ({}),
-    }))
-    document.body.appendChild(scoreboardSection)
-
-    const teamsSection = document.createElement('section')
-    teamsSection.id = 'fc26-teams-section'
-    teamsSection.getBoundingClientRect = vi.fn(() => ({
-      top: 900,
-      left: 0,
-      bottom: 1180,
-      right: 0,
-      width: 0,
-      height: 280,
-      x: 0,
-      y: 900,
-      toJSON: () => ({}),
-    }))
-    document.body.appendChild(teamsSection)
-
-    const rosterSection = document.createElement('section')
-    rosterSection.id = 'fc26-roster-section'
-    rosterSection.getBoundingClientRect = vi.fn(() => ({
-      top: 1280,
-      left: 0,
-      bottom: 1540,
-      right: 0,
-      width: 0,
-      height: 260,
-      x: 0,
-      y: 1280,
-      toJSON: () => ({}),
-    }))
-    document.body.appendChild(rosterSection)
-
-    render(<BottomNav />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Game' }))
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
-
-    scrollIntoView.mockClear()
-    fireEvent.click(screen.getByRole('button', { name: 'Scoreboard' }))
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
-
-    scrollIntoView.mockClear()
-    fireEvent.click(screen.getByRole('button', { name: 'Teams' }))
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
-
-    scrollIntoView.mockClear()
-    fireEvent.click(screen.getByRole('button', { name: 'Roster' }))
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+    for (const label of ['Game', 'Scoreboard', 'Wager', 'Roster']) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+    }
+    // Teams kept its route but gave up the nav slot.
+    expect(screen.queryByRole('button', { name: 'Teams' })).toBeNull()
   })
 
-  it('highlights the tab nearest the top of the viewport', () => {
-    const gameSection = document.createElement('section')
-    gameSection.id = 'fc26-game-section'
-    let gameTop = 96
-    gameSection.getBoundingClientRect = vi.fn(() => ({
-      top: gameTop,
-      left: 0,
-      bottom: gameTop + 200,
-      right: 0,
-      width: 0,
-      height: 200,
-      x: 0,
-      y: gameTop,
-      toJSON: () => ({}),
-    }))
-    document.body.appendChild(gameSection)
+  it('navigates to the tapped route', () => {
+    const onNavigate = vi.fn()
+    render(<BottomNav route="game" onNavigate={onNavigate} />)
 
-    const scoreboardSection = document.createElement('section')
-    scoreboardSection.id = 'fc26-scoreboard-section'
-    let scoreboardTop = 520
-    scoreboardSection.getBoundingClientRect = vi.fn(() => ({
-      top: scoreboardTop,
-      left: 0,
-      bottom: scoreboardTop + 220,
-      right: 0,
-      width: 0,
-      height: 220,
-      x: 0,
-      y: scoreboardTop,
-      toJSON: () => ({}),
-    }))
-    document.body.appendChild(scoreboardSection)
+    fireEvent.click(screen.getByRole('button', { name: 'Wager' }))
+    expect(onNavigate).toHaveBeenCalledWith('wager')
 
-    render(<BottomNav />)
-    expect(screen.getByRole('button', { name: 'Game' })).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByRole('button', { name: 'Scoreboard' })).not.toHaveAttribute('aria-current')
+    fireEvent.click(screen.getByRole('button', { name: 'Roster' }))
+    expect(onNavigate).toHaveBeenCalledWith('roster')
+  })
 
-    gameTop = -260
-    scoreboardTop = 104
-    fireEvent.scroll(window)
+  it('marks the current route as the active tab', () => {
+    // Previously the active tab was inferred by measuring which section sat
+    // nearest the top of the viewport. It is now just the route, so there is
+    // no scroll listener and no ambiguity when two sections were both visible.
+    render(<BottomNav route="scoreboard" onNavigate={vi.fn()} />)
 
     expect(screen.getByRole('button', { name: 'Scoreboard' })).toHaveAttribute(
       'aria-current',
@@ -145,39 +41,20 @@ describe('BottomNav', () => {
     expect(screen.getByRole('button', { name: 'Game' })).not.toHaveAttribute('aria-current')
   })
 
-  it('enables the teams and roster tabs when their sections exist', () => {
-    const teamsSection = document.createElement('section')
-    teamsSection.id = 'fc26-teams-section'
-    teamsSection.getBoundingClientRect = vi.fn(() => ({
-      top: 200,
-      left: 0,
-      bottom: 400,
-      right: 0,
-      width: 0,
-      height: 200,
-      x: 0,
-      y: 200,
-      toJSON: () => ({}),
-    }))
-    document.body.appendChild(teamsSection)
+  it('marks nothing active on a route with no tab', () => {
+    // #/teams and #/settings are reachable but have no bar entry.
+    render(<BottomNav route="teams" onNavigate={vi.fn()} />)
 
-    const rosterSection = document.createElement('section')
-    rosterSection.id = 'fc26-roster-section'
-    rosterSection.getBoundingClientRect = vi.fn(() => ({
-      top: 500,
-      left: 0,
-      bottom: 700,
-      right: 0,
-      width: 0,
-      height: 200,
-      x: 0,
-      y: 500,
-      toJSON: () => ({}),
-    }))
-    document.body.appendChild(rosterSection)
+    for (const label of ['Game', 'Scoreboard', 'Wager', 'Roster']) {
+      expect(screen.getByRole('button', { name: label })).not.toHaveAttribute('aria-current')
+    }
+  })
 
-    render(<BottomNav />)
-    expect(screen.getByRole('button', { name: 'Teams' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Roster' })).toBeEnabled()
+  it('re-taps the current tab without erroring', () => {
+    const onNavigate = vi.fn()
+    render(<BottomNav route="wager" onNavigate={onNavigate} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Wager' }))
+    expect(onNavigate).toHaveBeenCalledWith('wager')
   })
 })

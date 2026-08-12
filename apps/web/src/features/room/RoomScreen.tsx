@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type {
   AnalysePhotoResponse,
+  BetHistoryResponse,
   BetId,
   CreateCurrentGameRequest,
   Gamer,
@@ -18,7 +19,6 @@ import type {
 } from '@fc26/shared'
 import { useDebugConsole } from '../../debug/console-store.js'
 import { RosterPanel } from '../gamers/RosterPanel.jsx'
-import { ChipStandingsPanel } from '../gameNight/ChipStandingsPanel.jsx'
 import { GameCreationPanel } from '../gameNight/GameCreationPanel.jsx'
 import { StartGameNightPanel } from '../gameNight/StartGameNightPanel.jsx'
 import { ScoreboardPanel } from '../scoreboard/ScoreboardPanel.jsx'
@@ -26,9 +26,17 @@ import { TeamsPanel } from '../squads/TeamsPanel.jsx'
 import { useSquadBrowser } from '../squads/useSquadBrowser.js'
 import { ActiveRoomHeader } from './ActiveRoomHeader.jsx'
 import { SettingsPanel } from './SettingsPanel.jsx'
+import { ChipStandingsPanel } from '../gameNight/ChipStandingsPanel.jsx'
+import { WagerPage } from '../wager/WagerPage.jsx'
+import type { Route } from '../../hooks/useHashRoute.js'
 import type { BusyState } from '../../types/busyState.js'
 
 export function RoomScreen({
+  route,
+  onNavigate,
+  viewerId,
+  onChangeViewer,
+  onLoadBetHistory,
   bootstrap,
   busy,
   chips,
@@ -65,6 +73,12 @@ export function RoomScreen({
   onToggleGamer,
   onUpdateGamerDetails,
 }: {
+  route: Route
+  onNavigate: (route: Route) => void
+  /** Whose wagers the Wager page shows; null means everyone. */
+  viewerId: GamerId | null
+  onChangeViewer: (next: GamerId | null) => void
+  onLoadBetHistory: () => Promise<BetHistoryResponse>
   bootstrap: RoomBootstrapResponse
   busy: BusyState
   chips: GameNightChipsResponse | null
@@ -165,38 +179,14 @@ export function RoomScreen({
     ackedSquadVersion !== null &&
     latestSquadVersion !== ackedSquadVersion
 
-  function scrollToSection(sectionId: string): void {
-    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
-  // On room entry, jump straight to the live game/night section when there is
-  // one, so the gamer doesn't have to scroll past the header/start panels to
-  // reach the action. Mount-only — won't fight subsequent scroll positions.
-  useEffect(() => {
-    if (!bootstrap.activeGameNight) return
-    requestAnimationFrame(() => {
-      const el = document.getElementById('fc26-game-live-section')
-      // `scrollIntoView` is missing in jsdom — guard the call so test renders
-      // don't blow up when the active-night bootstrap path is exercised.
-      if (el && typeof el.scrollIntoView === 'function') {
-        el.scrollIntoView({ behavior: 'auto', block: 'start' })
-      }
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // After a successful game-creation request the panel content swaps from the
-  // creation form to `CurrentGameCard`. On phones that swap happens off-screen
-  // because the form lives below the fold, so move the viewport to the live
-  // section once bootstrap has the new `currentGame`.
   async function handleCreateGame(
     gameNightId: string,
     request: CreateCurrentGameRequest,
   ): Promise<void> {
     await onCreateGame(gameNightId, request)
-    // Wait for the bootstrap state update + DOM commit before scrolling, so
-    // the `CurrentGameCard` is what receives the focus.
-    requestAnimationFrame(() => scrollToSection('fc26-game-live-section'))
+    // The Game page swaps the creation form for CurrentGameCard in place, so
+    // there is nothing to scroll to any more — this used to chase the live
+    // section down a long shared page.
   }
 
   return (
@@ -205,10 +195,9 @@ export function RoomScreen({
         bootstrap={bootstrap}
         busy={busy}
         onLeaveRoom={onLeaveRoom}
-        onOpenGamePanel={() =>
-          scrollToSection(bootstrap.activeGameNight ? 'fc26-game-live-section' : 'fc26-game-section')
-        }
-        onOpenRoster={() => scrollToSection('fc26-roster-section')}
+        onOpenGamePanel={() => onNavigate('game')}
+        onOpenRoster={() => onNavigate('roster')}
+        onOpenSettings={settingsUnlocked ? () => onNavigate('settings') : undefined}
         onRefresh={onRefresh}
       />
 
@@ -249,101 +238,122 @@ export function RoomScreen({
         </div>
       ) : null}
 
-      {/* Keeps the BottomNav "Game" anchor — falls through to the live
-          section when there is one, otherwise lands on Start Game Night. */}
-      <section
-        id="fc26-game-section"
-        style={{ marginTop: 18 }}
-      >
-        {bootstrap.activeGameNight ? null : (
-          <StartGameNightPanel
-            bootstrap={bootstrap}
-            busy={busy}
-            onStartGameNight={onStartGameNight}
-          />
-        )}
-      </section>
+      {/* One page at a time. This used to be a single scrolling surface with
+          every panel stacked, which made the bottom nav a set of scroll
+          anchors rather than real navigation. */}
+      {route === 'game' ? (
+        <section id="fc26-game-section" style={{ marginTop: 18 }}>
+          {bootstrap.activeGameNight ? (
+            <div id="fc26-game-live-section">
+              <GameCreationPanel
+                bootstrap={bootstrap}
+                busy={busy}
+                activeGameNightGamers={activeGameNightGamers}
+                activeGameNightGamerIds={activeGameNightGamerIds}
+                latestSquadVersion={latestSquadVersion}
+                squadClubs={squadBrowser.teams.clubs}
+                squadLoading={squadBrowser.teams.loading}
+                squadBrowserTeams={squadBrowser.teams}
+                onCreateGame={handleCreateGame}
+                onInterruptGame={onInterruptGame}
+                onRecordGameResult={onRecordGameResult}
+                onAnalysePhoto={onAnalysePhoto}
+                onPlaceBet={onPlaceBet}
+                onRemoveBet={onRemoveBet}
+                onLockBets={onLockBets}
+              />
+            </div>
+          ) : (
+            <StartGameNightPanel
+              bootstrap={bootstrap}
+              busy={busy}
+              onStartGameNight={onStartGameNight}
+            />
+          )}
+        </section>
+      ) : null}
 
-      {bootstrap.activeGameNight ? (
-        <section id="fc26-game-live-section" style={{ marginTop: 18 }}>
-          <GameCreationPanel
+      {route === 'scoreboard' ? (
+        <ScoreboardPanel
+          scoreboard={scoreboard}
+          onLoadMatchHistory={onLoadMatchHistory}
+          onVoidGame={settingsUnlocked ? onVoidGame : undefined}
+        />
+      ) : null}
+
+      {route === 'wager' ? (
+        <>
+          {chips ? (
+            <ChipStandingsPanel
+              gamers={bootstrap.gamers}
+              positions={chips.positions}
+              lastGameDeltas={chips.lastGameDeltas}
+            />
+          ) : null}
+          <WagerPage
+            gamers={bootstrap.gamers}
+            viewerId={viewerId}
+            onChangeViewer={onChangeViewer}
+            showAll={settingsUnlocked}
+            onLoadHistory={onLoadBetHistory}
+          />
+        </>
+      ) : null}
+
+      {route === 'roster' ? (
+        <section id="fc26-roster-section">
+          <RosterPanel
             bootstrap={bootstrap}
             busy={busy}
-            activeGameNightGamers={activeGameNightGamers}
             activeGameNightGamerIds={activeGameNightGamerIds}
-            latestSquadVersion={latestSquadVersion}
-            squadClubs={squadBrowser.teams.clubs}
-            squadLoading={squadBrowser.teams.loading}
-            squadBrowserTeams={squadBrowser.teams}
-            onCreateGame={handleCreateGame}
-            onInterruptGame={onInterruptGame}
-            onRecordGameResult={onRecordGameResult}
-            onAnalysePhoto={onAnalysePhoto}
-            onPlaceBet={onPlaceBet}
-            onRemoveBet={onRemoveBet}
-            onLockBets={onLockBets}
+            currentGameGamerIds={currentGameGamerIds}
+            onToggleGamer={onToggleGamer}
+            onUpdateGamerDetails={onUpdateGamerDetails}
+            gamerName={gamerName}
+            gamerRating={gamerRating}
+            gamerPin={gamerPin}
+            gamerAvatarUrl={gamerAvatarUrl}
+            onChangeGamerName={onChangeGamerName}
+            onChangeGamerPin={onChangeGamerPin}
+            onChangeGamerRating={onChangeGamerRating}
+            onChangeGamerAvatar={onChangeGamerAvatar}
+            onCreateGamer={onCreateGamer}
           />
         </section>
       ) : null}
 
-      {bootstrap.activeGameNight && chips ? (
-        <ChipStandingsPanel
-          gamers={bootstrap.gamers}
-          positions={chips.positions}
-          lastGameDeltas={chips.lastGameDeltas}
-        />
-      ) : null}
-
-      <ScoreboardPanel
-        scoreboard={scoreboard}
-        onLoadMatchHistory={onLoadMatchHistory}
-        onVoidGame={settingsUnlocked ? onVoidGame : undefined}
-      />
-
-      <TeamsPanel
-        latestSquadVersion={latestSquadVersion}
-        squadPanelError={squadBrowser.squadPanelError}
-        squadVersions={squadBrowser.squadVersions}
-        teams={squadBrowser.teams}
-        changes={squadBrowser.changes}
-        settingsUnlocked={settingsUnlocked}
-        roomSquadPlatform={roomSquadPlatform}
-      />
-
-      {settingsUnlocked ? (
-        <SettingsPanel
-          bootstrap={bootstrap}
-          busy={busy}
+      {/* Teams lost its bottom-nav slot to Wager but keeps its route: the
+          squad browser is still the only way to look up club ratings, and
+          the Game page links here when picking FC teams. */}
+      {route === 'teams' ? (
+        <TeamsPanel
           latestSquadVersion={latestSquadVersion}
+          squadPanelError={squadBrowser.squadPanelError}
+          squadVersions={squadBrowser.squadVersions}
+          teams={squadBrowser.teams}
+          changes={squadBrowser.changes}
+          settingsUnlocked={settingsUnlocked}
           roomSquadPlatform={roomSquadPlatform}
-          onChangeRoomSquadPlatform={onChangeRoomSquadPlatform}
-          onRefreshSquadAssets={onRefreshSquadAssets}
-          onRepairSquads={onRepairSquads}
-          onResetSquadData={onResetSquadData}
-          onRetrieveSquadData={onRetrieveSquadData}
-          onSaveRoomSettings={onSaveRoomSettings}
         />
       ) : null}
 
-      <section id="fc26-roster-section">
-        <RosterPanel
-          bootstrap={bootstrap}
-          busy={busy}
-          activeGameNightGamerIds={activeGameNightGamerIds}
-          currentGameGamerIds={currentGameGamerIds}
-          onToggleGamer={onToggleGamer}
-          onUpdateGamerDetails={onUpdateGamerDetails}
-          gamerName={gamerName}
-          gamerRating={gamerRating}
-          gamerPin={gamerPin}
-          gamerAvatarUrl={gamerAvatarUrl}
-          onChangeGamerName={onChangeGamerName}
-          onChangeGamerPin={onChangeGamerPin}
-          onChangeGamerRating={onChangeGamerRating}
-          onChangeGamerAvatar={onChangeGamerAvatar}
-          onCreateGamer={onCreateGamer}
-        />
-      </section>
+      {route === 'settings' ? (
+        settingsUnlocked ? (
+          <SettingsPanel
+            bootstrap={bootstrap}
+            busy={busy}
+            latestSquadVersion={latestSquadVersion}
+            roomSquadPlatform={roomSquadPlatform}
+            onChangeRoomSquadPlatform={onChangeRoomSquadPlatform}
+            onRefreshSquadAssets={onRefreshSquadAssets}
+            onRepairSquads={onRepairSquads}
+            onResetSquadData={onResetSquadData}
+            onRetrieveSquadData={onRetrieveSquadData}
+            onSaveRoomSettings={onSaveRoomSettings}
+          />
+        ) : null
+      ) : null}
+
     </>
   )
 }
