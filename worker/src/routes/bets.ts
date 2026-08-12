@@ -1,6 +1,10 @@
 import { nanoid } from 'nanoid'
 import {
   type Bet,
+  type BetEventPayload,
+  type BetHistoryGame,
+  type BetHistoryResponse,
+  isBetEvent,
   type BetPlacedEvent,
   type BetRemovedEvent,
   type BetSnapshot,
@@ -219,6 +223,64 @@ function toPositions(net: ReadonlyMap<ReturnType<typeof GamerId>, number>): Chip
     .map(([gamerId, value]) => ({ gamerId, net: value }))
     .sort((a, b) => b.net - a.net)
 }
+
+/**
+ * The room's betting ledger, grouped by game.
+ *
+ * Deliberately returns everything the room has. Visibility filtering happens
+ * in the UI, because the room session is the real trust boundary — it carries
+ * no per-gamer identity, so the server has no way to tell members apart and
+ * filtering here would be security theatre rather than access control.
+ * `filterBetHistory` in @fc26/shared does the presentation-side narrowing.
+ */
+betRoutes.get('/rooms/:roomId/bet-history', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const all = await c.get('deps').events.listByRoom(roomId)
+
+  // Voided games are excluded to match the scoreboard drill-down, which also
+  // hides them — a deleted game should not linger in one view and not another.
+  const voided = new Set(
+    all.filter((e) => e.payload.type === 'game_voided').map((e) => e.payload.gameId),
+  )
+
+  const byGame = new Map<string, BetHistoryGame & { events: BetEventPayload[] }>()
+  const ensure = (gameId: GameId, gameNightId: GameNightId, occurredAt: number) => {
+    let entry = byGame.get(gameId)
+    if (!entry) {
+      entry = { gameId, gameNightId, occurredAt, playerIds: [], events: [] }
+      byGame.set(gameId, entry)
+    }
+    // Track the latest activity so an unresolved book still sorts sensibly.
+    if (occurredAt > entry.occurredAt) entry.occurredAt = occurredAt
+    return entry
+  }
+
+  for (const event of all) {
+    const payload = event.payload
+    if (isBetEvent(payload)) {
+      if (voided.has(payload.gameId)) continue
+      ensure(payload.gameId, payload.gameNightId, payload.occurredAt).events.push(payload)
+    } else if (payload.type === 'game_recorded') {
+      if (voided.has(payload.gameId)) continue
+      // A recorded game supplies both the players and the settled positions,
+      // neither of which the bet events themselves carry.
+      const entry = ensure(payload.gameId, payload.gameNightId, payload.occurredAt)
+      entry.playerIds = [...payload.home.gamerIds, ...payload.away.gamerIds]
+      entry.occurredAt = payload.occurredAt
+      if (payload.wagers) entry.settled = payload.wagers
+    }
+  }
+
+  // Games with no betting activity at all are not part of a betting ledger.
+  const games = [...byGame.values()]
+    .filter((game) => game.events.length > 0)
+    .sort((a, b) => b.occurredAt - a.occurredAt)
+
+  return c.json({ roomId, games } satisfies BetHistoryResponse)
+})
 
 // Deliberately no requireActiveGameNight here — standings stay readable after
 // the night completes.

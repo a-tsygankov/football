@@ -9,7 +9,7 @@ import type {
   RoomSummary,
   SquadPlatform,
 } from './domain.js'
-import type { GameResult } from './events.js'
+import type { BetEventPayload, GameResult, WagerSettlement } from './events.js'
 import type {
   BetId,
   EventId,
@@ -230,6 +230,32 @@ export interface MatchHistoryEntry {
   result: GameResult
   home: MatchHistorySide
   away: MatchHistorySide
+}
+
+/**
+ * Everything that happened to one game's betting book, grouped so the UI can
+ * tell the story of a game rather than a flat stream of events.
+ */
+export interface BetHistoryGame {
+  gameId: GameId
+  gameNightId: GameNightId
+  /** When the game resolved, or when the book was last touched if it has not. */
+  occurredAt: number
+  /**
+   * Who played the game. Empty until the game is recorded — a live game has
+   * players, but they are not in the event log yet.
+   */
+  playerIds: ReadonlyArray<GamerId>
+  /** Placed / removed / locked / discarded, oldest first. */
+  events: ReadonlyArray<BetEventPayload>
+  /** Present once the game settled; absent for live, discarded or voided books. */
+  settled?: ReadonlyArray<WagerSettlement>
+}
+
+export interface BetHistoryResponse {
+  roomId: RoomId
+  /** Newest game first. */
+  games: ReadonlyArray<BetHistoryGame>
 }
 
 export interface MatchHistoryResponse {
