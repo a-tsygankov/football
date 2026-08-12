@@ -26,6 +26,7 @@ worker misreports itself. `check_version_bump.py` enforces the match.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -45,6 +46,23 @@ DOC_PATHS = (
 
 SCHEMA_DIR = "worker/src/db/migrations/"
 WRANGLER_TOML = "worker/wrangler.toml"
+
+# Leading digits of a migration filename ("0006_bets.sql" -> 6). The schema
+# "version" is just the highest of these; SCHEMA_VERSION in wrangler.toml
+# mirrors it so /api/version can report which schema the Worker expects.
+MIGRATION_RE = re.compile(r"(\d+)[^/]*\.sql$")
+
+
+def highest_migration(paths: list[str]) -> int | None:
+    """Largest leading number across migration filenames, or None."""
+    numbers: list[int] = []
+    for p in paths:
+        if not p.startswith(SCHEMA_DIR) or not p.endswith(".sql"):
+            continue
+        match = MIGRATION_RE.search(p)
+        if match:
+            numbers.append(int(match.group(1)))
+    return max(numbers) if numbers else None
 
 
 def is_doc_file(path: str) -> bool:

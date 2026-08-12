@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -46,11 +45,10 @@ from version_rules import (  # noqa: E402
     TIERS,
     WRANGLER_TOML,
     bump_patch,
+    highest_migration,
     is_doc_file,
     wrangler_var,
 )
-
-MIGRATION_RE = re.compile(r"(\d+)[^/]*\.sql$")
 
 
 def package_json_version(content: str) -> Optional[str]:
@@ -111,18 +109,6 @@ def check_schema(touched: list[str], added: list[str]) -> Optional[str]:
         "would skip Wrangler's d1_migrations tracker and fail to apply "
         "in production."
     )
-
-
-def highest_migration(paths: list[str]) -> Optional[int]:
-    """Largest leading number across migration filenames, or None."""
-    numbers: list[int] = []
-    for p in paths:
-        if not p.startswith(SCHEMA_DIR) or not p.endswith(".sql"):
-            continue
-        match = MIGRATION_RE.search(p)
-        if match:
-            numbers.append(int(match.group(1)))
-    return max(numbers) if numbers else None
 
 
 def check_wrangler_sync(repo_root: Path) -> list[tuple[str, str]]:
