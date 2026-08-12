@@ -111,29 +111,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # An empty VITE_API_BASE builds a client whose API base is '', so every
-      # request goes to the client's own origin — which serves static assets
-      # and nothing else. The deploy succeeds and the app 404s on every call,
-      # which is how it shipped broken once already. Fail here instead.
-      - name: Require VITE_API_BASE
-        env:
-          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
-        run: |
-          if [ -z "$VITE_API_BASE" ]; then
-            echo "::error::VITE_API_BASE repo variable is not set. The client would" \
-                 "build with an empty API base and call its own origin, which serves" \
-                 "only static assets, so every API request 404s. Set it to the API" \
-                 "worker origin, e.g. https://fc26-worker.tarotoracle.workers.dev"
-            exit 1
-          fi
-
+      # Deliberately no VITE_API_BASE. The client Worker now proxies /api/* to
+      # the API Worker over a service binding, so the client is same-origin and
+      # an empty API base is correct rather than broken. The guard that used to
+      # sit here — failing the build when the variable was unset — is gone with
+      # the variable it protected.
       - name: Build web (vite)
         run: pnpm --filter @fc26/web run build
         env:
-          # Picked up by apps/web/vite.config.ts and baked into the bundle
-          # so the client /api/version response can be cross-checked.
           GIT_SHA: ${{ github.sha }}
-          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
 
       # The client is built with base '/football/' and its PWA manifest
       # declares that scope, so it is served under the same prefix here.

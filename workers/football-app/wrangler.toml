@@ -1,8 +1,5 @@
-# Static-asset Worker that serves the web client, replacing GitHub Pages.
-#
-# Mirrors the approach taken in the sibling tarot repo (PR #27): a Worker with
-# an [assets] directory rather than Cloudflare Pages, so the client sits on the
-# same platform as the API.
+# Front door for the web client: serves the built assets and proxies /api/*
+# to the API Worker over a service binding, so the browser sees one origin.
 #
 # Layout of ./site, which CI assembles — it is not committed:
 #
@@ -11,16 +8,24 @@
 #
 # The /football/ prefix is deliberate. The client is built with vite
 # `base: '/football/'`, and the PWA manifest declares start_url and scope as
-# /football/. Keeping the prefix on the new origin means existing bookmarks and
-# iPhone home-screen shortcuts map 1:1, and no client code has to change.
+# /football/. Keeping the prefix means bookmarks and iPhone home-screen
+# shortcuts carried over from the old GitHub Pages URL still map 1:1.
 #
-# No not_found_handling: the client has no path-based routing (navigation is
-# planned as hash routes, which never miss on the server). Add
-# `not_found_handling = "single-page-application"` here if that changes — note
-# it serves the assets-root index.html, so the /football/ prefix would need
-# rethinking at the same time.
+# No not_found_handling: the client uses hash routes (#/wager), which never
+# reach the server, so there is nothing to fall back for.
 name = "football-app"
+main = "src/index.ts"
 compatibility_date = "2025-04-01"
 
 [assets]
 directory = "./site"
+# Bound so the script can serve assets explicitly for anything that is not
+# /api/*. Requests that match an asset are served before the script runs.
+binding = "ASSETS"
+
+# Worker-to-Worker call inside Cloudflare's network — no public hop, no DNS,
+# no per-request TLS. Replaces the build-time VITE_API_BASE the client used to
+# need, which silently produced a broken deploy whenever it was unset.
+[[services]]
+binding = "API"
+service = "fc26-worker"

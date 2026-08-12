@@ -16,6 +16,16 @@ import { logger } from './logger.js'
  *  - Drains the x-fc26-logs response header and merges entries into the
  *    client logger so Worker logs appear in the hidden Console.
  */
+/**
+ * Empty in production, and that is correct: the client Worker proxies /api/*
+ * to the API Worker over a service binding, so the client is same-origin.
+ * Dev is same-origin too — vite proxies /api to the local wrangler.
+ *
+ * VITE_API_BASE remains readable as an escape hatch (pointing a local build at
+ * a deployed API, say). It used to be required in production, and an unset
+ * value silently produced a client that called its own origin and 404'd on
+ * every request.
+ */
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '') as string
 const ROOM_SESSION_STORAGE_KEY = 'fc26:last-room-session'
 
@@ -24,10 +34,9 @@ const ROOM_SESSION_STORAGE_KEY = 'fc26:last-room-session'
  *
  * The asset refresh service writes worker-relative paths (e.g.
  * `/api/squads/logos/123`) into `Club.logoUrl` once a logo has been cached
- * to R2. The browser would resolve those against its own origin (github.io
- * in production), so we prepend `API_BASE` for any path that starts with
- * `/api/`. Absolute URLs (legacy SportsDB CDN) and `data:` URIs pass through
- * unchanged.
+ * to R2. Prepending `API_BASE` is now a no-op in production — same origin —
+ * but is kept for builds that point at a different API. Absolute URLs (legacy
+ * SportsDB CDN) and `data:` URIs pass through unchanged.
  *
  * Squad ingest writes a `pending:club:{id}` sentinel into `Club.logoUrl` to
  * satisfy the shared schema's `min(1)` invariant until the asset refresh
