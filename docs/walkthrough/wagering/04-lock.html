@@ -1,0 +1,60 @@
+<!-- @dsCard group="Wagering walkthrough" name="Step 4 — Book locks" subtitle="Manual lock or photo-capture auto-lock" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step 4 — the book locks</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 20px; display: grid; justify-content: center;
+    font-family: ui-serif, Georgia, Cambria, 'Times New Roman', serif;
+    background: linear-gradient(180deg, #f8fafc 0%, #ecfdf5 60%, #d1fae5 100%);
+    color: #052e16;
+  }
+  .phone { width: 380px; display: grid; gap: 12px; }
+  .caption { font-size: 13px; opacity: .75; margin: 0 0 2px; }
+  .panel {
+    padding: 12px; border-radius: 18px; background: #ffffff;
+    border: 1px solid #c7d2fe; display: grid; gap: 10px;
+  }
+  .panel strong { font-size: 16px; }
+  .pot { font-size: 13px; opacity: .8; }
+  ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+  li { font-size: 14px; }
+  .routes { display: grid; gap: 8px; }
+  .route {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+    border-radius: 14px; font-size: 12.5px; line-height: 1.4;
+  }
+  .route.ok { background: #ecfdf5; border: 1px solid #86efac; }
+  .route.rej { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+  .badge {
+    flex-shrink: 0; padding: 2px 9px; border-radius: 999px; font-size: 11px;
+    font-weight: 700; letter-spacing: .05em;
+  }
+  .ok .badge { background: #166534; color: #ffffff; }
+  .rej .badge { background: #b91c1c; color: #ffffff; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+</style>
+</head>
+<body>
+  <div class="phone">
+    <p class="caption"><strong>Step 4.</strong> Before the score can be seen, the book closes. The panel turns read-only.</p>
+    <div class="panel">
+      <strong>Bets locked</strong>
+      <div class="pot">Pot 100 chips</div>
+      <ul>
+        <li>Ann — home — 50</li>
+        <li>Cyd — draw — 50</li>
+      </ul>
+    </div>
+    <div class="routes">
+      <div class="route ok"><span class="badge">LOCK</span><span>Tap <strong>Lock bets</strong> — or just open the <strong>TV photo capture</strong>: pointing a camera at the score means a result is imminent, so the capture locks the book automatically.</span></div>
+      <div class="route ok"><span class="badge">200</span><span>Locking twice returns the same timestamp — idempotent, so a double tap or a re-opened camera is harmless.</span></div>
+      <div class="route rej"><span class="badge">409</span><span>Any bet after the lock is refused: <code>{"error":"bets_locked"}</code></span></div>
+    </div>
+  </div>
+</body>
+</html>

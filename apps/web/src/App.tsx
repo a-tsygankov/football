@@ -1,12 +1,18 @@
 import { startTransition, useCallback, useEffect, useState } from 'react'
 import {
   type AnalysePhotoResponse,
+  type Bet,
+  type BetId,
+  type BetsResponse,
   type CreateGamerRequest,
   type CreateCurrentGameRequest,
   type CurrentGame,
   DEFAULT_SQUAD_PLATFORM,
   type Gamer,
+  type GamerId,
   type GamerResponse,
+  type GameNightChipsResponse,
+  type GameResult,
   type InterruptCurrentGameRequest,
   type MatchHistoryResponse,
   type MatchHistoryScope,
@@ -28,7 +34,12 @@ import { BottomNav } from './components/BottomNav.jsx'
 import { StatusCard } from './components/StatusCard.jsx'
 import { useDebugConsole } from './debug/console-store.js'
 import { DebugConsole } from './debug/DebugConsole.jsx'
-import { apiJson, clearPersistedRoomSession, persistRoomSession } from './lib/api.js'
+import {
+  apiJson,
+  clearPersistedRoomSession,
+  persistLastBettor,
+  persistRoomSession,
+} from './lib/api.js'
 import { logger } from './lib/logger.js'
 import { APP_VERSION, type WorkerVersionInfo } from './lib/version.js'
 import { LandingScreen } from './features/landing/LandingScreen.jsx'
@@ -43,6 +54,7 @@ export function App() {
   const [workerError, setWorkerError] = useState<string | null>(null)
   const [bootstrap, setBootstrap] = useState<RoomBootstrapResponse | null>(null)
   const [scoreboard, setScoreboard] = useState<RoomScoreboardResponse | null>(null)
+  const [chips, setChips] = useState<GameNightChipsResponse | null>(null)
   const [busy, setBusy] = useState<BusyState>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -116,6 +128,17 @@ export function App() {
     void refreshScoreboard(bootstrap.room.id)
   }, [bootstrap])
 
+  // Chip standings follow the active night: load on entry, clear on exit.
+  const activeGameNightId = bootstrap?.activeGameNight?.id ?? null
+  useEffect(() => {
+    if (!bootstrap || !activeGameNightId) {
+      setChips(null)
+      return
+    }
+    void loadChips(bootstrap.room.id, activeGameNightId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeGameNightId])
+
   async function refreshRoom(
     roomId: string,
     options: { silentUnauthorized?: boolean } = {},
@@ -148,6 +171,95 @@ export function App() {
         roomId,
         error: err instanceof Error ? err.message : String(err),
       })
+    }
+  }
+
+  async function loadChips(roomId: string, gameNightId: string): Promise<void> {
+    try {
+      const next = await apiJson<GameNightChipsResponse>(
+        `/api/rooms/${roomId}/game-nights/${gameNightId}/chips`,
+      )
+      startTransition(() => setChips(next))
+    } catch (err) {
+      logger.warn('system', 'chips fetch failed', {
+        roomId,
+        gameNightId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  function applyBets(bets: ReadonlyArray<Bet>, betsLockedAt?: number | null): void {
+    startTransition(() => {
+      setBootstrap((current) =>
+        current
+          ? {
+              ...current,
+              bets,
+              currentGame:
+                betsLockedAt !== undefined && current.currentGame
+                  ? { ...current.currentGame, betsLockedAt }
+                  : current.currentGame,
+            }
+          : current,
+      )
+    })
+  }
+
+  async function placeBet(request: {
+    gamerId: GamerId
+    outcome: GameResult
+    stake: number
+  }): Promise<void> {
+    if (!bootstrap?.activeGameNight || !bootstrap.currentGame) return
+    setBusy('placing-bet')
+    setError(null)
+    try {
+      const response = await apiJson<BetsResponse>(
+        `/api/rooms/${bootstrap.room.id}/game-nights/${bootstrap.activeGameNight.id}/games/${bootstrap.currentGame.id}/bets`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(request),
+        },
+      )
+      applyBets(response.bets)
+      persistLastBettor(bootstrap.room.id, request.gamerId)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function removeBet(betId: BetId): Promise<void> {
+    if (!bootstrap?.activeGameNight || !bootstrap.currentGame) return
+    setBusy('removing-bet')
+    setError(null)
+    try {
+      const response = await apiJson<BetsResponse>(
+        `/api/rooms/${bootstrap.room.id}/game-nights/${bootstrap.activeGameNight.id}/games/${bootstrap.currentGame.id}/bets/${betId}`,
+        { method: 'DELETE' },
+      )
+      applyBets(response.bets)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function lockBets(): Promise<void> {
+    if (!bootstrap?.activeGameNight || !bootstrap.currentGame) return
+    setError(null)
+    try {
+      const response = await apiJson<BetsResponse>(
+        `/api/rooms/${bootstrap.room.id}/game-nights/${bootstrap.activeGameNight.id}/games/${bootstrap.currentGame.id}/bets/lock`,
+        { method: 'POST' },
+      )
+      applyBets(response.bets, response.betsLockedAt)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -185,6 +297,9 @@ export function App() {
         },
       )
       await refreshScoreboard(bootstrap.room.id)
+      if (bootstrap.activeGameNight) {
+        await loadChips(bootstrap.room.id, bootstrap.activeGameNight.id)
+      }
     },
     [bootstrap],
   )
@@ -557,7 +672,7 @@ export function App() {
     setBusy('creating-game')
     setError(null)
     try {
-      const response = await apiJson<{ currentGame: CurrentGame }>(
+      const response = await apiJson<{ currentGame: CurrentGame; bets: ReadonlyArray<Bet> }>(
         `/api/rooms/${bootstrap.room.id}/game-nights/${gameNightId}/games`,
         {
           method: 'POST',
@@ -571,6 +686,7 @@ export function App() {
             ? {
                 ...current,
                 currentGame: response.currentGame,
+                bets: response.bets,
                 activeGameNight: current.activeGameNight
                   ? {
                       ...current.activeGameNight,
@@ -612,12 +728,15 @@ export function App() {
             ? {
                 ...current,
                 currentGame: response.currentGame,
+                // Recording settles the book server-side; the live rows are gone.
+                bets: [],
                 activeGameNight: response.activeGameNight,
               }
             : current,
         )
       })
       await refreshScoreboard(bootstrap.room.id)
+      await loadChips(bootstrap.room.id, gameNightId)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -675,6 +794,8 @@ export function App() {
             ? {
                 ...current,
                 currentGame: response.currentGame,
+                // An interrupt discards the book server-side.
+                bets: [],
                 activeGameNight: response.activeGameNight,
               }
             : current,
@@ -860,11 +981,15 @@ export function App() {
           <RoomScreen
             bootstrap={bootstrap}
             busy={busy}
+            chips={chips}
             latestSquadVersion={worker?.latestSquadVersion ?? null}
             roomSquadPlatform={roomSquadPlatform}
             scoreboard={scoreboard}
             onLoadMatchHistory={loadMatchHistory}
             onVoidGame={voidGame}
+            onPlaceBet={(request) => void placeBet(request)}
+            onRemoveBet={(betId) => void removeBet(betId)}
+            onLockBets={() => void lockBets()}
             gamerName={gamerName}
             gamerRating={gamerRating}
             gamerPin={gamerPin}

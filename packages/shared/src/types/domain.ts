@@ -122,6 +122,8 @@ export interface CurrentGame {
   awayClubId: number | null
   selectionStrategyId: string
   randomSeed: number | null
+  /** When the betting book closed. Null while bets are still open. */
+  betsLockedAt: number | null
   createdAt: number
   updatedAt: number
 }

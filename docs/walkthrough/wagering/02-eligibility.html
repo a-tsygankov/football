@@ -1,0 +1,72 @@
+<!-- @dsCard group="Wagering walkthrough" name="Step 2 — Who can back what" subtitle="Participants: own side only, draw blocked" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step 2 — eligibility</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 20px;
+    font-family: ui-serif, Georgia, Cambria, 'Times New Roman', serif;
+    background: linear-gradient(180deg, #f8fafc 0%, #ecfdf5 60%, #d1fae5 100%);
+    color: #052e16;
+  }
+  .caption { font-size: 13px; opacity: .75; margin: 0 0 12px; max-width: 720px; }
+  .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; max-width: 740px; }
+  .panel {
+    padding: 12px; border-radius: 18px; background: #ffffff;
+    border: 1px solid #c7d2fe; display: grid; gap: 10px;
+  }
+  .panel h2 { margin: 0; font-size: 14px; }
+  .select {
+    padding: 9px 12px; border-radius: 12px; border: 1px solid #cbd5e1;
+    font-size: 14px; background: #f8fafc;
+  }
+  .outs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .btn {
+    padding: 10px 6px; border-radius: 12px; text-align: center; font-size: 14px;
+    border: 1px solid #cbd5e1; background: #ffffff;
+  }
+  .btn.sel { background: #166534; border-color: #166534; color: #ffffff; }
+  .btn.off { opacity: .38; background: #f1f5f9; }
+  .warn {
+    padding: 8px 10px; border-radius: 12px; font-size: 12.5px;
+    background: #fffbeb; border: 1px solid #fcd34d; line-height: 1.4;
+  }
+  .why {
+    margin: 14px 0 0; max-width: 740px; padding: 10px 12px; border-radius: 14px;
+    font-size: 12.5px; background: #eff6ff; border: 1px solid #93c5fd; line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+  <p class="caption"><strong>Step 2.</strong> The outcome buttons adapt to who is betting. The server enforces the same rules — the UI is a convenience, not the gate.</p>
+  <div class="pair">
+    <div class="panel">
+      <h2>Ann is betting <span style="opacity:.55">(playing home)</span></h2>
+      <div class="select">Ann ▾</div>
+      <div class="outs">
+        <div class="btn sel">Home</div>
+        <div class="btn off">Draw</div>
+        <div class="btn off">Away</div>
+      </div>
+      <div class="warn">You're playing home — you can only back Home.</div>
+    </div>
+    <div class="panel">
+      <h2>Cyd is betting <span style="opacity:.55">(sitting out)</span></h2>
+      <div class="select">Cyd ▾</div>
+      <div class="outs">
+        <div class="btn">Home</div>
+        <div class="btn sel">Draw</div>
+        <div class="btn">Away</div>
+      </div>
+      <div class="warn" style="visibility:hidden">–</div>
+    </div>
+  </div>
+  <div class="why">
+    <strong>Why draw is blocked for players:</strong> a draw stake would pay a participant for <em>not winning</em> — the same perverse incentive as backing the opponent, only softer. Non-participants in the night's pool may back anything. Gamers outside the pool can't bet at all (<code>400 gamer_not_in_pool</code>).
+  </div>
+</body>
+</html>

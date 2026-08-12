@@ -1,0 +1,75 @@
+<!-- @dsCard group="Wagering walkthrough" name="Step 3 — Pot & multipliers" subtitle="Two bets in, book still open" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step 3 — pot and multipliers</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 20px; display: grid; justify-content: center;
+    font-family: ui-serif, Georgia, Cambria, 'Times New Roman', serif;
+    background: linear-gradient(180deg, #f8fafc 0%, #ecfdf5 60%, #d1fae5 100%);
+    color: #052e16;
+  }
+  .phone { width: 380px; display: grid; gap: 12px; }
+  .caption { font-size: 13px; opacity: .75; margin: 0 0 2px; }
+  .panel {
+    padding: 12px; border-radius: 18px; background: #ffffff;
+    border: 1px solid #c7d2fe; display: grid; gap: 10px;
+  }
+  .panel strong { font-size: 16px; }
+  .pot { font-size: 13px; opacity: .85; }
+  .mults { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-size: 12.5px; }
+  .mult { display: grid; gap: 2px; }
+  .mult .x { font-weight: 700; font-size: 14px; }
+  .bar { display: flex; height: 18px; border-radius: 6px; overflow: hidden; background: #f1f5f9; }
+  .seg { height: 100%; }
+  .seg + .seg { border-left: 2px solid #ffffff; }
+  .seg.home { background: #2a78d6; }
+  .seg.draw { background: #eb6834; }
+  .legend { display: flex; gap: 14px; font-size: 12px; opacity: .8; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
+  ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+  li { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  li span { flex: 1; }
+  .x-btn {
+    padding: 3px 10px; border-radius: 10px; font-size: 13px;
+    border: 1px solid #cbd5e1; background: #ffffff;
+  }
+  .note {
+    padding: 10px 12px; border-radius: 14px; font-size: 12.5px;
+    background: #eff6ff; border: 1px solid #93c5fd; line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+  <div class="phone">
+    <p class="caption"><strong>Step 3.</strong> Ann backs Home for 50; Cyd backs Draw for 50. One pool, moving odds.</p>
+    <div class="panel">
+      <strong>Bets</strong>
+      <div class="pot">Pot 100 chips</div>
+      <div class="bar" role="img" aria-label="Pot split: Home 50, Draw 50">
+        <div class="seg home" style="width:50%"></div>
+        <div class="seg draw" style="width:50%"></div>
+      </div>
+      <div class="legend">
+        <span><span class="sw" style="background:#2a78d6"></span>Home 50</span>
+        <span><span class="sw" style="background:#eb6834"></span>Draw 50</span>
+        <span style="opacity:.6">Away 0</span>
+      </div>
+      <div class="mults">
+        <div class="mult"><span>Home pays</span><span class="x">2.0×</span></div>
+        <div class="mult"><span>Draw pays</span><span class="x">2.0×</span></div>
+        <div class="mult"><span>Away pays</span><span class="x">—</span></div>
+      </div>
+      <ul>
+        <li><span>Ann — home — 50</span><span class="x-btn">×</span></li>
+        <li><span>Cyd — draw — 50</span><span class="x-btn">×</span></li>
+      </ul>
+    </div>
+    <div class="note">Betting again <em>replaces</em> your bet — never adds a second one. The × removes it while the book is open. Stakes are whole chips, capped at 1,000,000 so the integer split always balances exactly.</div>
+  </div>
+</body>
+</html>

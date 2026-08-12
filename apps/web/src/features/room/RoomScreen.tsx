@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import type {
   AnalysePhotoResponse,
+  BetId,
   CreateCurrentGameRequest,
   Gamer,
+  GamerId,
+  GameNightChipsResponse,
+  GameResult,
   InterruptCurrentGameRequest,
   MatchHistoryResponse,
   MatchHistoryScope,
@@ -14,6 +18,7 @@ import type {
 } from '@fc26/shared'
 import { useDebugConsole } from '../../debug/console-store.js'
 import { RosterPanel } from '../gamers/RosterPanel.jsx'
+import { ChipStandingsPanel } from '../gameNight/ChipStandingsPanel.jsx'
 import { GameCreationPanel } from '../gameNight/GameCreationPanel.jsx'
 import { StartGameNightPanel } from '../gameNight/StartGameNightPanel.jsx'
 import { ScoreboardPanel } from '../scoreboard/ScoreboardPanel.jsx'
@@ -26,11 +31,15 @@ import type { BusyState } from '../../types/busyState.js'
 export function RoomScreen({
   bootstrap,
   busy,
+  chips,
   latestSquadVersion,
   roomSquadPlatform,
   scoreboard,
   onLoadMatchHistory,
   onVoidGame,
+  onPlaceBet,
+  onRemoveBet,
+  onLockBets,
   gamerName,
   gamerRating,
   gamerPin,
@@ -58,11 +67,15 @@ export function RoomScreen({
 }: {
   bootstrap: RoomBootstrapResponse
   busy: BusyState
+  chips: GameNightChipsResponse | null
   latestSquadVersion: string | null
   roomSquadPlatform: SquadPlatform
   scoreboard: RoomScoreboardResponse | null
   onLoadMatchHistory: (scope: MatchHistoryScope) => Promise<MatchHistoryResponse>
   onVoidGame: (gameNightId: string, gameId: string) => Promise<void>
+  onPlaceBet: (request: { gamerId: GamerId; outcome: GameResult; stake: number }) => void
+  onRemoveBet: (betId: BetId) => void
+  onLockBets: () => void
   gamerName: string
   gamerRating: string
   gamerPin: string
@@ -266,8 +279,19 @@ export function RoomScreen({
             onInterruptGame={onInterruptGame}
             onRecordGameResult={onRecordGameResult}
             onAnalysePhoto={onAnalysePhoto}
+            onPlaceBet={onPlaceBet}
+            onRemoveBet={onRemoveBet}
+            onLockBets={onLockBets}
           />
         </section>
+      ) : null}
+
+      {bootstrap.activeGameNight && chips ? (
+        <ChipStandingsPanel
+          gamers={bootstrap.gamers}
+          positions={chips.positions}
+          lastGameDeltas={chips.lastGameDeltas}
+        />
       ) : null}
 
       <ScoreboardPanel

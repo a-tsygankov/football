@@ -9,6 +9,8 @@ export type BusyState =
   | 'recording-game'
   | 'analysing-photo'
   | 'interrupting-game'
+  | 'placing-bet'
+  | 'removing-bet'
   | 'saving-room-settings'
   | 'refreshing-squad-assets'
   | 'hard-refreshing-squad-assets'

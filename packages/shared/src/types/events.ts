@@ -35,6 +35,19 @@ export interface GameSide {
   score: number | null
 }
 
+/**
+ * One gamer's settled position on a game. Written into the recorded event, so
+ * this is the durable record — the live `bets` row is deleted at settlement.
+ */
+export interface WagerSettlement {
+  gamerId: GamerId
+  /** Which outcome this gamer backed. */
+  outcome: GameResult
+  stake: number
+  /** 0 for a losing bet; equals `stake` when the pool was refunded. */
+  payout: number
+}
+
 export interface GameRecordedEvent {
   type: 'game_recorded'
   schemaVersion: typeof EVENT_SCHEMA_VERSION
@@ -55,6 +68,11 @@ export interface GameRecordedEvent {
   entryMethod: 'manual' | 'ocr'
   /** Set only when entryMethod === 'ocr'. */
   ocrModel?: string
+  /**
+   * Settled wagers for this game. Optional because events recorded before
+   * wagering existed will not have it, and a game with no bets writes nothing.
+   */
+  wagers?: readonly WagerSettlement[]
 }
 
 export interface GameInterruptedEvent {
