@@ -15,7 +15,7 @@ port = 8787
 # - MIN_CLIENT_VERSION (semver string)
 # - GIT_SHA (build metadata)
 [vars]
-WORKER_VERSION = "0.1.1"
+WORKER_VERSION = "0.1.2"
 SCHEMA_VERSION = "6"
 MIN_CLIENT_VERSION = "0.1.0"
 SESSION_SECRET = "fc26-local-dev-session-secret"
@@ -32,8 +32,9 @@ SESSION_SECRET = "fc26-local-dev-session-secret"
 [[d1_databases]]
 binding = "DB"
 database_name = "fc26"
-# Local-first placeholder. Replace with the real Cloudflare D1 UUID before
-# production deploys.
+# The real provisioned Cloudflare D1 UUID (not a placeholder — the stale
+# "replace me" note that used to sit here is what justified gating the
+# migration step in CI, long after the binding was live).
 database_id = "b0e1922f-6b23-4a37-b125-a71aee4ee8b2"
 preview_database_id = "fc26-local-phase-2"
 migrations_dir = "src/db/migrations"
