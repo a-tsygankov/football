@@ -34,3 +34,12 @@ pnpm-debug.log*
 
 # Claude Code local settings (per-developer, not shared)
 .claude/settings.local.json
+
+# Ephemeral agent worktrees. One of these was previously committed as a
+# gitlink (mode 160000) with no matching .gitmodules entry, which made
+# actions/checkout fail its post-job cleanup with exit 128 on every CI run.
+.claude/worktrees/
+
+# Python bytecode (version tooling in scripts/)
+__pycache__/
+*.py[cod]

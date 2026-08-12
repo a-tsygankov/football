@@ -1,0 +1,38 @@
+name: Version bump check
+
+# Every tier a PR touches (client / worker / shared / schema) must move its
+# version. The pre-commit hook does this automatically; this job is the
+# backstop for commits made without hooks — e.g. via the GitHub web UI.
+#
+# Deliberately a separate workflow from deploy.yml: that one is path-filtered
+# to the deployable packages, whereas this needs to see every PR so it can
+# decide for itself which tiers were touched.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Verify patch bump
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so `git show <base_ref>:path` can resolve the
+          # pre-PR version of each tier's package.json.
+          fetch-depth: 0
+
+      - name: Version tooling unit tests
+        run: python3 -m unittest discover -s scripts -v
+
+      - name: Run version-bump check
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: python3 scripts/check_version_bump.py
