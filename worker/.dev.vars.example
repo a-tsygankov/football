@@ -1,0 +1,19 @@
+# Local-only Worker environment. Copy to `.dev.vars` (gitignored) and adjust.
+#
+#   cp worker/.dev.vars.example worker/.dev.vars
+#
+# `wrangler dev` loads .dev.vars automatically. These never leave your machine.
+# Production equivalents are set as real Worker secrets:
+#
+#   cd worker && npx wrangler secret put SESSION_SECRET
+#
+# Signs room session cookies. Any non-empty string works locally; production
+# must use a strong random value (scripts/setup-secrets.ps1 generates one).
+SESSION_SECRET="local-dev-only-not-a-real-secret"
+
+# Optional. Enables TV-photo score analysis; the feature degrades gracefully
+# when absent, so leave it unset unless you are working on that flow.
+# GEMINI_API_KEY=""
+
+# Optional. Guards POST /internal/squads/sync.
+# SQUAD_SYNC_ADMIN_SECRET=""

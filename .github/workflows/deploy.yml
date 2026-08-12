@@ -172,6 +172,14 @@ jobs:
       # No gate now: `migrations apply` is idempotent (it applies only what is
       # pending), so running it unconditionally is safe and the schema can no
       # longer drift behind a deploy without the build failing loudly.
+      #
+      # Requires CLOUDFLARE_API_TOKEN to carry Account -> D1 -> Edit, and
+      # CLOUDFLARE_ACCOUNT_ID to name the account that owns the `fc26`
+      # database. Deploying a Worker needs neither, so a token scoped only for
+      # Workers passes every other step and fails here with
+      # "[code: 7403] The given account is not valid or is not authorized to
+      # access this service" — which reads like an outage but is a token scope
+      # or account-id problem. Check `wrangler whoami` and `wrangler d1 list`.
       - name: Apply D1 migrations (remote)
         working-directory: worker
         run: pnpm exec wrangler d1 migrations apply fc26 --remote

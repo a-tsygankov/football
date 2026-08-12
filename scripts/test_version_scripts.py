@@ -138,6 +138,92 @@ class TestRewriters(unittest.TestCase):
         self.assertEqual(wrangler_var(out, "SCHEMA_VERSION"), "6")
 
 
+class TestSchemaVersionSync(unittest.TestCase):
+    """Adding a migration must move SCHEMA_VERSION with it.
+
+    The CI gate fails when wrangler.toml's SCHEMA_VERSION disagrees with
+    the highest migration, so without this the bumper would hand people a
+    red build and a manual wrangler.toml edit every time they added one.
+    """
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name)
+        self.env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null"}
+        self._git("init", "-q", "-b", "main")
+        self._git("config", "user.email", "t@example.com")
+        self._git("config", "user.name", "Test")
+
+        (self.repo / SCHEMA_DIR).mkdir(parents=True)
+        (self.repo / SCHEMA_DIR / "0001_init.sql").write_text("SELECT 1;\n")
+        (self.repo / "worker").mkdir(exist_ok=True)
+        (self.repo / "worker" / "package.json").write_text(
+            '{\n  "name": "@fc26/worker",\n  "version": "0.1.0"\n}\n'
+        )
+        (self.repo / "worker" / "wrangler.toml").write_text(
+            '[vars]\nWORKER_VERSION = "0.1.0"\nSCHEMA_VERSION = "1"\n'
+        )
+        self._git("add", "-A")
+        self._git("commit", "-qm", "init")
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def _git(self, *args: str) -> str:
+        return subprocess.check_output(
+            ["git", "-C", str(self.repo), *args], text=True, env=self.env
+        )
+
+    def _toml(self) -> str:
+        return (self.repo / "worker" / "wrangler.toml").read_text()
+
+    def test_new_migration_syncs_schema_version(self) -> None:
+        (self.repo / SCHEMA_DIR / "0002_bets.sql").write_text("CREATE TABLE t(x);\n")
+        self._git("add", "-A")
+
+        bumped = bump_versions.run(self.repo)
+
+        self.assertIn("schema", bumped)
+        self.assertEqual(wrangler_var(self._toml(), "SCHEMA_VERSION"), "2")
+
+    def test_migration_also_bumps_the_worker(self) -> None:
+        # wrangler.toml is worker-tier, so touching SCHEMA_VERSION means
+        # the Worker must ship again to report the new schema version.
+        (self.repo / SCHEMA_DIR / "0002_bets.sql").write_text("CREATE TABLE t(x);\n")
+        self._git("add", "-A")
+
+        bumped = bump_versions.run(self.repo)
+
+        self.assertIn("worker", bumped)
+        self.assertEqual(wrangler_var(self._toml(), "WORKER_VERSION"), "0.1.1")
+        self.assertEqual(
+            package_json_version((self.repo / "worker" / "package.json").read_text()),
+            "0.1.1",
+        )
+
+    def test_no_migration_leaves_schema_version_alone(self) -> None:
+        (self.repo / "worker" / "src.ts").write_text("// code\n")
+        self._git("add", "-A")
+
+        bumped = bump_versions.run(self.repo)
+
+        self.assertNotIn("schema", bumped)
+        self.assertEqual(wrangler_var(self._toml(), "SCHEMA_VERSION"), "1")
+
+    def test_is_idempotent(self) -> None:
+        (self.repo / SCHEMA_DIR / "0002_bets.sql").write_text("CREATE TABLE t(x);\n")
+        self._git("add", "-A")
+
+        bump_versions.run(self.repo)
+        worker_after_first = wrangler_var(self._toml(), "WORKER_VERSION")
+
+        # Re-running must not double-bump: SCHEMA_VERSION already matches
+        # and the staged worker version already differs from HEAD.
+        self.assertEqual(bump_versions.run(self.repo), [])
+        self.assertEqual(wrangler_var(self._toml(), "SCHEMA_VERSION"), "2")
+        self.assertEqual(wrangler_var(self._toml(), "WORKER_VERSION"), worker_after_first)
+
+
 class TestBumperAgainstRealRepo(unittest.TestCase):
     """Exercise run() end-to-end in a throwaway git repo."""
 

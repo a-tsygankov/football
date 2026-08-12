@@ -15,10 +15,22 @@ port = 8787
 # - MIN_CLIENT_VERSION (semver string)
 # - GIT_SHA (build metadata)
 [vars]
-WORKER_VERSION = "0.1.2"
+WORKER_VERSION = "0.1.3"
 SCHEMA_VERSION = "6"
 MIN_CLIENT_VERSION = "0.1.0"
-SESSION_SECRET = "fc26-local-dev-session-secret"
+
+# SESSION_SECRET is deliberately NOT here. It used to sit in [vars] as
+# "fc26-local-dev-session-secret", and [vars] deploy as plaintext — from a
+# public repo — so production was signing room session cookies with a value
+# anyone could read, i.e. forgeable sessions.
+#
+# It cannot simply be shadowed by a Worker secret either: Cloudflare rejects a
+# secret whose name collides with an existing var binding
+# ("Binding name 'SESSION_SECRET' already in use [code: 10053]"). The var has
+# to be gone from the deployed Worker first.
+#
+#   production:  npx wrangler secret put SESSION_SECRET
+#   local dev:   worker/.dev.vars (gitignored) — see .dev.vars.example
 
 # Phase 1 bindings. The Worker boots without these (falls back to in-memory
 # stores in src/dependencies.ts so the scaffold stays runnable), but the
