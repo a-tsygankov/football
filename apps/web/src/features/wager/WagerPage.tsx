@@ -38,11 +38,15 @@ function EventLine({
       if (!event.replaced) {
         text = `${who} backed ${OUTCOME_LABEL[event.outcome]} for ${event.stake}`
       } else if (event.replaced.outcome === event.outcome) {
-        // Same outcome means this was a top-up, so report the increment —
-        // "moved to 45" would hide that they added 20 to an existing 25.
+        // A top-up, so report the increment — "moved to 45" would hide that
+        // they added 20 to an existing 25. Since hedging landed this is the
+        // only way `replaced` is written: backing another outcome opens a
+        // second position rather than overwriting the first.
         const added = event.stake - event.replaced.stake
         text = `${who} added ${added} to ${OUTCOME_LABEL[event.outcome]} (now ${event.stake})`
       } else {
+        // Only reachable for events written before hedging, when backing a
+        // different outcome replaced the position in place.
         text = `${who} moved to ${OUTCOME_LABEL[event.outcome]} ${event.stake} (from ${OUTCOME_LABEL[event.replaced.outcome]} ${event.replaced.stake})`
       }
       break

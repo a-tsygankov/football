@@ -31,7 +31,7 @@ describe('bet routes', () => {
     expect(body.betsLockedAt).toBeNull()
   })
 
-  it('replaces a repeat bet by the same gamer', async () => {
+  it('opens a second position when a gamer backs another outcome', async () => {
     const app = buildTestApp()
     const seed = await seedLiveGame(app)
     const place = (outcome: string, stake: number) =>
@@ -44,10 +44,13 @@ describe('bet routes', () => {
     await place('draw', 25)
     const res = await place('home', 60)
 
+    // Covering a second outcome is a hedge, not a change of mind: both stakes
+    // stand and the pot holds 85.
     const body = (await res.json()) as BetsResponse
-    expect(body.bets).toHaveLength(1)
-    expect(body.bets[0]!.stake).toBe(60)
-    expect(body.bets[0]!.outcome).toBe('home')
+    expect(body.bets).toHaveLength(2)
+    expect(
+      body.bets.map((item) => [item.outcome, item.stake]).sort(),
+    ).toEqual([['draw', 25], ['home', 60]])
   })
 
   it('adds to the position when backing the same outcome again', async () => {
@@ -112,7 +115,7 @@ describe('bet routes', () => {
     expect(((await res.json()) as { error: string }).error).toBe('stake_cap_exceeded')
   })
 
-  it('still replaces when the outcome changes', async () => {
+  it('tops up only the position on the outcome being backed', async () => {
     const app = buildTestApp()
     const seed = await seedLiveGame(app)
     const place = (outcome: string, stake: number) =>
@@ -123,15 +126,16 @@ describe('bet routes', () => {
       })
 
     await place('draw', 25)
-    const res = await place('home', 60)
+    await place('home', 20)
+    const res = await place('home', 15)
 
-    // Switching sides moves the position rather than accumulating across two
-    // outcomes — that would be hedging, which the pari-mutuel settlement
-    // cannot express while it keys payouts by gamer.
+    // A top-up must find the right side of the hedge and leave the other
+    // alone.
     const body = (await res.json()) as BetsResponse
-    expect(body.bets).toHaveLength(1)
-    expect(body.bets[0]!.stake).toBe(60)
-    expect(body.bets[0]!.outcome).toBe('home')
+    expect(body.bets).toHaveLength(2)
+    const byOutcome = new Map(body.bets.map((item) => [item.outcome, item.stake]))
+    expect(byOutcome.get('home')).toBe(35)
+    expect(byOutcome.get('draw')).toBe(25)
   })
 
   it('rejects a participant backing another outcome', async () => {

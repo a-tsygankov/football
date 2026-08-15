@@ -109,21 +109,55 @@ describe('available balance', () => {
     expect(((await allowed.json()) as BetsResponse).bets[0]!.stake).toBe(100)
   })
 
-  it('lets an all-in position switch outcome', async () => {
+  it('refuses a hedge the gamer cannot afford', async () => {
     const app = buildTestApp()
     const seed = await seedLiveGame(app)
     await placeBet(app, seed, seed.cy, 'draw', DEFAULT_BUY_IN)
 
-    // Available is zero, but these are the same chips being re-committed
-    // rather than a second stake — refusing here would trap a gamer on an
-    // outcome they no longer want.
+    // Covering a second outcome costs a second stake — the first is committed,
+    // not freed. Only a top-up of the same position re-commits chips.
+    const res = await placeBet(app, seed, seed.cy, 'home', 1)
+
+    expect(res.status).toBe(400)
+    expect((await refusal(res)).available).toBe(0)
+  })
+
+  it('lets a gamer move a position by removing it first', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    const placed = (await (
+      await placeBet(app, seed, seed.cy, 'draw', DEFAULT_BUY_IN)
+    ).json()) as BetsResponse
+    const betId = placed.bets[0]!.id
+
+    await req(
+      app,
+      `/api/rooms/${seed.roomId}/game-nights/${seed.nightId}/games/${seed.gameId}/bets/${betId}`,
+      { method: 'DELETE', headers: { cookie: seed.cookie } },
+    )
+
+    // Moving is now remove-then-place, which is the honest description of what
+    // it costs: the freed stake is what pays for the new one.
     const res = await placeBet(app, seed, seed.cy, 'home', DEFAULT_BUY_IN)
 
     expect(res.status).toBe(201)
     const body = (await res.json()) as BetsResponse
     expect(body.bets).toHaveLength(1)
     expect(body.bets[0]!.outcome).toBe('home')
-    expect(body.bets[0]!.stake).toBe(DEFAULT_BUY_IN)
+  })
+
+  it('lets a gamer hold both sides when the chips are there', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+
+    expect((await placeBet(app, seed, seed.cy, 'draw', 60)).status).toBe(201)
+    const res = await placeBet(app, seed, seed.cy, 'home', 40)
+
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as BetsResponse
+    expect(body.bets).toHaveLength(2)
+    // The whole stack is now committed across the two positions.
+    expect(body.bets.reduce((sum, item) => sum + item.stake, 0)).toBe(DEFAULT_BUY_IN)
   })
 
   it('returns committed stakes to the stack when a game is interrupted', async () => {

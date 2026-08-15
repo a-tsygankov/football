@@ -29,15 +29,28 @@ describe('InMemoryBetRepository', () => {
     expect((await repo.listByGame(gameId)).map((item) => item.stake)).toEqual([10, 20])
   })
 
-  it('replaces an existing bet by the same gamer rather than adding one', async () => {
+  it('merges a repeat bet on the same outcome rather than adding one', async () => {
+    const repo = new InMemoryBetRepository()
+    await repo.upsert(bet('b1', 'ann', 10))
+    await repo.upsert(bet('b2', 'ann', 75))
+
+    // Uniqueness is (game, gamer, outcome), so this is the same position and
+    // keeps the id it was created with.
+    const bets = await repo.listByGame(gameId)
+    expect(bets).toHaveLength(1)
+    expect(bets[0]!.id).toBe(BetId('b1'))
+    expect(bets[0]!.stake).toBe(75)
+  })
+
+  it('keeps a bet on another outcome as a separate position', async () => {
     const repo = new InMemoryBetRepository()
     await repo.upsert(bet('b1', 'ann', 10))
     await repo.upsert({ ...bet('b2', 'ann', 75), outcome: 'draw' })
 
+    // Both sides stand — one gamer, two positions. That is a hedge.
     const bets = await repo.listByGame(gameId)
-    expect(bets).toHaveLength(1)
-    expect(bets[0]!.stake).toBe(75)
-    expect(bets[0]!.outcome).toBe('draw')
+    expect(bets).toHaveLength(2)
+    expect(bets.map((item) => item.outcome).sort()).toEqual(['draw', 'home'])
   })
 
   it('lists a night across its games, and only that night', async () => {

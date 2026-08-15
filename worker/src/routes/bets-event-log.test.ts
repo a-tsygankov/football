@@ -60,25 +60,22 @@ describe('bet event log', () => {
     expect(placed[0]!.replaced).toBeUndefined()
   })
 
-  it('preserves the overwritten bet when a gamer re-bets', async () => {
+  it('records a hedge as two positions, neither replacing the other', async () => {
     const app = buildTestApp()
     const seed = await seedLiveGame(app)
 
     await place(app, seed, seed.cy, 'draw', 25)
     await place(app, seed, seed.cy, 'home', 60)
 
-    // The live table keeps only the latest — one bet per gamer per game.
     const placed = ofType(await events(app, seed.roomId), 'bet_placed') as BetPlacedEvent[]
     expect(placed).toHaveLength(2)
 
-    // ...but the log still knows what the first wager was, which is the whole
-    // point: an upsert would otherwise erase it without trace.
-    const second = placed[1]!
-    expect(second.stake).toBe(60)
-    expect(second.outcome).toBe('home')
-    expect(second.replaced).toBeDefined()
-    expect(second.replaced!.stake).toBe(25)
-    expect(second.replaced!.outcome).toBe('draw')
+    // Nothing was overwritten — backing a second outcome opens a position
+    // beside the first, so `replaced` would be a lie about what happened.
+    expect(placed[1]!.stake).toBe(60)
+    expect(placed[1]!.outcome).toBe('home')
+    expect(placed[1]!.replaced).toBeUndefined()
+    expect(placed[1]!.betId).not.toBe(placed[0]!.betId)
   })
 
   it('records a top-up as the running total plus what it replaced', async () => {

@@ -126,18 +126,22 @@ betRoutes.post(BETS_PATH, async (c) => {
   // clears rows, so every row still here is still live.
   const openBets = await c.get('deps').bets.listByGameNight(game.gameNightId)
 
-  // One bet per gamer per game, so a repeat bet lands on the existing row.
-  // Find it first: it decides whether this is a top-up, and the event log
-  // needs what was there before the write destroys it.
+  // One position per outcome, so a repeat bet on the same outcome lands on the
+  // existing row. Find it first: it decides whether this is a top-up, and the
+  // event log needs what was there before the write destroys it.
+  //
+  // Backing a *different* outcome opens a second position rather than moving
+  // the first — that is what hedging is. Moving a position is now remove then
+  // place, which is the honest description of what it costs.
   const existing = openBets.find(
-    (item) => item.gameId === game.id && item.gamerId === gamerId,
+    (item) =>
+      item.gameId === game.id &&
+      item.gamerId === gamerId &&
+      item.outcome === body.outcome,
   )
 
-  // Backing the same outcome again adds to the position rather than replacing
-  // it — "another 20 on Home" should mean 20 more, not a silent reset to 20.
-  // Switching outcome still replaces, which is how you move a position.
-  const toppingUp = existing !== undefined && existing.outcome === body.outcome
-  const stake = toppingUp ? existing.stake + body.stake : body.stake
+  // "Another 20 on Home" should mean 20 more, not a silent reset to 20.
+  const stake = existing ? existing.stake + body.stake : body.stake
 
   // The schema caps each request; a top-up has to be capped on the total too,
   // or repeated increments would walk past the limit that keeps
@@ -157,9 +161,10 @@ betRoutes.post(BETS_PATH, async (c) => {
   const events = await c.get('deps').events.listByRoom(roomId)
   const balance = ledgerEntryFor(roomChipLedger(events, openBets), gamerId)
 
-  // The existing position is re-committed rather than committed twice, so it
-  // is added back — otherwise a gamer who is all-in could not even switch
-  // which outcome they are backing.
+  // Only *this* position's stake is added back, because only it is being
+  // re-committed rather than committed twice. A hedge on another outcome is
+  // genuinely new money and has to fit inside what is available — covering
+  // both sides costs both stakes, which is the whole risk of doing it.
   const ceiling = maxStakeOnGame(balance, existing?.stake ?? 0)
   if (stake > ceiling) {
     return c.json(
