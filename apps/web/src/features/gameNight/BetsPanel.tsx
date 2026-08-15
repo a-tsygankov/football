@@ -3,9 +3,7 @@ import {
   type Bet,
   type BetId,
   canBack,
-  type ChipBalance,
-  chipBalances,
-  type ChipPosition,
+  type ChipLedgerEntry,
   type CurrentGame,
   describeIneligibility,
   type Gamer,
@@ -30,8 +28,7 @@ export function BetsPanel({
   gamers,
   poolGamerIds,
   bets,
-  buyIn,
-  positions,
+  ledger,
   onPlaceBet,
   onRemoveBet,
   onLockBets,
@@ -41,10 +38,8 @@ export function BetsPanel({
   gamers: ReadonlyArray<Gamer>
   poolGamerIds: ReadonlyArray<GamerId>
   bets: ReadonlyArray<Bet>
-  /** Chips everyone started the night with. */
-  buyIn: number
-  /** Settled nets for the night, as the chips endpoint reports them. */
-  positions: ReadonlyArray<ChipPosition>
+  /** Room ledger entries, keyed by gamer. Empty until the ledger loads. */
+  ledger: ReadonlyArray<ChipLedgerEntry>
   onPlaceBet: (request: { gamerId: GamerId; outcome: GameResult; stake: number }) => void
   onRemoveBet: (betId: BetId) => void
   onLockBets: () => void
@@ -77,16 +72,10 @@ export function BetsPanel({
     [gamers, poolGamerIds],
   )
 
-  // Only one game runs at a time, so this game's book is the whole of what the
-  // night has at risk. The worker recomputes all of this from the event log
-  // before accepting a bet; showing it here is what stops the refusal being a
-  // surprise.
-  const balances = useMemo(
-    () => chipBalances(poolGamerIds, buyIn, positions, betList),
-    [poolGamerIds, buyIn, positions, betList],
-  )
-  const balance: ChipBalance | undefined =
-    bettorId === '' ? undefined : balances.get(bettorId)
+  // The worker recomputes this from the event log before accepting a bet;
+  // showing it here is what stops the refusal being a surprise.
+  const balance: ChipLedgerEntry | undefined =
+    bettorId === '' ? undefined : ledger.find((item) => item.gamerId === bettorId)
   const existing = betList.find((item) => item.gamerId === bettorId)
 
   function nameOf(gamerId: GamerId): string {
@@ -215,7 +204,7 @@ export function BetsPanel({
             <div style={{ fontSize: 13, opacity: 0.8 }}>
               {balance.balance} chips
               {balance.committed > 0 ? ` — ${balance.available} available` : ''}
-              <span style={{ opacity: 0.7 }}> (bought in for {balance.buyIn})</span>
+              <span style={{ opacity: 0.7 }}> (bought {balance.purchased})</span>
             </div>
           ) : null}
 

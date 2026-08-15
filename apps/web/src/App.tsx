@@ -6,6 +6,7 @@ import {
   type BetsResponse,
   type CreateGamerRequest,
   type CreateCurrentGameRequest,
+  type ChipLedgerResponse,
   type CurrentGame,
   DEFAULT_SQUAD_PLATFORM,
   type Gamer,
@@ -59,6 +60,9 @@ export function App() {
   const [bootstrap, setBootstrap] = useState<RoomBootstrapResponse | null>(null)
   const [scoreboard, setScoreboard] = useState<RoomScoreboardResponse | null>(null)
   const [chips, setChips] = useState<GameNightChipsResponse | null>(null)
+  // Room-wide chip balances. Separate from `chips`, which is tonight's swing —
+  // this one carries across nights and is what bets are checked against.
+  const [ledger, setLedger] = useState<ChipLedgerResponse | null>(null)
   const [busy, setBusy] = useState<BusyState>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -159,6 +163,7 @@ export function App() {
       return
     }
     void loadChips(bootstrap.room.id, activeGameNightId)
+    void loadLedger(bootstrap.room.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeGameNightId])
 
@@ -212,6 +217,39 @@ export function App() {
     }
   }
 
+  async function loadLedger(roomId: string): Promise<void> {
+    try {
+      const next = await apiJson<ChipLedgerResponse>(`/api/rooms/${roomId}/chips-ledger`)
+      startTransition(() => setLedger(next))
+    } catch (err) {
+      logger.warn('system', 'chip ledger fetch failed', {
+        roomId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  async function buyChips(gamerId: GamerId, amount: number): Promise<void> {
+    if (!bootstrap) return
+    setBusy('buying-chips')
+    setError(null)
+    try {
+      const next = await apiJson<ChipLedgerResponse>(
+        `/api/rooms/${bootstrap.room.id}/chips/purchases`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ gamerId, amount }),
+        },
+      )
+      startTransition(() => setLedger(next))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   function applyBets(bets: ReadonlyArray<Bet>, betsLockedAt?: number | null): void {
     startTransition(() => {
       setBootstrap((current) =>
@@ -247,6 +285,7 @@ export function App() {
         },
       )
       applyBets(response.bets)
+      void loadLedger(bootstrap.room.id)
       persistLastBettor(bootstrap.room.id, request.gamerId)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -265,6 +304,7 @@ export function App() {
         { method: 'DELETE' },
       )
       applyBets(response.bets)
+      void loadLedger(bootstrap.room.id)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -327,6 +367,7 @@ export function App() {
       await refreshScoreboard(bootstrap.room.id)
       if (bootstrap.activeGameNight) {
         await loadChips(bootstrap.room.id, bootstrap.activeGameNight.id)
+        await loadLedger(bootstrap.room.id)
       }
     },
     [bootstrap],
@@ -765,6 +806,7 @@ export function App() {
       })
       await refreshScoreboard(bootstrap.room.id)
       await loadChips(bootstrap.room.id, gameNightId)
+      await loadLedger(bootstrap.room.id)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -1037,6 +1079,8 @@ export function App() {
             bootstrap={bootstrap}
             busy={busy}
             chips={chips}
+            ledger={ledger}
+            onBuyChips={buyChips}
             latestSquadVersion={worker?.latestSquadVersion ?? null}
             roomSquadPlatform={roomSquadPlatform}
             scoreboard={scoreboard}

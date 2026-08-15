@@ -7,7 +7,7 @@ import {
   GamerId,
   RoomId,
   type Bet,
-  type ChipPosition,
+  type ChipLedgerEntry,
   type CurrentGame,
   type Gamer,
   DEFAULT_BUY_IN,
@@ -69,6 +69,26 @@ function bet(
   }
 }
 
+/**
+ * A ledger row as the worker would compute it: `purchased` chips, `net` from
+ * settled games, `committed` riding on the open book.
+ */
+function entry(
+  gamerId: ReturnType<typeof GamerId>,
+  purchased: number,
+  net = 0,
+  committed = 0,
+): ChipLedgerEntry {
+  return {
+    gamerId,
+    purchased,
+    net,
+    committed,
+    balance: purchased + net,
+    available: purchased + net - committed,
+  }
+}
+
 function renderPanel(overrides: Partial<Parameters<typeof BetsPanel>[0]> = {}) {
   const props = {
     busy: null,
@@ -76,8 +96,7 @@ function renderPanel(overrides: Partial<Parameters<typeof BetsPanel>[0]> = {}) {
     gamers: [gamer(ann, 'Ann'), gamer(bob, 'Bob'), gamer(cy, 'Cy')],
     poolGamerIds: [ann, bob, cy],
     bets: [] as Bet[],
-    buyIn: DEFAULT_BUY_IN,
-    positions: [] as ChipPosition[],
+    ledger: [ann, bob, cy].map((id) => entry(id, DEFAULT_BUY_IN)) as ChipLedgerEntry[],
     onPlaceBet: vi.fn(),
     onRemoveBet: vi.fn(),
     onLockBets: vi.fn(),
@@ -158,7 +177,7 @@ describe('BetsPanel', () => {
   })
 
   it('shows the selected bettor their stack', () => {
-    renderPanel({ positions: [{ gamerId: cy, net: -30 }] })
+    renderPanel({ ledger: [entry(cy, 100, -30)] })
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
 
     // 100 bought in, 30 lost so far.
@@ -166,14 +185,14 @@ describe('BetsPanel', () => {
   })
 
   it('separates what is left from what is already staked', () => {
-    renderPanel({ bets: [bet('b1', cy, 'draw', 40)] })
+    renderPanel({ bets: [bet('b1', cy, 'draw', 40)], ledger: [entry(cy, 100, 0, 40)] })
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
 
     expect(screen.getByText(/100 chips — 60 available/i)).toBeInTheDocument()
   })
 
   it('refuses a stake bigger than the stack without calling the handler', () => {
-    const props = renderPanel({ positions: [{ gamerId: cy, net: -30 }] })
+    const props = renderPanel({ ledger: [entry(cy, 100, -30)] })
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
     fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '71' } })
@@ -186,7 +205,10 @@ describe('BetsPanel', () => {
   })
 
   it('measures a top-up against the running total', () => {
-    const props = renderPanel({ bets: [bet('b1', cy, 'draw', 60)] })
+    const props = renderPanel({
+      bets: [bet('b1', cy, 'draw', 60)],
+      ledger: [entry(cy, 100, 0, 60)],
+    })
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
     fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
     // 50 is well under the buy-in, but it lands on top of 60.
@@ -198,7 +220,10 @@ describe('BetsPanel', () => {
   })
 
   it('lets an all-in position switch outcome', () => {
-    const props = renderPanel({ bets: [bet('b1', cy, 'draw', 100)] })
+    const props = renderPanel({
+      bets: [bet('b1', cy, 'draw', 100)],
+      ledger: [entry(cy, 100, 0, 100)],
+    })
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
     fireEvent.click(screen.getByRole('button', { name: /^home$/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '100' } })

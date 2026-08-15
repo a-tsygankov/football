@@ -13,7 +13,7 @@ import {
 interface Refusal {
   error: string
   stake: number
-  buyIn: number
+  purchased: number
   balance: number
   committed: number
   available: number
@@ -158,7 +158,7 @@ describe('available balance', () => {
     expect(body).toMatchObject({
       error: 'insufficient_chips',
       stake: 200,
-      buyIn: DEFAULT_BUY_IN,
+      purchased: DEFAULT_BUY_IN,
       balance: DEFAULT_BUY_IN,
       committed: 30,
       available: 70,

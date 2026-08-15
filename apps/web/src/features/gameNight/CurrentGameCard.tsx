@@ -3,7 +3,7 @@ import {
   type AnalysePhotoResponse,
   type Bet,
   type BetId,
-  type ChipPosition,
+  type ChipLedgerEntry,
   type Club,
   type CurrentGame,
   type Gamer,
@@ -31,8 +31,7 @@ export function CurrentGameCard({
   gamers,
   squadClubs,
   bets,
-  buyIn,
-  positions,
+  ledger,
   poolGamerIds,
   onInterruptGame,
   onRecordGameResult,
@@ -46,10 +45,8 @@ export function CurrentGameCard({
   gamers: ReadonlyArray<Gamer>
   squadClubs: ReadonlyArray<Club>
   bets: ReadonlyArray<Bet>
-  /** Chips everyone started the night with. */
-  buyIn: number
-  /** Settled nets for the night, as the chips endpoint reports them. */
-  positions: ReadonlyArray<ChipPosition>
+  /** Room chip ledger, for showing and pre-checking what a bettor can stake. */
+  ledger: ReadonlyArray<ChipLedgerEntry>
   poolGamerIds: ReadonlyArray<GamerId>
   onInterruptGame: (request: InterruptCurrentGameRequest) => Promise<void>
   onRecordGameResult: (request: RecordCurrentGameResultRequest) => Promise<void>
@@ -192,8 +189,7 @@ export function CurrentGameCard({
         gamers={gamers}
         poolGamerIds={poolGamerIds}
         bets={bets}
-        buyIn={buyIn}
-        positions={positions}
+        ledger={ledger}
         onPlaceBet={onPlaceBet}
         onRemoveBet={onRemoveBet}
         onLockBets={onLockBets}

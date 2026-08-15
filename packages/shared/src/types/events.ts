@@ -24,6 +24,7 @@ export type EventType =
   | 'bet_removed'
   | 'bets_locked'
   | 'bets_discarded'
+  | 'chips_purchased'
 
 export type GameResult = 'home' | 'away' | 'draw'
 
@@ -111,6 +112,31 @@ export interface BetsDiscardedEvent extends BetEventBase {
   reason: 'game_interrupted' | 'game_night_ended' | 'game_voided'
 }
 
+/**
+ * Chips bought into the room.
+ *
+ * The only way tokens enter circulation. Wagering just moves them between
+ * gamers, so `Σ purchases` is exactly how many chips exist, and a gamer's
+ * profit is whatever they hold beyond what they paid for — which is what
+ * makes the end-of-night settle-up sum to zero.
+ *
+ * Room-scoped rather than night-scoped: balances carry across nights, and a
+ * purchase can happen whenever someone runs dry, not only at a night's start.
+ */
+export interface ChipsPurchasedEvent {
+  type: 'chips_purchased'
+  schemaVersion: typeof EVENT_SCHEMA_VERSION
+  roomId: RoomId
+  gamerId: GamerId
+  /** Always positive. Chips are never un-bought; a mistake is corrected by play. */
+  amount: number
+  /** The night it happened on, or null for a purchase made outside one. */
+  gameNightId: GameNightId | null
+  occurredAt: number
+  /** `game_night_buy_in` for the batch issued when a night starts. */
+  reason: 'game_night_buy_in' | 'manual'
+}
+
 export interface GameRecordedEvent {
   type: 'game_recorded'
   schemaVersion: typeof EVENT_SCHEMA_VERSION
@@ -169,6 +195,7 @@ export type GameEventPayload =
   | BetRemovedEvent
   | BetsLockedEvent
   | BetsDiscardedEvent
+  | ChipsPurchasedEvent
 
 /** Narrowing helper — the bet events share a shape the game events do not. */
 export type BetEventPayload =

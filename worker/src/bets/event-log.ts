@@ -3,6 +3,7 @@ import {
   type Bet,
   type BetEventPayload,
   type BetSnapshot,
+  type ChipsPurchasedEvent,
   EventId,
 } from '@fc26/shared'
 import type { RouteContext } from '../routes/room-context.js'
@@ -27,6 +28,22 @@ export function toSnapshot(bet: Bet): BetSnapshot {
     outcome: bet.outcome,
     stake: bet.stake,
   }
+}
+
+export async function recordChipPurchase(
+  c: RouteContext,
+  payload: ChipsPurchasedEvent,
+): Promise<void> {
+  await c.get('deps').events.insert({
+    id: EventId(nanoid(12)),
+    roomId: payload.roomId,
+    eventType: payload.type,
+    payload,
+    schemaVersion: payload.schemaVersion,
+    correlationId: c.get('correlationId') ?? null,
+    occurredAt: payload.occurredAt,
+    recordedAt: Date.now(),
+  })
 }
 
 export async function recordBetEvent(
