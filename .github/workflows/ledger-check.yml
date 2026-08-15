@@ -1,0 +1,75 @@
+name: Chip ledger health check
+
+# Read-only. Answers one question against production D1: is any gamer sitting
+# in a game night's pool without having been bought in?
+#
+# Every such gamer holds zero chips and cannot place a single bet, because
+# balances are derived room-wide from `chips_purchased` events. Two bugs have
+# produced exactly this state — a night's buy-in not being issued at all, and
+# a gamer added to the pool after the night started — so it is worth being
+# able to ask on demand rather than reasoning about it from migrations.
+#
+# Manual only: nothing here should run on a push, and it takes no input, so it
+# cannot be turned into an arbitrary-SQL console.
+
+on:
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: 22
+  PNPM_VERSION: 9.15.0
+
+jobs:
+  ledger-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `expected` counts (night, pool gamer) pairs that should have a buy-in;
+      # `missing` counts those that do not. They are computed the same way, so
+      # `missing` is the only number that matters — a non-zero value names a
+      # real person who cannot bet.
+      #
+      # Deliberately not compared against an id prefix: purchases issued by the
+      # route carry random ids, and only migration-created rows carry a
+      # recognisable one. "Has this pair been bought in at all" is the sound
+      # test, and the earlier prefix comparison is what made a healthy ledger
+      # look broken.
+      - name: Count pool members with no buy-in
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pnpm exec wrangler d1 execute fc26 --remote --command "
+            SELECT
+              (SELECT COUNT(*) FROM game_nights gn
+                 JOIN game_night_active_gamers g ON g.game_night_id = gn.id
+               WHERE gn.buy_in > 0) AS expected,
+              (SELECT COUNT(*) FROM game_nights gn
+                 JOIN game_night_active_gamers g ON g.game_night_id = gn.id
+               WHERE gn.buy_in > 0
+                 AND NOT EXISTS (
+                   SELECT 1 FROM game_events e
+                   WHERE e.event_type = 'chips_purchased'
+                     AND json_extract(e.payload, '\$.gameNightId') = gn.id
+                     AND json_extract(e.payload, '\$.gamerId') = g.gamer_id
+                 )) AS missing,
+              (SELECT COUNT(*) FROM game_events
+               WHERE event_type = 'chips_purchased') AS purchases;
+          "
