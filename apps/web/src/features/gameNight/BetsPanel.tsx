@@ -76,7 +76,11 @@ export function BetsPanel({
   // showing it here is what stops the refusal being a surprise.
   const balance: ChipLedgerEntry | undefined =
     bettorId === '' ? undefined : ledger.find((item) => item.gamerId === bettorId)
-  const existing = betList.find((item) => item.gamerId === bettorId)
+  // Keyed by outcome as well as gamer: a hedger holds one position per
+  // outcome, and a top-up must find the side actually being backed.
+  const existing = betList.find(
+    (item) => item.gamerId === bettorId && item.outcome === outcome,
+  )
 
   function nameOf(gamerId: GamerId): string {
     return gamers.find((gamer) => gamer.id === gamerId)?.name ?? 'Unknown'
@@ -118,9 +122,10 @@ export function BetsPanel({
       setError(describeIneligibility(bettorId, currentGame, outcome))
       return
     }
-    // Mirrors the worker: backing the same outcome adds to the position, so
-    // what has to fit the stack is the total, not what was just typed.
-    const total = existing && existing.outcome === outcome ? existing.stake + parsed : parsed
+    // Mirrors the worker: backing the same outcome adds to that position, so
+    // what has to fit the stack is the total, not what was just typed. A
+    // different outcome is a separate position and pays its own way.
+    const total = existing ? existing.stake + parsed : parsed
     if (balance && total > maxStakeOnGame(balance, existing?.stake ?? 0)) {
       setError(
         `${nameOf(bettorId)} has ${balance.available} chips available` +

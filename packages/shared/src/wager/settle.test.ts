@@ -74,4 +74,72 @@ describe('settleWagers', () => {
   it('returns nothing when no bets were placed', () => {
     expect(settleWagers([], 'home')).toEqual([])
   })
+
+  describe('hedged positions', () => {
+    it('pays only the winning side of a hedge', () => {
+      // Ann has money on both home and away. Keying payouts by gamer would
+      // pay her winning share against both rows and mint chips out of nothing.
+      const settled = settleWagers(
+        [bet(ann, 'home', 60), bet(ann, 'away', 40), bet(bob, 'home', 40)],
+        'home',
+      )
+
+      expect(settled).toEqual([
+        { gamerId: ann, outcome: 'home', stake: 60, payout: 84 },
+        { gamerId: ann, outcome: 'away', stake: 40, payout: 0 },
+        { gamerId: bob, outcome: 'home', stake: 40, payout: 56 },
+      ])
+      expect(netTotal(settled)).toBe(0)
+    })
+
+    it('leaves a hedger net down when their losing side is bigger', () => {
+      const settled = settleWagers(
+        [bet(ann, 'home', 10), bet(ann, 'away', 90), bet(bob, 'home', 10)],
+        'home',
+      )
+
+      // Pot 110, home stake 20, so Ann's 10 returns 55 against 100 committed.
+      const annNet = settled
+        .filter((s) => s.gamerId === ann)
+        .reduce((sum, s) => sum + (s.payout - s.stake), 0)
+      expect(annNet).toBe(-45)
+      expect(netTotal(settled)).toBe(0)
+    })
+
+    it('refunds both sides of a hedge when nobody backed the result', () => {
+      const settled = settleWagers([bet(ann, 'home', 30), bet(ann, 'away', 20)], 'draw')
+
+      expect(settled.map((s) => s.payout)).toEqual([30, 20])
+      expect(netTotal(settled)).toBe(0)
+    })
+
+    it('still balances when a hedger is the only winner', () => {
+      const settled = settleWagers(
+        [bet(ann, 'home', 25), bet(ann, 'away', 25), bet(bob, 'draw', 50)],
+        'home',
+      )
+
+      // The whole 100 pot goes to the single winning row.
+      expect(settled[0]!.payout).toBe(100)
+      expect(settled[1]!.payout).toBe(0)
+      expect(settled[2]!.payout).toBe(0)
+      expect(netTotal(settled)).toBe(0)
+    })
+
+    it('gives each winning row its own remainder claim', () => {
+      // Pot 100 over a winning stake of 3 divides to 33.33… each: two whole
+      // chips are left to distribute, and the rows must be treated as three
+      // separate claims even though two belong to the same gamer.
+      const settled = settleWagers(
+        [bet(ann, 'home', 1), bet(ann, 'draw', 97), bet(bob, 'home', 1), bet(cy, 'home', 1)],
+        'home',
+      )
+
+      expect(netTotal(settled)).toBe(0)
+      const paid = settled.filter((s) => s.outcome === 'home').map((s) => s.payout)
+      expect(paid.reduce((a, b) => a + b, 0)).toBe(100)
+      // Equal stakes, so the chips land one apiece rather than doubling up.
+      expect(paid.every((p) => p === 33 || p === 34)).toBe(true)
+    })
+  })
 })

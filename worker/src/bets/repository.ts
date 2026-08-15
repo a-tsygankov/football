@@ -16,7 +16,11 @@ export interface IBetRepository {
    * balance has to subtract.
    */
   listByGameNight(gameNightId: GameNightId): Promise<ReadonlyArray<Bet>>
-  /** Places a bet, replacing any existing bet by the same gamer on the game. */
+  /**
+   * Places a bet, merging into any existing position the same gamer holds on
+   * the same outcome. A different outcome is a separate position — that is
+   * what makes a hedge possible.
+   */
   upsert(bet: Bet): Promise<void>
   remove(betId: BetId, gameId: GameId): Promise<void>
   /** Called at settlement: the event payload becomes the durable record. */
@@ -42,14 +46,17 @@ export class InMemoryBetRepository implements IBetRepository {
 
   async upsert(bet: Bet): Promise<void> {
     const existing = [...this.bets.values()].find(
-      (item) => item.gameId === bet.gameId && item.gamerId === bet.gamerId,
+      (item) =>
+        item.gameId === bet.gameId &&
+        item.gamerId === bet.gamerId &&
+        item.outcome === bet.outcome,
     )
     if (existing) {
-      // Match D1, whose ON CONFLICT updates outcome/stake/updated_at and
-      // leaves id and created_at alone. Deleting and re-inserting under the
-      // caller's id would give the same bet a different identity here than in
-      // production — invisible until something keys off betId, which the bet
-      // event log now does.
+      // Match D1, whose ON CONFLICT updates stake/updated_at and leaves id and
+      // created_at alone. Deleting and re-inserting under the caller's id would
+      // give the same bet a different identity here than in production —
+      // invisible until something keys off betId, which the bet event log
+      // now does.
       this.bets.set(existing.id, {
         ...bet,
         id: existing.id,
@@ -124,15 +131,15 @@ export class D1BetRepository implements IBetRepository {
   }
 
   async upsert(bet: Bet): Promise<void> {
-    // `idx_bets_game_gamer` makes (game_id, gamer_id) unique, so a repeat bet
-    // updates the existing row in place and keeps its original created_at.
+    // `idx_bets_game_gamer_outcome` makes (game_id, gamer_id, outcome) unique,
+    // so backing the same outcome again updates that row in place and keeps its
+    // original created_at, while a different outcome inserts a second position.
     await this.db
       .prepare(
         `INSERT INTO bets
            (id, room_id, game_night_id, game_id, gamer_id, outcome, stake, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(game_id, gamer_id) DO UPDATE SET
-           outcome = excluded.outcome,
+         ON CONFLICT(game_id, gamer_id, outcome) DO UPDATE SET
            stake = excluded.stake,
            updated_at = excluded.updated_at`,
       )

@@ -27,6 +27,49 @@ describe('wager settlement', () => {
     expect(await app.bets.listByGame(seed.gameId)).toEqual([])
   })
 
+  it('settles a hedger on each side separately', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    // Cy is not playing, so he is the one eligibility lets cover both sides.
+    await placeBet(app, seed, seed.cy, 'home', 60)
+    await placeBet(app, seed, seed.cy, 'draw', 40)
+
+    await recordResult(app, seed, { result: 'home', homeScore: 2, awayScore: 1 })
+
+    const recorded = app.events.events.find(
+      (event) => event.payload.type === 'game_recorded',
+    )!.payload as GameRecordedEvent
+
+    // The winning row takes the whole 100 pot; the losing row pays nothing.
+    // Paying by gamer rather than by row would have credited 100 twice.
+    expect(recorded.wagers).toEqual([
+      { gamerId: seed.cy, outcome: 'home', stake: 60, payout: 100 },
+      { gamerId: seed.cy, outcome: 'draw', stake: 40, payout: 0 },
+    ])
+  })
+
+  it('leaves the room no richer after a hedged game', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    await placeBet(app, seed, seed.ann, 'home', 30)
+    await placeBet(app, seed, seed.cy, 'home', 20)
+    await placeBet(app, seed, seed.cy, 'away', 50)
+
+    await recordResult(app, seed, { result: 'home', homeScore: 3, awayScore: 0 })
+
+    const recorded = app.events.events.find(
+      (event) => event.payload.type === 'game_recorded',
+    )!.payload as GameRecordedEvent
+
+    // Chips only move between people; a closed pool must neither create nor
+    // destroy them, hedge or no hedge.
+    const net = (recorded.wagers ?? []).reduce(
+      (sum, wager) => sum + (wager.payout - wager.stake),
+      0,
+    )
+    expect(net).toBe(0)
+  })
+
   it('omits the wagers field when no bets were placed', async () => {
     const app = buildTestApp()
     const seed = await seedLiveGame(app)

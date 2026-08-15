@@ -15,8 +15,8 @@ port = 8787
 # - MIN_CLIENT_VERSION (semver string)
 # - GIT_SHA (build metadata)
 [vars]
-WORKER_VERSION = "0.1.9"
-SCHEMA_VERSION = "9"
+WORKER_VERSION = "0.1.10"
+SCHEMA_VERSION = "10"
 MIN_CLIENT_VERSION = "0.1.0"
 
 # SESSION_SECRET is deliberately NOT here. It used to sit in [vars] as

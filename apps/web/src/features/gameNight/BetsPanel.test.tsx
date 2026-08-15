@@ -219,18 +219,44 @@ describe('BetsPanel', () => {
     expect(screen.getByText(/40 chips available on top of the 60/i)).toBeInTheDocument()
   })
 
-  it('lets an all-in position switch outcome', () => {
+  it('refuses a hedge the bettor cannot cover', () => {
     const props = renderPanel({
       bets: [bet('b1', cy, 'draw', 100)],
       ledger: [entry(cy, 100, 0, 100)],
     })
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
     fireEvent.click(screen.getByRole('button', { name: /^home$/i }))
-    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '100' } })
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '1' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
 
-    // Nothing new is being risked — the same chips move to another outcome.
-    expect(props.onPlaceBet).toHaveBeenCalledWith({ gamerId: cy, outcome: 'home', stake: 100 })
+    // Covering a second outcome costs a second stake; the first is committed,
+    // not freed. Only topping up the same position re-commits chips.
+    expect(props.onPlaceBet).not.toHaveBeenCalled()
+    expect(screen.getByText(/cy has 0 chips available/i)).toBeInTheDocument()
+  })
+
+  it('measures a top-up against the position on that outcome only', () => {
+    const props = renderPanel({
+      // Already hedged: 30 on draw and 20 on home, 50 of the stack left.
+      bets: [bet('b1', cy, 'draw', 30), bet('b2', cy, 'home', 20)],
+      ledger: [entry(cy, 100, 0, 50)],
+    })
+    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
+    fireEvent.click(screen.getByRole('button', { name: /^home$/i }))
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '50' } })
+    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
+
+    // The home side becomes 70, which fits: the draw side is untouched and
+    // its 30 stays committed.
+    expect(props.onPlaceBet).toHaveBeenCalledWith({ gamerId: cy, outcome: 'home', stake: 50 })
+  })
+
+  it('shows every position a hedger holds', () => {
+    renderPanel({ bets: [bet('b1', cy, 'draw', 30), bet('b2', cy, 'home', 20)] })
+
+    expect(screen.getByText(/cy — draw — 30/i)).toBeInTheDocument()
+    expect(screen.getByText(/cy — home — 20/i)).toBeInTheDocument()
+    expect(screen.getByText(/pot 50/i)).toBeInTheDocument()
   })
 
   it('removes a bet', () => {
