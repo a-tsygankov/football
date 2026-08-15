@@ -81,6 +81,27 @@ describe('bet event log', () => {
     expect(second.replaced!.outcome).toBe('draw')
   })
 
+  it('records a top-up as the running total plus what it replaced', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+
+    await place(app, seed, seed.cy, 'draw', 25)
+    await place(app, seed, seed.cy, 'draw', 20)
+
+    const placed = ofType(await events(app, seed.roomId), 'bet_placed') as BetPlacedEvent[]
+    expect(placed).toHaveLength(2)
+
+    // `stake` is the position after the top-up, and `replaced` carries what it
+    // was before — so the increment is recoverable (45 - 25 = 20) without
+    // storing it separately, and the ledger can say "added 20" rather than
+    // "moved to 45", which would hide the original stake.
+    expect(placed[1]!.stake).toBe(45)
+    expect(placed[1]!.replaced?.stake).toBe(25)
+    expect(placed[1]!.replaced?.outcome).toBe('draw')
+    // Same position throughout, so the ids match.
+    expect(placed[1]!.betId).toBe(placed[0]!.betId)
+  })
+
   it('records a removed bet with the stake being undone', async () => {
     const app = buildTestApp()
     const seed = await seedLiveGame(app)

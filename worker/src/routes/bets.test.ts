@@ -50,6 +50,88 @@ describe('bet routes', () => {
     expect(body.bets[0]!.outcome).toBe('home')
   })
 
+  it('adds to the position when backing the same outcome again', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    const place = (outcome: string, stake: number) =>
+      req(app, betsPath(seed), {
+        method: 'POST',
+        headers: { cookie: seed.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ gamerId: seed.cy, outcome, stake }),
+      })
+
+    await place('draw', 25)
+    const res = await place('draw', 20)
+
+    // "Another 20 on draw" means 20 more, not a silent reset to 20.
+    const body = (await res.json()) as BetsResponse
+    expect(body.bets).toHaveLength(1)
+    expect(body.bets[0]!.stake).toBe(45)
+    expect(body.bets[0]!.outcome).toBe('draw')
+  })
+
+  it('keeps the same bet identity across a top-up', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    const place = (stake: number) =>
+      req(app, betsPath(seed), {
+        method: 'POST',
+        headers: { cookie: seed.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ gamerId: seed.cy, outcome: 'draw', stake }),
+      })
+
+    const first = (await (await place(25)).json()) as BetsResponse
+    const second = (await (await place(20)).json()) as BetsResponse
+
+    // A top-up is the same position, not a new one — the bet event log and
+    // the delete route both key off this id.
+    expect(second.bets[0]!.id).toBe(first.bets[0]!.id)
+    expect(second.bets[0]!.createdAt).toBe(first.bets[0]!.createdAt)
+    expect(second.bets[0]!.updatedAt).toBeGreaterThanOrEqual(first.bets[0]!.updatedAt)
+  })
+
+  it('caps the total, not just the increment', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    const place = (stake: number) =>
+      req(app, betsPath(seed), {
+        method: 'POST',
+        headers: { cookie: seed.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ gamerId: seed.cy, outcome: 'draw', stake }),
+      })
+
+    await place(1_000_000)
+    // Each increment is individually legal, so without a check on the running
+    // total repeated top-ups would walk past the cap that keeps stake * pot
+    // inside exact-integer range during settlement.
+    const res = await place(1)
+
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as { error: string }).error).toBe('stake_cap_exceeded')
+  })
+
+  it('still replaces when the outcome changes', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    const place = (outcome: string, stake: number) =>
+      req(app, betsPath(seed), {
+        method: 'POST',
+        headers: { cookie: seed.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ gamerId: seed.cy, outcome, stake }),
+      })
+
+    await place('draw', 25)
+    const res = await place('home', 60)
+
+    // Switching sides moves the position rather than accumulating across two
+    // outcomes — that would be hedging, which the pari-mutuel settlement
+    // cannot express while it keys payouts by gamer.
+    const body = (await res.json()) as BetsResponse
+    expect(body.bets).toHaveLength(1)
+    expect(body.bets[0]!.stake).toBe(60)
+    expect(body.bets[0]!.outcome).toBe('home')
+  })
+
   it('rejects a participant backing another outcome', async () => {
     const app = buildTestApp()
     const seed = await seedLiveGame(app)

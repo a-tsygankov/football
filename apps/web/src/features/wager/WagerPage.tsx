@@ -33,11 +33,20 @@ function EventLine({
 }) {
   let text: string
   switch (event.type) {
-    case 'bet_placed':
-      text = event.replaced
-        ? `${nameOf(gamers, event.gamerId)} moved to ${OUTCOME_LABEL[event.outcome]} ${event.stake} (from ${OUTCOME_LABEL[event.replaced.outcome]} ${event.replaced.stake})`
-        : `${nameOf(gamers, event.gamerId)} backed ${OUTCOME_LABEL[event.outcome]} for ${event.stake}`
+    case 'bet_placed': {
+      const who = nameOf(gamers, event.gamerId)
+      if (!event.replaced) {
+        text = `${who} backed ${OUTCOME_LABEL[event.outcome]} for ${event.stake}`
+      } else if (event.replaced.outcome === event.outcome) {
+        // Same outcome means this was a top-up, so report the increment —
+        // "moved to 45" would hide that they added 20 to an existing 25.
+        const added = event.stake - event.replaced.stake
+        text = `${who} added ${added} to ${OUTCOME_LABEL[event.outcome]} (now ${event.stake})`
+      } else {
+        text = `${who} moved to ${OUTCOME_LABEL[event.outcome]} ${event.stake} (from ${OUTCOME_LABEL[event.replaced.outcome]} ${event.replaced.stake})`
+      }
       break
+    }
     case 'bet_removed':
       text = `${nameOf(gamers, event.gamerId)} pulled ${event.stake} off ${OUTCOME_LABEL[event.outcome]}`
       break
