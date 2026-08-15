@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_BUY_IN, type ChipLedgerResponse } from '@fc26/shared'
 import {
   buildTestApp,
+  createGamer,
   placeBet,
   recordResult,
   req,
@@ -150,6 +151,57 @@ describe('chip ledger', () => {
     const body = await ledger(app, seed.roomId, seed.cookie)
     expect(balanceOf(body, seed.cy)).toBe(DEFAULT_BUY_IN)
     expect(body.entries.find((entry) => entry.gamerId === seed.cy)!.committed).toBe(0)
+  })
+
+  it('buys in a gamer added to the pool after the night started', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    const late = await createGamer(app, seed.roomId, seed.cookie, 'Dex')
+
+    await req(app, `/api/rooms/${seed.roomId}/game-nights/${seed.nightId}/active-gamers`, {
+      method: 'PATCH',
+      headers: { cookie: seed.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ activeGamerIds: [seed.ann, seed.bob, seed.cy, late] }),
+    })
+
+    // Balances are the room's now, so arriving late used to mean sitting down
+    // with nothing and being unable to bet at all.
+    const body = await ledger(app, seed.roomId, seed.cookie)
+    expect(balanceOf(body, late)).toBe(DEFAULT_BUY_IN)
+  })
+
+  it('does not mint a second stack when a gamer is removed and added back', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    const patch = (ids: string[]) =>
+      req(app, `/api/rooms/${seed.roomId}/game-nights/${seed.nightId}/active-gamers`, {
+        method: 'PATCH',
+        headers: { cookie: seed.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ activeGamerIds: ids }),
+      })
+
+    // Cy is not playing the live game, so he is the one who can be dropped.
+    await patch([seed.ann, seed.bob])
+    await patch([seed.ann, seed.bob, seed.cy])
+
+    // Guarding on "was not in the pool a moment ago" would hand out chips
+    // every time someone was toggled off and on.
+    const body = await ledger(app, seed.roomId, seed.cookie)
+    expect(balanceOf(body, seed.cy)).toBe(DEFAULT_BUY_IN)
+  })
+
+  it('issues nothing on a pool change when the night had no buy-in', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app, { buyIn: 0 })
+    const late = await createGamer(app, seed.roomId, seed.cookie, 'Dex')
+
+    await req(app, `/api/rooms/${seed.roomId}/game-nights/${seed.nightId}/active-gamers`, {
+      method: 'PATCH',
+      headers: { cookie: seed.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ activeGamerIds: [seed.ann, seed.bob, seed.cy, late] }),
+    })
+
+    expect((await ledger(app, seed.roomId, seed.cookie)).entries).toHaveLength(0)
   })
 
   it('refuses a purchase for someone outside the room', async () => {

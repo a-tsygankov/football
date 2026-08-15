@@ -6,6 +6,7 @@ import {
   type CreateCurrentGameRequest,
   type CreateGamerRequest,
   type CreateRoomRequest,
+  type ChipsPurchasedEvent,
   type CurrentGame,
   DEFAULT_BUY_IN,
   DEFAULT_SQUAD_PLATFORM,
@@ -896,9 +897,44 @@ roomRoutes.patch('/rooms/:roomId/game-nights/:gameNightId/active-gamers', async 
     }
   }
 
+  const now = Date.now()
   const activeGamers = await c
     .get('deps')
-    .gameNights.replaceActiveGamers(gameNight.id, roomId, requestedIds, Date.now())
+    .gameNights.replaceActiveGamers(gameNight.id, roomId, requestedIds, now)
+
+  // Someone who joins after the night began still buys in. Balances are the
+  // room's now, so without this they sit down with nothing and cannot bet at
+  // all — where the old per-night model gave them the buy-in no matter when
+  // they arrived.
+  //
+  // Guarded on the event log rather than on "was not in the pool a moment
+  // ago", because a gamer can be removed and added back, and that must not
+  // mint them a second stack.
+  if (gameNight.buyIn > 0) {
+    const purchased = new Set(
+      (await c.get('deps').events.listByRoom(roomId))
+        .map((event) => event.payload)
+        .filter(
+          (payload): payload is ChipsPurchasedEvent =>
+            payload.type === 'chips_purchased' && payload.gameNightId === gameNight.id,
+        )
+        .map((payload) => payload.gamerId),
+    )
+    for (const activeGamer of activeGamers) {
+      if (purchased.has(activeGamer.gamerId)) continue
+      await recordChipPurchase(c, {
+        type: 'chips_purchased',
+        schemaVersion: EVENT_SCHEMA_VERSION,
+        roomId,
+        gamerId: activeGamer.gamerId,
+        amount: gameNight.buyIn,
+        gameNightId: gameNight.id,
+        occurredAt: now,
+        reason: 'game_night_buy_in',
+      })
+    }
+  }
+
   return c.json({ gameNight, activeGamers })
 })
 
