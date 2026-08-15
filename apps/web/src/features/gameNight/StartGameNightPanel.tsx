@@ -1,22 +1,22 @@
 import { useState } from 'react'
-import {
-  DEFAULT_BUY_IN,
-  formatRelative,
-  GAME_FORMATS,
-  type RoomBootstrapResponse,
-} from '@fc26/shared'
+import { DEFAULT_BUY_IN } from '@fc26/shared'
 import { Field } from '../../components/Field.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
 import { Panel } from '../../components/Panel.jsx'
 import { inputStyle, primaryButtonStyle } from '../../styles/controls.js'
 import type { BusyState } from '../../types/busyState.js'
 
+/**
+ * Starts a game night.
+ *
+ * Only rendered when there is no active night — `RoomScreen` swaps in
+ * `GameCreationPanel` the moment one exists. This used to carry a second
+ * branch describing a live night, which nothing could reach.
+ */
 export function StartGameNightPanel({
-  bootstrap,
   busy,
   onStartGameNight,
 }: {
-  bootstrap: RoomBootstrapResponse
   busy: BusyState
   onStartGameNight: (buyIn: number) => Promise<void>
 }) {
@@ -35,57 +35,33 @@ export function StartGameNightPanel({
 
   return (
     <Panel
-      title={bootstrap.activeGameNight ? 'Game night live' : 'Start game night'}
-      subtitle={
-        bootstrap.activeGameNight
-          ? `Started ${formatRelative(bootstrap.activeGameNight.startedAt)}`
-          : 'This uses the currently active gamers in the room.'
-      }
+      title="Start game night"
+      subtitle="This uses the currently active gamers in the room."
     >
-      {bootstrap.activeGameNight ? (
-        <div
-          style={{
-            padding: 14,
-            borderRadius: 18,
-            background: '#ecfdf5',
-            border: '1px solid #a7f3d0',
-          }}
+      <div style={{ display: 'grid', gap: 12 }}>
+        {/* Fixed for the whole night once it starts, so it is asked for here
+            rather than being editable later. */}
+        <Field label="Buy-in per gamer">
+          <input
+            value={buyIn}
+            onChange={(event) => setBuyIn(event.target.value)}
+            inputMode="numeric"
+            placeholder="Chips"
+            style={inputStyle}
+          />
+        </Field>
+
+        {error ? <InlineNotice tone="warn" message={error} /> : null}
+
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={start}
+          style={primaryButtonStyle}
         >
-          <strong>
-            {bootstrap.currentGame
-              ? `${GAME_FORMATS[bootstrap.currentGame.format].label} currently on`
-              : `${bootstrap.activeGameNightGamers.length} gamers in the live pool`}
-          </strong>
-          <p style={{ margin: '8px 0 0', fontSize: 14, opacity: 0.75 }}>
-            Everyone bought in for {bootstrap.activeGameNight.buyIn} chips.
-          </p>
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gap: 12 }}>
-          {/* Fixed for the whole night once it starts, so it is asked for here
-              rather than being editable later. */}
-          <Field label="Buy-in per gamer">
-            <input
-              value={buyIn}
-              onChange={(event) => setBuyIn(event.target.value)}
-              inputMode="numeric"
-              placeholder="Chips"
-              style={inputStyle}
-            />
-          </Field>
-
-          {error ? <InlineNotice tone="warn" message={error} /> : null}
-
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={start}
-            style={primaryButtonStyle}
-          >
-            {busy === 'starting-game-night' ? 'Starting...' : 'Start game night'}
-          </button>
-        </div>
-      )}
+          {busy === 'starting-game-night' ? 'Starting...' : 'Start game night'}
+        </button>
+      </div>
     </Panel>
   )
 }
