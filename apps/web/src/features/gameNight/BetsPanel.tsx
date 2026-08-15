@@ -3,11 +3,15 @@ import {
   type Bet,
   type BetId,
   canBack,
+  type ChipBalance,
+  chipBalances,
+  type ChipPosition,
   type CurrentGame,
   describeIneligibility,
   type Gamer,
   type GamerId,
   type GameResult,
+  maxStakeOnGame,
 } from '@fc26/shared'
 import { Field } from '../../components/Field.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
@@ -26,6 +30,8 @@ export function BetsPanel({
   gamers,
   poolGamerIds,
   bets,
+  buyIn,
+  positions,
   onPlaceBet,
   onRemoveBet,
   onLockBets,
@@ -35,6 +41,10 @@ export function BetsPanel({
   gamers: ReadonlyArray<Gamer>
   poolGamerIds: ReadonlyArray<GamerId>
   bets: ReadonlyArray<Bet>
+  /** Chips everyone started the night with. */
+  buyIn: number
+  /** Settled nets for the night, as the chips endpoint reports them. */
+  positions: ReadonlyArray<ChipPosition>
   onPlaceBet: (request: { gamerId: GamerId; outcome: GameResult; stake: number }) => void
   onRemoveBet: (betId: BetId) => void
   onLockBets: () => void
@@ -66,6 +76,18 @@ export function BetsPanel({
     () => gamers.filter((gamer) => poolGamerIds.includes(gamer.id)),
     [gamers, poolGamerIds],
   )
+
+  // Only one game runs at a time, so this game's book is the whole of what the
+  // night has at risk. The worker recomputes all of this from the event log
+  // before accepting a bet; showing it here is what stops the refusal being a
+  // surprise.
+  const balances = useMemo(
+    () => chipBalances(poolGamerIds, buyIn, positions, betList),
+    [poolGamerIds, buyIn, positions, betList],
+  )
+  const balance: ChipBalance | undefined =
+    bettorId === '' ? undefined : balances.get(bettorId)
+  const existing = betList.find((item) => item.gamerId === bettorId)
 
   function nameOf(gamerId: GamerId): string {
     return gamers.find((gamer) => gamer.id === gamerId)?.name ?? 'Unknown'
@@ -105,6 +127,16 @@ export function BetsPanel({
     }
     if (!canBack(bettorId, currentGame, outcome)) {
       setError(describeIneligibility(bettorId, currentGame, outcome))
+      return
+    }
+    // Mirrors the worker: backing the same outcome adds to the position, so
+    // what has to fit the stack is the total, not what was just typed.
+    const total = existing && existing.outcome === outcome ? existing.stake + parsed : parsed
+    if (balance && total > maxStakeOnGame(balance, existing?.stake ?? 0)) {
+      setError(
+        `${nameOf(bettorId)} has ${balance.available} chips available` +
+          (existing ? ` on top of the ${existing.stake} already staked.` : '.'),
+      )
       return
     }
     setError(null)
@@ -178,6 +210,14 @@ export function BetsPanel({
               ))}
             </select>
           </Field>
+
+          {balance ? (
+            <div style={{ fontSize: 13, opacity: 0.8 }}>
+              {balance.balance} chips
+              {balance.committed > 0 ? ` — ${balance.available} available` : ''}
+              <span style={{ opacity: 0.7 }}> (bought in for {balance.buyIn})</span>
+            </div>
+          ) : null}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
             {OUTCOMES.map((item) => {

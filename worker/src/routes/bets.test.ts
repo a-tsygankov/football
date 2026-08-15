@@ -92,7 +92,9 @@ describe('bet routes', () => {
 
   it('caps the total, not just the increment', async () => {
     const app = buildTestApp()
-    const seed = await seedLiveGame(app)
+    // A stack big enough to reach the stake cap, so this test is about the
+    // cap rather than about running out of chips.
+    const seed = await seedLiveGame(app, { buyIn: 1_000_000 })
     const place = (stake: number) =>
       req(app, betsPath(seed), {
         method: 'POST',

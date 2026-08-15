@@ -105,6 +105,7 @@ interface GameNightRow {
   id: string
   room_id: string
   status: 'active' | 'completed'
+  buy_in: number
   started_at: number
   ended_at: number | null
   last_game_at: number | null
@@ -125,6 +126,7 @@ function rowToGameNight(row: GameNightRow): GameNight {
     id: GameNightId(row.id),
     roomId: RoomId(row.room_id),
     status: row.status,
+    buyIn: row.buy_in,
     startedAt: row.started_at,
     endedAt: row.ended_at,
     lastGameAt: row.last_game_at,
@@ -185,13 +187,14 @@ export class D1GameNightRepository implements IGameNightRepository {
       this.db
         .prepare(
           `INSERT INTO game_nights
-             (id, room_id, status, started_at, ended_at, last_game_at, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+             (id, room_id, status, buy_in, started_at, ended_at, last_game_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           gameNight.id,
           gameNight.roomId,
           gameNight.status,
+          gameNight.buyIn,
           gameNight.startedAt,
           gameNight.endedAt,
           gameNight.lastGameAt,

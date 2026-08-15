@@ -119,9 +119,13 @@ export interface LiveGameSeed {
  * Room + three gamers, all three in the night's pool, with a live 1v1 between
  * ann (home) and bob (away). cy sits out, which is what makes it possible to
  * test both the participant and non-participant betting rules.
+ *
+ * The night takes the production default buy-in unless a test overrides it, so
+ * a test that stakes more than a stack sees the same refusal a real room would.
  */
 export async function seedLiveGame(
   app: ReturnType<typeof buildTestApp>,
+  options: { buyIn?: number } = {},
 ): Promise<LiveGameSeed> {
   const createRes = await req(app, '/api/rooms', {
     method: 'POST',
@@ -139,7 +143,10 @@ export async function seedLiveGame(
   const nightRes = await req(
     app,
     `/api/rooms/${roomId}/game-nights`,
-    jsonInit(cookie, { activeGamerIds: [ann, bob, cy] }),
+    jsonInit(cookie, {
+      activeGamerIds: [ann, bob, cy],
+      ...(options.buyIn === undefined ? {} : { buyIn: options.buyIn }),
+    }),
   )
   const night = (await nightRes.json()) as { gameNight: { id: string } }
   const nightId = night.gameNight.id
@@ -156,6 +163,29 @@ export async function seedLiveGame(
   const game = (await gameRes.json()) as { currentGame: { id: string } }
 
   return { roomId, nightId, gameId: game.currentGame.id, ann, bob, cy, cookie }
+}
+
+/**
+ * Starts another 1v1 in the same night with the same sides, and returns a seed
+ * pointing at it. Recording a result closes the current game, so this is how a
+ * test gets to a second book without starting a second night — which is what
+ * makes carried-over balances observable.
+ */
+export async function startNextGame(
+  app: ReturnType<typeof buildTestApp>,
+  seed: LiveGameSeed,
+): Promise<LiveGameSeed> {
+  const res = await req(
+    app,
+    `/api/rooms/${seed.roomId}/game-nights/${seed.nightId}/games`,
+    jsonInit(seed.cookie, {
+      allocationMode: 'manual',
+      homeGamerIds: [seed.ann],
+      awayGamerIds: [seed.bob],
+    }),
+  )
+  const game = (await res.json()) as { currentGame: { id: string } }
+  return { ...seed, gameId: game.currentGame.id }
 }
 
 export async function placeBet(

@@ -11,13 +11,16 @@ import {
   type BetsLockedEvent,
   BetId,
   canBack,
+  chipBalance,
   EVENT_SCHEMA_VERSION,
   type ChipPosition,
   type CurrentGame,
   GameId,
+  type GameNight,
   GameNightId,
   GamerId,
   lastSettledGameDeltas,
+  maxStakeOnGame,
   nightChipPositions,
   type PlaceBetRequest,
   RoomId,
@@ -58,7 +61,7 @@ const BETS_PATH = '/rooms/:roomId/game-nights/:gameNightId/games/:gameId/bets'
 async function resolveLiveGame(
   c: RouteContext,
 ): Promise<
-  | { ok: true; roomId: ReturnType<typeof RoomId>; game: CurrentGame }
+  | { ok: true; roomId: ReturnType<typeof RoomId>; gameNight: GameNight; game: CurrentGame }
   | { ok: false; status: 401 | 404; error: string }
 > {
   // Every route in this module matches BETS_PATH, so the params are present
@@ -79,7 +82,7 @@ async function resolveLiveGame(
     return { ok: false, status: 404, error: 'active_game_not_found' }
   }
 
-  return { ok: true, roomId, game }
+  return { ok: true, roomId, gameNight, game }
 }
 
 async function betsResponse(c: RouteContext, game: CurrentGame) {
@@ -92,7 +95,7 @@ async function betsResponse(c: RouteContext, game: CurrentGame) {
 betRoutes.post(BETS_PATH, async (c) => {
   const resolved = await resolveLiveGame(c)
   if (!resolved.ok) return c.json({ error: resolved.error }, resolved.status)
-  const { roomId, game } = resolved
+  const { roomId, gameNight, game } = resolved
 
   if (game.betsLockedAt !== null) {
     return c.json({ error: 'bets_locked' }, 409)
@@ -114,11 +117,16 @@ betRoutes.post(BETS_PATH, async (c) => {
     return c.json({ error: 'outcome_not_allowed' }, 400)
   }
 
+  // Night-wide rather than this game's book: the balance check below has to
+  // count everything the gamer already has at risk, and settlement is what
+  // clears rows, so every row still here is still live.
+  const openBets = await c.get('deps').bets.listByGameNight(game.gameNightId)
+
   // One bet per gamer per game, so a repeat bet lands on the existing row.
-  // Read it first: it decides whether this is a top-up, and the event log
+  // Find it first: it decides whether this is a top-up, and the event log
   // needs what was there before the write destroys it.
-  const existing = (await c.get('deps').bets.listByGame(game.id)).find(
-    (item) => item.gamerId === gamerId,
+  const existing = openBets.find(
+    (item) => item.gameId === game.id && item.gamerId === gamerId,
   )
 
   // Backing the same outcome again adds to the position rather than replacing
@@ -132,6 +140,39 @@ betRoutes.post(BETS_PATH, async (c) => {
   // `stake * pot` inside exact-integer range in settleWagers.
   if (stake > MAX_STAKE) {
     return c.json({ error: 'stake_cap_exceeded', max: MAX_STAKE, stake }, 400)
+  }
+
+  // Nobody may stake chips they do not have. The stack is the buy-in plus
+  // whatever has been won or lost in settled games, and anything already
+  // riding on an unresolved game is spoken for.
+  //
+  // Enforced here and not only in the UI: the client computes the same numbers
+  // to show them, but a stale bootstrap — or a second phone betting for the
+  // same person — would otherwise let the pot exceed what the room actually
+  // put in, and settlement would pay out chips nobody staked.
+  const events = await c.get('deps').events.listByRoom(roomId)
+  const settled = nightChipPositions(events, game.gameNightId).get(gamerId) ?? 0
+  const committed = openBets
+    .filter((item) => item.gamerId === gamerId)
+    .reduce((sum, item) => sum + item.stake, 0)
+  const balance = chipBalance(gamerId, gameNight.buyIn, settled, committed)
+
+  // The existing position is re-committed rather than committed twice, so it
+  // is added back — otherwise a gamer who is all-in could not even switch
+  // which outcome they are backing.
+  const ceiling = maxStakeOnGame(balance, existing?.stake ?? 0)
+  if (stake > ceiling) {
+    return c.json(
+      {
+        error: 'insufficient_chips',
+        stake,
+        buyIn: balance.buyIn,
+        balance: balance.balance,
+        committed: balance.committed,
+        available: balance.available,
+      },
+      400,
+    )
   }
 
   const now = Date.now()

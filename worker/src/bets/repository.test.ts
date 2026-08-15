@@ -40,6 +40,22 @@ describe('InMemoryBetRepository', () => {
     expect(bets[0]!.outcome).toBe('draw')
   })
 
+  it('lists a night across its games, and only that night', async () => {
+    const repo = new InMemoryBetRepository()
+    await repo.upsert(bet('b1', 'ann', 10))
+    await repo.upsert({ ...bet('b2', 'ann', 20), gameId: GameId('game-2') })
+    await repo.upsert({
+      ...bet('b3', 'ann', 40),
+      gameNightId: GameNightId('night-2'),
+      gameId: GameId('game-3'),
+    })
+
+    // What a gamer has at risk spans every open book of the night, but stops
+    // at the night boundary — last week's stakes are not tonight's exposure.
+    const stakes = (await repo.listByGameNight(gameNightId)).map((item) => item.stake)
+    expect(stakes).toEqual([10, 20])
+  })
+
   it('removes a single bet', async () => {
     const repo = new InMemoryBetRepository()
     await repo.upsert(bet('b1', 'ann', 10))

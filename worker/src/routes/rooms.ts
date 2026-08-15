@@ -7,6 +7,7 @@ import {
   type CreateGamerRequest,
   type CreateRoomRequest,
   type CurrentGame,
+  DEFAULT_BUY_IN,
   DEFAULT_SQUAD_PLATFORM,
   DEFAULT_STRATEGY_ID,
   EVENT_SCHEMA_VERSION,
@@ -130,6 +131,9 @@ const updateGamerSchema = z.object({
 
 const createGameNightSchema = z.object({
   activeGamerIds: z.array(z.string().min(1)).optional(),
+  // Capped well below the stake ceiling so a buy-in can never hand out a
+  // balance that settlement could not divide exactly.
+  buyIn: z.number().int().positive().max(1_000_000).optional(),
 })
 
 const updateGameNightActiveGamersSchema = z.object({
@@ -812,6 +816,7 @@ roomRoutes.post('/rooms/:roomId/game-nights', async (c) => {
     id: gameNightId,
     roomId,
     status: 'active',
+    buyIn: parsed.data.buyIn ?? DEFAULT_BUY_IN,
     startedAt: now,
     endedAt: null,
     lastGameAt: null,
