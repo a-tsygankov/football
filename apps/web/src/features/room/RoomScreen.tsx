@@ -265,11 +265,7 @@ export function RoomScreen({
               />
             </div>
           ) : (
-            <StartGameNightPanel
-              bootstrap={bootstrap}
-              busy={busy}
-              onStartGameNight={onStartGameNight}
-            />
+            <StartGameNightPanel busy={busy} onStartGameNight={onStartGameNight} />
           )}
         </section>
       ) : null}
