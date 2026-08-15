@@ -1,4 +1,5 @@
 export * from './types.js'
+export * from './balance.js'
 export * from './settle.js'
 export * from './eligibility.js'
 export * from './positions.js'

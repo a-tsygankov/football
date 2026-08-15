@@ -7,8 +7,10 @@ import {
   GamerId,
   RoomId,
   type Bet,
+  type ChipPosition,
   type CurrentGame,
   type Gamer,
+  DEFAULT_BUY_IN,
 } from '@fc26/shared'
 import { BetsPanel } from './BetsPanel.jsx'
 
@@ -74,6 +76,8 @@ function renderPanel(overrides: Partial<Parameters<typeof BetsPanel>[0]> = {}) {
     gamers: [gamer(ann, 'Ann'), gamer(bob, 'Bob'), gamer(cy, 'Cy')],
     poolGamerIds: [ann, bob, cy],
     bets: [] as Bet[],
+    buyIn: DEFAULT_BUY_IN,
+    positions: [] as ChipPosition[],
     onPlaceBet: vi.fn(),
     onRemoveBet: vi.fn(),
     onLockBets: vi.fn(),
@@ -151,6 +155,57 @@ describe('BetsPanel', () => {
 
     expect(props.onPlaceBet).not.toHaveBeenCalled()
     expect(screen.getByText(/stake must be at least 1/i)).toBeInTheDocument()
+  })
+
+  it('shows the selected bettor their stack', () => {
+    renderPanel({ positions: [{ gamerId: cy, net: -30 }] })
+    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
+
+    // 100 bought in, 30 lost so far.
+    expect(screen.getByText(/70 chips/i)).toBeInTheDocument()
+  })
+
+  it('separates what is left from what is already staked', () => {
+    renderPanel({ bets: [bet('b1', cy, 'draw', 40)] })
+    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
+
+    expect(screen.getByText(/100 chips — 60 available/i)).toBeInTheDocument()
+  })
+
+  it('refuses a stake bigger than the stack without calling the handler', () => {
+    const props = renderPanel({ positions: [{ gamerId: cy, net: -30 }] })
+    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
+    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '71' } })
+    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
+
+    // The worker refuses this too; catching it here saves a round trip and
+    // says whose chips ran out.
+    expect(props.onPlaceBet).not.toHaveBeenCalled()
+    expect(screen.getByText(/cy has 70 chips available/i)).toBeInTheDocument()
+  })
+
+  it('measures a top-up against the running total', () => {
+    const props = renderPanel({ bets: [bet('b1', cy, 'draw', 60)] })
+    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
+    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    // 50 is well under the buy-in, but it lands on top of 60.
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '50' } })
+    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
+
+    expect(props.onPlaceBet).not.toHaveBeenCalled()
+    expect(screen.getByText(/40 chips available on top of the 60/i)).toBeInTheDocument()
+  })
+
+  it('lets an all-in position switch outcome', () => {
+    const props = renderPanel({ bets: [bet('b1', cy, 'draw', 100)] })
+    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
+    fireEvent.click(screen.getByRole('button', { name: /^home$/i }))
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '100' } })
+    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
+
+    // Nothing new is being risked — the same chips move to another outcome.
+    expect(props.onPlaceBet).toHaveBeenCalledWith({ gamerId: cy, outcome: 'home', stake: 100 })
   })
 
   it('removes a bet', () => {

@@ -10,6 +10,12 @@ import {
 
 export interface IBetRepository {
   listByGame(gameId: GameId): Promise<ReadonlyArray<Bet>>
+  /**
+   * Every unsettled bet of a night. Settlement deletes rows, so this is
+   * exactly the set of stakes still at risk — which is what an available
+   * balance has to subtract.
+   */
+  listByGameNight(gameNightId: GameNightId): Promise<ReadonlyArray<Bet>>
   /** Places a bet, replacing any existing bet by the same gamer on the game. */
   upsert(bet: Bet): Promise<void>
   remove(betId: BetId, gameId: GameId): Promise<void>
@@ -25,6 +31,12 @@ export class InMemoryBetRepository implements IBetRepository {
   async listByGame(gameId: GameId): Promise<ReadonlyArray<Bet>> {
     return [...this.bets.values()]
       .filter((bet) => bet.gameId === gameId)
+      .sort((a, b) => a.createdAt - b.createdAt)
+  }
+
+  async listByGameNight(gameNightId: GameNightId): Promise<ReadonlyArray<Bet>> {
+    return [...this.bets.values()]
+      .filter((bet) => bet.gameNightId === gameNightId)
       .sort((a, b) => a.createdAt - b.createdAt)
   }
 
@@ -99,6 +111,14 @@ export class D1BetRepository implements IBetRepository {
     const result = await this.db
       .prepare('SELECT * FROM bets WHERE game_id = ? ORDER BY created_at ASC')
       .bind(gameId)
+      .all<BetRow>()
+    return (result.results ?? []).map(rowToBet)
+  }
+
+  async listByGameNight(gameNightId: GameNightId): Promise<ReadonlyArray<Bet>> {
+    const result = await this.db
+      .prepare('SELECT * FROM bets WHERE game_night_id = ? ORDER BY created_at ASC')
+      .bind(gameNightId)
       .all<BetRow>()
     return (result.results ?? []).map(rowToBet)
   }

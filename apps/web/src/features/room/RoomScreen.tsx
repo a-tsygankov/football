@@ -125,7 +125,7 @@ export function RoomScreen({
   onRefreshSquadAssets: (mode?: 'soft' | 'hard') => Promise<void>
   onSaveRoomSettings: () => Promise<void>
   onChangeRoomSquadPlatform: (value: SquadPlatform) => void
-  onStartGameNight: () => Promise<void>
+  onStartGameNight: (buyIn: number) => Promise<void>
   onToggleGamer: (gamer: Gamer) => Promise<void>
   onUpdateGamerDetails: (gamerId: string, request: UpdateGamerRequest) => Promise<void>
 }) {
@@ -248,6 +248,7 @@ export function RoomScreen({
               <GameCreationPanel
                 bootstrap={bootstrap}
                 busy={busy}
+                chips={chips}
                 activeGameNightGamers={activeGameNightGamers}
                 activeGameNightGamerIds={activeGameNightGamerIds}
                 latestSquadVersion={latestSquadVersion}

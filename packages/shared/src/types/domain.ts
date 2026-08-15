@@ -94,6 +94,11 @@ export interface GameNight {
   id: GameNightId
   roomId: RoomId
   status: GameNightStatus
+  /**
+   * Chips every participant starts the night with. Fixed once the night
+   * begins — a stack that moved mid-night would make the standings unreadable.
+   */
+  buyIn: number
   startedAt: number
   endedAt: number | null
   lastGameAt: number | null

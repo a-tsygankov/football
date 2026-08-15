@@ -675,7 +675,7 @@ export function App() {
     }
   }
 
-  async function startGameNight(): Promise<void> {
+  async function startGameNight(buyIn: number): Promise<void> {
     if (!bootstrap) return
     setBusy('starting-game-night')
     setError(null)
@@ -683,7 +683,7 @@ export function App() {
       await apiJson(`/api/rooms/${bootstrap.room.id}/game-nights`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ buyIn }),
       })
       await refreshRoom(bootstrap.room.id)
     } catch (err) {

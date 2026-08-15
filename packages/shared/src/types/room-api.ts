@@ -101,6 +101,8 @@ export interface GamerResponse {
 
 export interface CreateGameNightRequest {
   activeGamerIds?: ReadonlyArray<string>
+  /** Starting chip stack per participant. Defaults to `DEFAULT_BUY_IN`. */
+  buyIn?: number
 }
 
 export interface GameNightResponse {
