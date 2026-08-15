@@ -1,4 +1,8 @@
-import type { GameRecordedEvent, PersistedGameEvent } from '../types/events.js'
+import type {
+  GameRecordedEvent,
+  GameVoidedEvent,
+  PersistedGameEvent,
+} from '../types/events.js'
 import type { GameNightId, GamerId } from '../types/ids.js'
 
 /**
@@ -16,8 +20,9 @@ function settledGames(
 ): GameRecordedEvent[] {
   const voidedGameIds = new Set(
     events
-      .filter((event) => event.payload.type === 'game_voided')
-      .map((event) => event.payload.gameId),
+      .map((event) => event.payload)
+      .filter((payload): payload is GameVoidedEvent => payload.type === 'game_voided')
+      .map((payload) => payload.gameId),
   )
 
   return events

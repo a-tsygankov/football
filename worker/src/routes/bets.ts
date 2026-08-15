@@ -11,24 +11,28 @@ import {
   type BetsLockedEvent,
   BetId,
   canBack,
-  chipBalance,
   EVENT_SCHEMA_VERSION,
+  type ChipLedgerResponse,
   type ChipPosition,
   type CurrentGame,
   GameId,
   type GameNight,
   GameNightId,
+  type GameVoidedEvent,
   GamerId,
   lastSettledGameDeltas,
+  ledgerEntryFor,
   maxStakeOnGame,
   nightChipPositions,
   type PlaceBetRequest,
+  roomChipLedger,
   RoomId,
+  settleUp,
 } from '@fc26/shared'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { AppContext } from '../app.js'
-import { recordBetEvent, toSnapshot } from '../bets/event-log.js'
+import { recordBetEvent, recordChipPurchase, toSnapshot } from '../bets/event-log.js'
 import {
   parseJson,
   requireActiveGameNight,
@@ -95,7 +99,7 @@ async function betsResponse(c: RouteContext, game: CurrentGame) {
 betRoutes.post(BETS_PATH, async (c) => {
   const resolved = await resolveLiveGame(c)
   if (!resolved.ok) return c.json({ error: resolved.error }, resolved.status)
-  const { roomId, gameNight, game } = resolved
+  const { roomId, game } = resolved
 
   if (game.betsLockedAt !== null) {
     return c.json({ error: 'bets_locked' }, 409)
@@ -142,20 +146,16 @@ betRoutes.post(BETS_PATH, async (c) => {
     return c.json({ error: 'stake_cap_exceeded', max: MAX_STAKE, stake }, 400)
   }
 
-  // Nobody may stake chips they do not have. The stack is the buy-in plus
-  // whatever has been won or lost in settled games, and anything already
-  // riding on an unresolved game is spoken for.
+  // Nobody may stake chips they do not have. The ledger is room-wide: chips
+  // bought at any point, plus everything won or lost across every night, minus
+  // whatever is already riding on an unresolved game.
   //
   // Enforced here and not only in the UI: the client computes the same numbers
   // to show them, but a stale bootstrap — or a second phone betting for the
   // same person — would otherwise let the pot exceed what the room actually
-  // put in, and settlement would pay out chips nobody staked.
+  // bought, and settlement would pay out chips nobody paid for.
   const events = await c.get('deps').events.listByRoom(roomId)
-  const settled = nightChipPositions(events, game.gameNightId).get(gamerId) ?? 0
-  const committed = openBets
-    .filter((item) => item.gamerId === gamerId)
-    .reduce((sum, item) => sum + item.stake, 0)
-  const balance = chipBalance(gamerId, gameNight.buyIn, settled, committed)
+  const balance = ledgerEntryFor(roomChipLedger(events, openBets), gamerId)
 
   // The existing position is re-committed rather than committed twice, so it
   // is added back — otherwise a gamer who is all-in could not even switch
@@ -166,7 +166,7 @@ betRoutes.post(BETS_PATH, async (c) => {
       {
         error: 'insufficient_chips',
         stake,
-        buyIn: balance.buyIn,
+        purchased: balance.purchased,
         balance: balance.balance,
         committed: balance.committed,
         available: balance.available,
@@ -277,6 +277,86 @@ betRoutes.post(`${BETS_PATH}/lock`, async (c) => {
   return c.json(await betsResponse(c, locked))
 })
 
+/**
+ * The room ledger, with the open stakes that are not yet anyone's to bet.
+ *
+ * Live bet rows only ever belong to the active night — ending a night sweeps
+ * whatever is left — so the active night's book is the whole of the room's
+ * unresolved exposure.
+ */
+async function chipLedgerResponse(
+  c: RouteContext,
+  roomId: ReturnType<typeof RoomId>,
+): Promise<ChipLedgerResponse> {
+  const activeNight = await c.get('deps').gameNights.getActive(roomId)
+  const openBets = activeNight
+    ? await c.get('deps').bets.listByGameNight(activeNight.id)
+    : []
+  const events = await c.get('deps').events.listByRoom(roomId)
+  const ledger = roomChipLedger(events, openBets)
+
+  return {
+    roomId,
+    entries: [...ledger.values()].sort((a, b) => b.balance - a.balance),
+    transfers: settleUp(ledger.values()),
+  }
+}
+
+const purchaseSchema = z.object({
+  gamerId: z.string().min(1),
+  // Capped at the stake ceiling: a balance settlement could not divide
+  // exactly beyond it, and no game night needs a bigger single purchase.
+  amount: z.number().int().positive().max(MAX_STAKE),
+})
+
+/**
+ * Buys chips into the room.
+ *
+ * Deliberately available at any time rather than only when a night starts —
+ * running dry mid-evening is exactly when someone needs to buy more, and
+ * making them wait for the next night would be the wrong shape.
+ */
+betRoutes.post('/rooms/:roomId/chips/purchases', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const parsed = purchaseSchema.safeParse(await parseJson(c))
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.flatten() }, 400)
+  }
+  const gamerId = GamerId(parsed.data.gamerId)
+
+  const gamer = await c.get('deps').gamers.get(roomId, gamerId)
+  if (!gamer) {
+    return c.json({ error: 'unknown_gamer', gamerId }, 400)
+  }
+
+  const activeNight = await c.get('deps').gameNights.getActive(roomId)
+  const now = Date.now()
+  await recordChipPurchase(c, {
+    type: 'chips_purchased',
+    schemaVersion: EVENT_SCHEMA_VERSION,
+    roomId,
+    gamerId,
+    amount: parsed.data.amount,
+    gameNightId: activeNight?.id ?? null,
+    occurredAt: now,
+    reason: 'manual',
+  })
+
+  return c.json(await chipLedgerResponse(c, roomId), 201)
+})
+
+/** The room's chip ledger, plus the payments that would close it out. */
+betRoutes.get('/rooms/:roomId/chips-ledger', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  return c.json(await chipLedgerResponse(c, roomId))
+})
+
 function toPositions(net: ReadonlyMap<ReturnType<typeof GamerId>, number>): ChipPosition[] {
   return [...net.entries()]
     .map(([gamerId, value]) => ({ gamerId, net: value }))
@@ -302,7 +382,10 @@ betRoutes.get('/rooms/:roomId/bet-history', async (c) => {
   // Voided games are excluded to match the scoreboard drill-down, which also
   // hides them — a deleted game should not linger in one view and not another.
   const voided = new Set(
-    all.filter((e) => e.payload.type === 'game_voided').map((e) => e.payload.gameId),
+    all
+      .map((e) => e.payload)
+      .filter((p): p is GameVoidedEvent => p.type === 'game_voided')
+      .map((p) => p.gameId),
   )
 
   const byGame = new Map<string, BetHistoryGame & { events: BetEventPayload[] }>()

@@ -67,6 +67,7 @@ import {
   type ResolvedRoomSession,
   type RouteContext,
 } from './room-context.js'
+import { recordChipPurchase } from '../bets/event-log.js'
 import { discardGameWagers, settleGameWagers } from '../bets/settlement-service.js'
 import type { PinAttempt } from '../auth/pin-attempt-repository.js'
 import { hashPin, isValidPin, verifyPin } from '../auth/pin.js'
@@ -131,9 +132,11 @@ const updateGamerSchema = z.object({
 
 const createGameNightSchema = z.object({
   activeGamerIds: z.array(z.string().min(1)).optional(),
-  // Capped well below the stake ceiling so a buy-in can never hand out a
-  // balance that settlement could not divide exactly.
-  buyIn: z.number().int().positive().max(1_000_000).optional(),
+  // Zero is meaningful: balances carry between nights, so "nobody buys in
+  // tonight, we play with what we have" is a real choice. Capped well below
+  // the stake ceiling so a buy-in can never hand out a balance that
+  // settlement could not divide exactly.
+  buyIn: z.number().int().min(0).max(1_000_000).optional(),
 })
 
 const updateGameNightActiveGamersSchema = z.object({
@@ -832,6 +835,26 @@ roomRoutes.post('/rooms/:roomId/game-nights', async (c) => {
   }))
 
   await c.get('deps').gameNights.create(gameNight, activeGamers)
+
+  // Starting a night is the usual moment everyone buys in, so it issues the
+  // purchases in one go rather than making each person do it by hand. It is
+  // still an ordinary purchase — a buy-in of 0 skips it entirely and the room
+  // plays on with the balances it carried in.
+  if (gameNight.buyIn > 0) {
+    for (const activeGamer of activeGamers) {
+      await recordChipPurchase(c, {
+        type: 'chips_purchased',
+        schemaVersion: EVENT_SCHEMA_VERSION,
+        roomId,
+        gamerId: activeGamer.gamerId,
+        amount: gameNight.buyIn,
+        gameNightId: gameNightId,
+        occurredAt: now,
+        reason: 'game_night_buy_in',
+      })
+    }
+  }
+
   return c.json({ gameNight, activeGamers }, 201)
 })
 

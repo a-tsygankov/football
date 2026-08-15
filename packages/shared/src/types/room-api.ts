@@ -10,6 +10,7 @@ import type {
   SquadPlatform,
 } from './domain.js'
 import type { BetEventPayload, GameResult, WagerSettlement } from './events.js'
+import type { ChipLedgerEntry, ChipTransfer } from '../wager/ledger.js'
 import type {
   BetId,
   EventId,
@@ -333,6 +334,19 @@ export interface ChipPosition {
   gamerId: GamerId
   /** Net chips tonight: winnings minus stakes. */
   net: number
+}
+
+export interface BuyChipsRequest {
+  gamerId: string
+  amount: number
+}
+
+export interface ChipLedgerResponse {
+  roomId: RoomId
+  /** Richest first. Everyone who has ever bought or wagered appears. */
+  entries: ReadonlyArray<ChipLedgerEntry>
+  /** What would close the room out, if it stopped now. */
+  transfers: ReadonlyArray<ChipTransfer>
 }
 
 export interface GameNightChipsResponse {

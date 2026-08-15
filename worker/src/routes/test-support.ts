@@ -60,6 +60,9 @@ export function buildTestApp() {
     games,
     events,
     bets,
+    // Exposed so a test can end a night by hand: nights otherwise complete on
+    // an idle timeout, and there is no route that closes one.
+    gameNights,
   })
 }
 

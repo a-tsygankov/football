@@ -3,11 +3,10 @@ import {
   type BetId,
   type Club,
   type CreateCurrentGameRequest,
-  DEFAULT_BUY_IN,
+  type ChipLedgerEntry,
   GAME_FORMATS,
   type Gamer,
   type GamerId,
-  type GameNightChipsResponse,
   type GameResult,
   type AnalysePhotoResponse,
   type InterruptCurrentGameRequest,
@@ -95,7 +94,7 @@ function saveBrowserState(roomId: string, state: PersistedBrowserState): void {
 export function GameCreationPanel({
   bootstrap,
   busy,
-  chips,
+  ledger,
   activeGameNightGamers,
   activeGameNightGamerIds,
   latestSquadVersion,
@@ -112,8 +111,8 @@ export function GameCreationPanel({
 }: {
   bootstrap: RoomBootstrapResponse
   busy: BusyState
-  /** Settled chip standings for the night; null until they load. */
-  chips: GameNightChipsResponse | null
+  /** Room chip ledger; empty until it loads. */
+  ledger: ReadonlyArray<ChipLedgerEntry>
   activeGameNightGamers: ReadonlyArray<Gamer>
   activeGameNightGamerIds: ReadonlySet<string>
   latestSquadVersion: string | null
@@ -266,8 +265,7 @@ export function GameCreationPanel({
           gamers={bootstrap.gamers}
           squadClubs={squadClubs}
           bets={bootstrap.bets}
-          buyIn={bootstrap.activeGameNight?.buyIn ?? DEFAULT_BUY_IN}
-          positions={chips?.positions ?? []}
+          ledger={ledger}
           poolGamerIds={bootstrap.activeGameNightGamers.map((item) => item.gamerId)}
           onPlaceBet={onPlaceBet}
           onRemoveBet={onRemoveBet}

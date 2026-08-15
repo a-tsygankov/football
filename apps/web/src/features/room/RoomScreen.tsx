@@ -6,6 +6,7 @@ import type {
   CreateCurrentGameRequest,
   Gamer,
   GamerId,
+  ChipLedgerResponse,
   GameNightChipsResponse,
   GameResult,
   InterruptCurrentGameRequest,
@@ -27,6 +28,7 @@ import { useSquadBrowser } from '../squads/useSquadBrowser.js'
 import { ActiveRoomHeader } from './ActiveRoomHeader.jsx'
 import { SettingsPanel } from './SettingsPanel.jsx'
 import { ChipStandingsPanel } from '../gameNight/ChipStandingsPanel.jsx'
+import { ChipLedgerPanel } from '../wager/ChipLedgerPanel.jsx'
 import { WagerPage } from '../wager/WagerPage.jsx'
 import type { Route } from '../../hooks/useHashRoute.js'
 import type { BusyState } from '../../types/busyState.js'
@@ -40,6 +42,8 @@ export function RoomScreen({
   bootstrap,
   busy,
   chips,
+  ledger,
+  onBuyChips,
   latestSquadVersion,
   roomSquadPlatform,
   scoreboard,
@@ -82,6 +86,9 @@ export function RoomScreen({
   bootstrap: RoomBootstrapResponse
   busy: BusyState
   chips: GameNightChipsResponse | null
+  /** Room-wide chip ledger; null until it loads. */
+  ledger: ChipLedgerResponse | null
+  onBuyChips: (gamerId: GamerId, amount: number) => Promise<void>
   latestSquadVersion: string | null
   roomSquadPlatform: SquadPlatform
   scoreboard: RoomScoreboardResponse | null
@@ -248,7 +255,7 @@ export function RoomScreen({
               <GameCreationPanel
                 bootstrap={bootstrap}
                 busy={busy}
-                chips={chips}
+                ledger={ledger?.entries ?? []}
                 activeGameNightGamers={activeGameNightGamers}
                 activeGameNightGamerIds={activeGameNightGamerIds}
                 latestSquadVersion={latestSquadVersion}
@@ -280,6 +287,12 @@ export function RoomScreen({
 
       {route === 'wager' ? (
         <>
+          <ChipLedgerPanel
+            busy={busy}
+            gamers={bootstrap.gamers}
+            ledger={ledger}
+            onBuyChips={onBuyChips}
+          />
           {chips ? (
             <ChipStandingsPanel
               gamers={bootstrap.gamers}
