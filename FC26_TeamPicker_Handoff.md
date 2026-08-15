@@ -2,7 +2,122 @@
 
 **Stack:** TypeScript · Vite · React · Cloudflare Workers · D1 · R2
 **Target devices:** Android and iPhone phones (mobile-first PWA)
-**Document version:** 3 (2026-05-31) — supersedes the original `.docx` handoff
+**Document version:** 4 (2026-08-15) — supersedes the original `.docx` handoff
+
+---
+
+## Recent Changes (2026-08-15)
+
+A full day on wagering, shipped as PRs #14–#20 off
+`claude/fix-gamer-activation-k7qtZ`. Versions at the end of the day:
+`@fc26/web` → `0.1.11`, `@fc26/worker` → `0.1.10`, `@fc26/shared` → `0.1.7`,
+`WORKER_VERSION` → `0.1.10`, `SCHEMA_VERSION` → `10` (migrations 0007–0010).
+`EVENT_SCHEMA_VERSION` is still `1`; the new event type was additive.
+
+See [§27 Wagering & the Chip Ledger](#27-wagering--the-chip-ledger) for how
+the finished subsystem works. This section is the narrative of how it got
+there, including the two bugs found in production.
+
+### Chips became a room ledger (#17)
+
+The largest change of the day, and it replaced the model rather than
+extending it. Balances used to be per game night: a stack was that night's
+buy-in plus whatever that night's games had paid, and everything reset next
+time anyone played.
+
+Chips are now **bought into the room** and stay there. A new `chips_purchased`
+event is the only way tokens enter circulation; a gamer's balance is what they
+have bought plus everything won or lost across every night, minus anything
+riding on an unresolved game. Nothing is stored — the ledger is folded from
+the event log and the live bet rows on read, so no balance column can drift
+away from the history that produced it.
+
+Because chips only enter by purchase and wagering only moves them between
+gamers, every gamer's profit is exactly what they hold beyond what they paid
+for, and those profits sum to zero. That makes **settle-up** possible:
+greedily matching the largest debt against the largest credit closes the room
+out in at most one payment fewer than there are people, the same
+simplification a shared-expenses app does.
+
+Migration 0008 backfilled a purchase per (night, gamer) pair for existing
+rooms. Without it every room would have folded to nothing but its lifetime
+net, and anyone who had lost would have been unable to bet at all.
+
+### Buy-ins and available balance (#15)
+
+Before this, any number under the stake cap was a legal bet, so "chips
+tonight" measured nothing. Migration 0007 added `game_nights.buy_in`; the
+worker refuses a stake a gamer cannot cover, with a `400 insufficient_chips`
+carrying `{ stake, purchased, balance, committed, available }` so the client
+can explain the refusal without a second request.
+
+The client computes the same numbers to show them, but the **worker enforces**
+— a stale bootstrap, or a second phone betting for the same person, would
+otherwise let the pot exceed what the room actually bought.
+
+### Top-up (#14)
+
+Backing the same outcome again adds to the position rather than replacing it.
+"Another 20 on Home" means 20 more, not a silent reset to 20. The running
+total is capped against `MAX_STAKE`, not just the increment, or repeated
+top-ups would walk past the bound that keeps `stake × pot` inside
+exact-integer range in `settleWagers`.
+
+### Hedging (#20)
+
+A gamer may now hold a position on each outcome. Migration 0010 moved
+uniqueness from `(game, gamer)` to `(game, gamer, outcome)`, so same-outcome
+bets still merge into a top-up while each outcome carries its own stake.
+
+**Settlement had to be rekeyed in the same change.** `settleWagers` looked
+payouts up by `gamerId`, which is a bijection only while a gamer holds one
+bet. A hedger appears on both a winning and a losing row, and paying by gamer
+would have credited the winning amount against every row they hold — creating
+chips. Payouts are now keyed by a bet's index in the book.
+
+A hedge is new money: only the position being topped up has its stake added
+back when checking what is available. Covering both sides costs both stakes.
+Moving a position is now remove-then-place. Participants still cannot
+hedge — eligibility already limits them to their own side.
+
+### Two bugs found in production, not by tests
+
+- **Late joiners got no chips (#18).** The active-gamers route replaced pool
+  membership without issuing a buy-in, so anyone added mid-night held zero
+  and could not bet. Found by comparing production counts after #17 deployed:
+  306 backfilled purchases against 314 (night, pool gamer) pairs. The route
+  now issues the purchase, guarded on the event log rather than on "was not in
+  the pool a moment ago" — a gamer can be dropped and re-added, and that must
+  not mint a second stack. Migration 0009 closed the gap in existing data.
+- **A latent hang in `settleUp`.** An `if (amount > 0)` guard around the
+  transfer meant neither index advanced when it was false, spinning forever.
+  `amount` is positive by construction, so the guard protected nothing while
+  hiding the termination argument. Surfaced by sabotage-testing that branch,
+  which hung the test run rather than failing it.
+
+### Tooling and cleanup
+
+- **Chip ledger health check (#19).** `.github/workflows/ledger-check.yml`,
+  manual dispatch with no inputs, counts pool members with no buy-in against
+  production D1. Read-only, and it cannot become a console for arbitrary SQL.
+  Exists because the agent environment cannot reach `api.cloudflare.com`, so a
+  runner is the only place the question can be answered on demand.
+- **Dead branch removed (#16).** `StartGameNightPanel` carried a
+  "game night live" branch that `RoomScreen` could never render, since it
+  swaps in `GameCreationPanel` the moment a night exists.
+
+### Tests
+
+Worker **153** across 17 files, shared **215** across 17, web **77** across 12.
+New coverage for top-ups, buy-in ceilings, room-wide balances carrying across
+nights, purchases mid-night, late-joiner buy-ins, idempotence when a gamer is
+removed and re-added, settle-up transfers, and hedged settlement on both
+sides.
+
+Every behavioural change was verified non-vacuous by disabling the mechanism
+and confirming the intended tests — and only those — failed. Migrations and
+the D1 code paths were additionally exercised against a real `wrangler dev`
+database, because the unit suite only touches the in-memory repositories.
 
 ---
 
@@ -136,6 +251,7 @@ Versions: `@fc26/web` → `0.1.2`, `@fc26/worker` → `0.1.1`, `@fc26/shared` �
 24. [Key Decisions Summary](#24-key-decisions-summary)
 25. [Open Items](#25-open-items)
 26. [Appendix: External Dependencies](#26-appendix-external-dependencies)
+27. [Wagering & the Chip Ledger](#27-wagering--the-chip-ledger)
 
 ---
 
@@ -360,7 +476,11 @@ Route handlers receive typed repos via `c.get('repos')` and never reference D1 b
 |---|---|
 | `rooms` | A group of friends sharing a leaderboard. Optional PIN hash. |
 | `gamers` | Humans belonging to a room. Soft-deleted via `active` flag. |
-| `game_events` | **Append-only write model.** Every game fact lives here. |
+| `game_events` | **Append-only write model.** Every game and chip fact lives here. |
+| `game_nights` | One evening of play. Carries the night's `buy_in`. |
+| `game_night_active_gamers` | Who is in tonight's pool. Editable mid-night. |
+| `games` | The single live game of a night, including `bets_locked_at`. |
+| `bets` | **Unsettled** wagers only. Deleted at settlement — see §27. |
 | `gamer_points` | Projection: per-gamer win/loss/goal counters. |
 | `gamer_team_points` | Projection: per-gamer-team (ad-hoc pairing) counters. |
 | `squad_versions` | Registry of historical squad versions stored in R2. |
@@ -465,6 +585,8 @@ CREATE TABLE schema_migrations (
 - **Every mutable table has `created_at` and `updated_at`.** Drizzle `timestamps()` helper.
 - **`game_events` is append-only.** The repository interface does not expose update or delete. Corrections are expressed as new events (`game_voided` + a new `game_recorded`).
 - **Game size constraint:** `GameSize = 2 | 4` enforced at the type layer, Zod boundary, and event payload validation. No `CHECK(size IN (2, 4))` column because size lives inside the event payload.
+- **`bets` is unique on `(game_id, gamer_id, outcome)`.** One position per outcome, so a repeat bet on the same outcome merges into a top-up while a different outcome opens a hedge. It was `(game_id, gamer_id)` until migration 0010; anything keying settlement by gamer rather than by row depends on the *old* shape and is now wrong.
+- **`event_type` has no CHECK constraint** and every consumer filters on `payload.type`, which is why new event types have needed no migration.
 
 ---
 
@@ -481,7 +603,15 @@ This is CQRS-lite. The write model is a log of facts; the read models are derive
 ```ts
 // packages/shared/src/types/events.ts
 
-export type EventType = 'game_recorded' | 'game_voided'
+export type EventType =
+  | 'game_recorded'
+  | 'game_interrupted'
+  | 'game_voided'
+  | 'bet_placed'       // ─┐
+  | 'bet_removed'      //  │ the live `bets` table is transient, so these
+  | 'bets_locked'      //  │ are the only durable record of a wager's life
+  | 'bets_discarded'   // ─┘
+  | 'chips_purchased'  // the only way chips enter a room — see §27
 
 export interface GameRecordedEvent {
   type: 'game_recorded'
@@ -1351,6 +1481,119 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 | `jose` | worker — JWT signing for session cookies |
 | `@google/genai` | worker — Gemini OCR (optional, Phase 10) |
 | `@anthropic-ai/sdk` | worker — Claude OCR fallback (optional, Phase 10) |
+
+---
+
+## 27. Wagering & the Chip Ledger
+
+Gamers bet chips on the live game. The pool is **pari-mutuel**: every stake
+forms one pot, and backers of the actual result split it in proportion to
+their stake. There is no house and no fixed odds — the multiplier shown in the
+UI is just `pot / stake-backing-this-outcome`, and it moves as bets come in.
+
+### The ledger is derived, never stored
+
+```
+purchased = Σ chips_purchased events        (the only way chips enter)
+net       = Σ (payout − stake) over every settled, non-voided game
+committed = stakes riding on games that have not resolved
+balance   = purchased + net
+available = balance − committed
+```
+
+`roomChipLedger(events, openBets)` in `packages/shared/src/wager/ledger.ts`
+folds this out of the event log on every read. There is deliberately **no
+balance column**: one could drift away from the history that produced it, and
+reconciling the two would become someone's job. It also means voiding a game
+corrects every balance for free — the wagers simply stop being folded in,
+with no wager-specific rollback anywhere.
+
+Balances are **room-scoped**, so they carry from one night to the next.
+
+### Where chips come from
+
+`chips_purchased` is the only source. Two ways it is written:
+
+- **Starting a night** issues one to each gamer in the pool at the night's
+  `buy_in`. A buy-in of `0` issues nothing, which is how a room that carries
+  balances over plays on without topping anyone up.
+- **`POST /rooms/:roomId/chips/purchases`** at any time. Running dry
+  mid-evening is exactly when someone buys in again.
+
+Adding a gamer to a live night's pool also issues one, guarded on the event
+log so removing and re-adding cannot mint a second stack.
+
+### The two transient tables
+
+`bets` holds **only unsettled** rows. Settlement writes the outcome into the
+`game_recorded` payload and deletes them; that payload is the durable record.
+This is why:
+
+- `listByGameNight` is the whole of a night's open exposure — every surviving
+  row is still at risk.
+- The bet **event log** (`bet_placed` / `bet_removed` / `bets_locked` /
+  `bets_discarded`) exists at all. Without it the only trace of a wager would
+  be the settled array, losing placement times, replaced stakes, removals, and
+  any game whose book was discarded rather than settled.
+
+### Settlement
+
+`settleWagers` in `packages/shared/src/wager/settle.ts`. Flooring each share
+leaves at most `winnerCount − 1` chips over; those go to the largest
+fractional remainders, ties broken by larger stake then lower gamer ID, so the
+result is deterministic and testable. When nobody backed the result the pool
+cannot be divided and every stake is refunded.
+
+**Payouts are keyed by a bet's index in the book, not by gamer.** A hedger
+appears on both a winning and a losing row; keying by gamer pays the winning
+amount against every row they hold and invents chips. This is the single
+easiest way to reintroduce a serious bug in this subsystem.
+
+`MAX_STAKE` (1,000,000) keeps `stake × pot` well below 2^53, where JS number
+arithmetic would start losing integer precision and the pot would stop
+balancing to the chip. Top-ups are capped on the **running total**, not the
+increment.
+
+### Positions, top-ups and hedges
+
+One position per `(game, gamer, outcome)`:
+
+| Action | Result |
+|---|---|
+| Same outcome again | Merges — stake adds, `id` and `created_at` preserved |
+| Different outcome | A second position. This is a hedge |
+| Moving a position | Remove, then place — which is what it honestly costs |
+
+Only the position being topped up has its stake added back when checking
+`available` (`maxStakeOnGame`). Covering both sides costs both stakes.
+
+Participants may only back their own side (`canBack`), so a player cannot take
+money against themselves and cannot hedge. Non-participants may back anything.
+
+### Settling up
+
+`settleUp(entries)` returns who pays whom. Chips only enter by purchase and
+wagering only moves them, so the nets sum to zero and every winner can be paid
+out of the losers. Greedy largest-debt-against-largest-credit closes the room
+in at most *n − 1* transfers rather than having each loser pay each winner.
+
+Open stakes are excluded — an unresolved bet is neither won nor lost, and
+settling mid-game would be a guess.
+
+### Visibility is not access control
+
+`GET /rooms/:roomId/bet-history` returns the whole room's ledger to anyone
+holding the room session. The session carries **no per-gamer identity**, so
+the server cannot tell members apart and filtering there would be security
+theatre. `filterBetHistory` narrows the view client-side; treat it as a
+convenience, not a permission. Making it real would need per-gamer sessions.
+
+### Operational note
+
+`.github/workflows/ledger-check.yml` (manual dispatch, read-only, no inputs)
+answers "is anyone in a pool without a buy-in?" against production D1. A
+non-zero `missing` names a real person who cannot bet. Two separate bugs have
+produced that state, so it is worth asking after any wagering deploy.
 
 ---
 
