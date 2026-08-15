@@ -32,7 +32,19 @@ export class InMemoryBetRepository implements IBetRepository {
     const existing = [...this.bets.values()].find(
       (item) => item.gameId === bet.gameId && item.gamerId === bet.gamerId,
     )
-    if (existing) this.bets.delete(existing.id)
+    if (existing) {
+      // Match D1, whose ON CONFLICT updates outcome/stake/updated_at and
+      // leaves id and created_at alone. Deleting and re-inserting under the
+      // caller's id would give the same bet a different identity here than in
+      // production — invisible until something keys off betId, which the bet
+      // event log now does.
+      this.bets.set(existing.id, {
+        ...bet,
+        id: existing.id,
+        createdAt: existing.createdAt,
+      })
+      return
+    }
     this.bets.set(bet.id, bet)
   }
 

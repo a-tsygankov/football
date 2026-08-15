@@ -114,24 +114,42 @@ betRoutes.post(BETS_PATH, async (c) => {
     return c.json({ error: 'outcome_not_allowed' }, 400)
   }
 
+  // One bet per gamer per game, so a repeat bet lands on the existing row.
+  // Read it first: it decides whether this is a top-up, and the event log
+  // needs what was there before the write destroys it.
+  const existing = (await c.get('deps').bets.listByGame(game.id)).find(
+    (item) => item.gamerId === gamerId,
+  )
+
+  // Backing the same outcome again adds to the position rather than replacing
+  // it — "another 20 on Home" should mean 20 more, not a silent reset to 20.
+  // Switching outcome still replaces, which is how you move a position.
+  const toppingUp = existing !== undefined && existing.outcome === body.outcome
+  const stake = toppingUp ? existing.stake + body.stake : body.stake
+
+  // The schema caps each request; a top-up has to be capped on the total too,
+  // or repeated increments would walk past the limit that keeps
+  // `stake * pot` inside exact-integer range in settleWagers.
+  if (stake > MAX_STAKE) {
+    return c.json({ error: 'stake_cap_exceeded', max: MAX_STAKE, stake }, 400)
+  }
+
   const now = Date.now()
   const bet: Bet = {
-    id: BetId(nanoid()),
+    // A top-up is the same position, so it keeps its id and created_at. The D1
+    // upsert preserves the original row id on conflict regardless; being
+    // explicit keeps the in-memory repository behaving identically, since it
+    // deletes and re-inserts.
+    id: existing?.id ?? BetId(nanoid()),
     roomId,
     gameNightId: game.gameNightId,
     gameId: game.id,
     gamerId,
     outcome: body.outcome,
-    stake: body.stake,
-    createdAt: now,
+    stake,
+    createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   }
-  // One bet per gamer per game, so an upsert silently overwrites. Capture what
-  // it replaced before writing, or the previous stake and outcome would be
-  // gone from the record entirely.
-  const existing = (await c.get('deps').bets.listByGame(game.id)).find(
-    (item) => item.gamerId === gamerId,
-  )
   await c.get('deps').bets.upsert(bet)
 
   const placed: BetPlacedEvent = {
