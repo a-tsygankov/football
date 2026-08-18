@@ -1,4 +1,7 @@
 @import "tailwindcss";
+/* Enter/exit keyframes for the Radix data-state attributes shadcn targets.
+   Motion handles meaningful state changes; this handles open/close. */
+@import "tw-animate-css";
 
 /*
  * The design tokens the app already had, expressed the way shadcn expects

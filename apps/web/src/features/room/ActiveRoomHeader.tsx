@@ -4,12 +4,17 @@ import {
   type RoomBootstrapResponse,
 } from '@fc26/shared'
 import { MiniStat } from '../../components/MiniStat.jsx'
-import { secondaryButtonStyle } from '../../styles/controls.js'
 import type { BusyState } from '../../types/busyState.js'
+import type { WorkerVersionInfo } from '../../lib/version.js'
+import { RoomDetailSheet } from './RoomDetailSheet.jsx'
 
 export function ActiveRoomHeader({
   bootstrap,
   busy,
+  worker,
+  workerError,
+  installStatus,
+  onInstall,
   onLeaveRoom,
   onOpenGamePanel,
   onOpenRoster,
@@ -18,6 +23,10 @@ export function ActiveRoomHeader({
 }: {
   bootstrap: RoomBootstrapResponse
   busy: BusyState
+  worker: WorkerVersionInfo | null
+  workerError: string | null
+  installStatus: string
+  onInstall: () => void
   onLeaveRoom: () => void
   onOpenGamePanel: () => void
   onOpenRoster: () => void
@@ -51,47 +60,18 @@ export function ActiveRoomHeader({
             {bootstrap.room.hasPin ? ' • PIN protected' : ' • Open room'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignSelf: 'flex-start' }}>
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={() => void onRefresh()}
-            style={{
-              ...secondaryButtonStyle,
-              background: 'rgba(236,253,245,0.12)',
-              color: '#ecfdf5',
-              borderColor: 'rgba(236,253,245,0.2)',
-            }}
-          >
-            {busy === 'refreshing-room' ? 'Refreshing...' : 'Refresh'}
-          </button>
-          {onOpenSettings ? (
-            <button
-              type="button"
-              onClick={() => onOpenSettings()}
-              style={{
-                ...secondaryButtonStyle,
-                background: 'rgba(236,253,245,0.12)',
-                color: '#ecfdf5',
-                borderColor: 'rgba(236,253,245,0.2)',
-              }}
-            >
-              Settings
-            </button>
-          ) : null}
-          <button
-            type="button"
-            disabled={busy !== null}
-            onClick={() => onLeaveRoom()}
-            style={{
-              ...secondaryButtonStyle,
-              background: 'rgba(254,226,226,0.12)',
-              color: '#fecaca',
-              borderColor: 'rgba(254,202,202,0.3)',
-            }}
-          >
-            Leave room
-          </button>
+        <div style={{ alignSelf: 'flex-start' }}>
+          <RoomDetailSheet
+            bootstrap={bootstrap}
+            busy={busy}
+            worker={worker}
+            workerError={workerError}
+            installStatus={installStatus}
+            onInstall={onInstall}
+            onLeaveRoom={onLeaveRoom}
+            onOpenSettings={onOpenSettings}
+            onRefresh={onRefresh}
+          />
         </div>
       </div>
 

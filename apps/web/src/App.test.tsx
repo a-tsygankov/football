@@ -215,10 +215,14 @@ describe('App shell', () => {
     // Settings is hidden by default — it exposes destructive controls and is
     // only meant for power-users. The triple-tap unlock on the bottom-nav
     // logo flips a persisted flag in the debug-console store; once unlocked
-    // the Settings heading appears.
+    // the way in appears inside the room-detail sheet.
     expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull()
     const { useDebugConsole } = await import('./debug/console-store.js')
     useDebugConsole.getState().toggle() // simulates the third tap
+
+    // The room detail moved behind a sheet, so the controls that used to sit
+    // in the header are one deliberate tap away now.
+    fireEvent.click(screen.getByRole('button', { name: /room details/i }))
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument(),
     )

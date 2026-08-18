@@ -32,6 +32,7 @@ import { ChipLedgerPanel } from '../wager/ChipLedgerPanel.jsx'
 import { WagerPage } from '../wager/WagerPage.jsx'
 import type { Route } from '../../hooks/useHashRoute.js'
 import type { BusyState } from '../../types/busyState.js'
+import type { WorkerVersionInfo } from '../../lib/version.js'
 
 export function RoomScreen({
   route,
@@ -63,6 +64,10 @@ export function RoomScreen({
   onCreateGamer,
   onCreateGame,
   onInterruptGame,
+  worker,
+  workerError,
+  installStatus,
+  onInstall,
   onLeaveRoom,
   onRecordGameResult,
   onAnalysePhoto,
@@ -112,6 +117,10 @@ export function RoomScreen({
     gameId: string,
     request: InterruptCurrentGameRequest,
   ) => Promise<void>
+  worker: WorkerVersionInfo | null
+  workerError: string | null
+  installStatus: string
+  onInstall: () => void
   onLeaveRoom: () => void
   onRecordGameResult: (
     gameNightId: string,
@@ -201,6 +210,10 @@ export function RoomScreen({
       <ActiveRoomHeader
         bootstrap={bootstrap}
         busy={busy}
+        worker={worker}
+        workerError={workerError}
+        installStatus={installStatus}
+        onInstall={onInstall}
         onLeaveRoom={onLeaveRoom}
         onOpenGamePanel={() => onNavigate('game')}
         onOpenRoster={() => onNavigate('roster')}
