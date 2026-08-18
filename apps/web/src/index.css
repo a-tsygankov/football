@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+/*
+ * The design tokens the app already had, expressed the way shadcn expects
+ * them. The values are lifted from styles/controls.ts and the panels — this
+ * file changes how they are addressed, not what they are.
+ *
+ * shadcn ships Inter, zinc and 0.625rem radii. None of that is here on
+ * purpose: the serif and the emerald are the app's whole personality, so
+ * every generated component inherits ours instead.
+ */
+:root {
+  --background: #ecfdf5;
+  --foreground: #052e16;
+
+  --card: rgba(255, 255, 255, 0.82);
+  --card-foreground: #052e16;
+  --popover: #ffffff;
+  --popover-foreground: #052e16;
+
+  --primary: #166534;
+  --primary-foreground: #ecfdf5;
+  --secondary: #f0fdf4;
+  --secondary-foreground: #166534;
+
+  --muted: #f0fdf4;
+  --muted-foreground: rgba(5, 46, 22, 0.7);
+  --accent: #d1fae5;
+  --accent-foreground: #166534;
+
+  --destructive: #b91c1c;
+  --destructive-foreground: #fef2f2;
+
+  --border: #bbf7d0;
+  --input: #bbf7d0;
+  --ring: #166534;
+
+  /* Buttons are 18px in the existing app; the rest of the scale hangs off it. */
+  --radius: 1.125rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* One variable carries the app's voice. shadcn keys every component off
+     --font-sans, so overriding it here is what keeps the serif. */
+  --font-sans: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+
+  --radius-sm: 0.875rem;
+  --radius-md: 1rem;
+  --radius-lg: var(--radius);
+  --radius-xl: 1.5rem;
+  --radius-2xl: 1.75rem;
+}
+
+@layer base {
+  /*
+   * Preflight resets heading sizes and margins. Every screen in this app
+   * still sets those inline, so nothing moves — but the serif has to be
+   * restated here because preflight points body at --font-sans' default.
+   */
+  body {
+    font-family: var(--font-sans);
+    color: var(--foreground);
+  }
+
+  /* Motion is opt-in per interaction, but the escape hatch is global. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
