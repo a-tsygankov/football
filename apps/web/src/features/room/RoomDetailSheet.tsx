@@ -55,13 +55,29 @@ export function RoomDetailSheet({
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button
-          variant="secondary"
-          size="sm"
-          className="border-[rgba(236,253,245,0.2)] bg-[rgba(236,253,245,0.12)] text-[#ecfdf5] hover:bg-[rgba(236,253,245,0.2)]"
+        {/* The room name is the trigger: it is both the page's heading text
+            and the obvious thing to tap for room-level things. */}
+        <button
+          type="button"
+          className="flex min-w-0 items-center gap-1.5 rounded-sm bg-transparent px-0 text-left text-[17px] font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          Room details
-        </Button>
+          <span className="truncate">{bootstrap.room.name}</span>
+          <svg
+            aria-hidden="true"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="shrink-0 opacity-45"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+          <span className="sr-only">Room details</span>
+        </button>
       </SheetTrigger>
       <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto pb-6">
         <SheetHeader>

@@ -25,7 +25,7 @@ import { StartGameNightPanel } from '../gameNight/StartGameNightPanel.jsx'
 import { ScoreboardPanel } from '../scoreboard/ScoreboardPanel.jsx'
 import { TeamsPanel } from '../squads/TeamsPanel.jsx'
 import { useSquadBrowser } from '../squads/useSquadBrowser.js'
-import { ActiveRoomHeader } from './ActiveRoomHeader.jsx'
+import { RoomBar } from './RoomBar.jsx'
 import { SettingsPanel } from './SettingsPanel.jsx'
 import { ChipStandingsPanel } from '../gameNight/ChipStandingsPanel.jsx'
 import { ChipLedgerPanel } from '../wager/ChipLedgerPanel.jsx'
@@ -207,7 +207,7 @@ export function RoomScreen({
 
   return (
     <>
-      <ActiveRoomHeader
+      <RoomBar
         bootstrap={bootstrap}
         busy={busy}
         worker={worker}
@@ -215,8 +215,6 @@ export function RoomScreen({
         installStatus={installStatus}
         onInstall={onInstall}
         onLeaveRoom={onLeaveRoom}
-        onOpenGamePanel={() => onNavigate('game')}
-        onOpenRoster={() => onNavigate('roster')}
         onOpenSettings={settingsUnlocked ? () => onNavigate('settings') : undefined}
         onRefresh={onRefresh}
       />

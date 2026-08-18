@@ -218,8 +218,11 @@ describe('App shell', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /Sunday Ladder/i })).toBeInTheDocument(),
     )
-    expect(screen.getAllByText(/Active game night/i).length).toBeGreaterThan(0)
+    // The "Active game night" label went with the room panel; the state it
+    // carried is the status pill, which is the part that actually changes.
     expect(screen.getByText(/1 ready/i)).toBeInTheDocument()
+    // Room ID, session and build numbers are all one tap away now.
+    expect(screen.getByRole('button', { name: /room details/i })).toBeInTheDocument()
     expect(screen.getAllByText(/Alice/i).length).toBeGreaterThan(0)
 
     // Settings is hidden by default — it exposes destructive controls and is
