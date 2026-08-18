@@ -1541,6 +1541,9 @@ describe('App shell', () => {
     fireEvent.click(screen.getByRole('button', { name: /\+ Add gamer/i }))
     fireEvent.change(screen.getByPlaceholderText(/Alice/i), { target: { value: 'Cara' } })
     fireEvent.click(screen.getByRole('button', { name: /^Add gamer$/i }))
+    // The add form is a modal sheet, so the nav behind it is inert until the
+    // create lands and the sheet closes itself — which is the point of it.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     fireEvent.click(screen.getByRole('button', { name: 'Game' }))
 
     await waitFor(() => {
@@ -2070,14 +2073,18 @@ describe('App shell', () => {
     const rosterPanel = screen.getByRole('heading', { name: 'Roster' }).closest('section')!
     fireEvent.click(within(rosterPanel).getByRole('button', { name: 'Edit' }))
 
-    // The edit form now exposes the avatar picker for the gamer's existing image.
-    expect(within(rosterPanel).getByText('Replace image')).toBeInTheDocument()
-    expect(within(rosterPanel).getByRole('button', { name: 'Remove' })).toBeInTheDocument()
+    // Editing happens in a sheet now, and a sheet is portalled to the body —
+    // so it is deliberately outside the roster section this scopes to.
+    const editSheet = within(await screen.findByRole('dialog'))
 
-    fireEvent.change(within(rosterPanel).getByDisplayValue('Alice'), {
+    // The edit form still exposes the avatar picker for the existing image.
+    expect(editSheet.getByText('Replace image')).toBeInTheDocument()
+    expect(editSheet.getByRole('button', { name: 'Remove' })).toBeInTheDocument()
+
+    fireEvent.change(editSheet.getByDisplayValue('Alice'), {
       target: { value: 'Alicia' },
     })
-    fireEvent.click(within(rosterPanel).getByRole('button', { name: 'Save gamer' }))
+    fireEvent.click(editSheet.getByRole('button', { name: 'Save gamer' }))
 
     await waitFor(() => expect(patchBody).not.toBeNull())
     // Name change is sent and the existing avatar is threaded through the save.
