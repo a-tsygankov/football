@@ -343,7 +343,12 @@ export interface BuyChipsRequest {
 
 export interface ChipLedgerResponse {
   roomId: RoomId
-  /** Richest first. Everyone who has ever bought or wagered appears. */
+  /**
+   * Richest first, and complete: everyone the room has ever issued or moved a
+   * chip for, night grants included. Bet validation reads balances from here,
+   * so it must not be pre-filtered — `hasChipActivity` is what the Wager page
+   * uses to decide who is worth listing.
+   */
   entries: ReadonlyArray<ChipLedgerEntry>
   /** What would close the room out, if it stopped now. */
   transfers: ReadonlyArray<ChipTransfer>

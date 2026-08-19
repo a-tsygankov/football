@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { DEFAULT_BUY_IN } from '@fc26/shared'
+import { DEFAULT_NIGHT_BUY_IN } from '@fc26/shared'
 import { Field } from '../../components/Field.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
 import { Panel } from '../../components/Panel.jsx'
@@ -20,13 +20,15 @@ export function StartGameNightPanel({
   busy: BusyState
   onStartGameNight: (buyIn: number) => Promise<void>
 }) {
-  const [buyIn, setBuyIn] = useState(String(DEFAULT_BUY_IN))
+  const [buyIn, setBuyIn] = useState(String(DEFAULT_NIGHT_BUY_IN))
   const [error, setError] = useState<string | null>(null)
 
   function start(): void {
     const parsed = Number.parseInt(buyIn.trim(), 10)
-    if (!Number.isFinite(parsed) || parsed < 1) {
-      setError('Buy-in must be at least 1 chip.')
+    // Zero is the ordinary case, not an error: the room carries balances, so
+    // most nights hand out nothing and people buy their own chips.
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setError('Buy-in cannot be negative.')
       return
     }
     setError(null)
@@ -50,6 +52,10 @@ export function StartGameNightPanel({
             style={inputStyle}
           />
         </Field>
+        <p style={{ margin: 0, fontSize: 12, opacity: 0.7 }}>
+          Leave at 0 and nobody is handed chips — balances carry over from
+          previous nights, and anyone short buys more on the Wager page.
+        </p>
 
         {error ? <InlineNotice tone="warn" message={error} /> : null}
 
