@@ -2,7 +2,159 @@
 
 **Stack:** TypeScript · Vite · React · Cloudflare Workers · D1 · R2
 **Target devices:** Android and iPhone phones (mobile-first PWA)
-**Document version:** 4 (2026-08-15) — supersedes the original `.docx` handoff
+**Document version:** 5 (2026-08-19) — supersedes the original `.docx` handoff
+
+---
+
+## Recent Changes (2026-08-19)
+
+Shipped as PRs #22–#29. Versions at the end of the day: `@fc26/web` →
+`0.1.20`, `@fc26/worker` → `0.1.14`, `@fc26/shared` → `0.1.8`,
+`WORKER_VERSION` → `0.1.14`, `SCHEMA_VERSION` → `13` (migrations 0011–0013).
+`EVENT_SCHEMA_VERSION` is still `1`.
+
+Two threads: the chip ledger was taken apart and rebuilt on an honest
+definition of a balance, and the client gained a design system and a service
+worker. See [§27](#27-wagering--the-chip-ledger) and
+[§28](#28-offline--the-service-worker) for the finished shape; this is how it
+got there.
+
+### The chip ledger stopped inventing money (#23, #24, #25, #26)
+
+The Wager page showed six gamers holding 220 chips each. None of them had ever
+bought one. Working backwards through it took four migrations, each removing a
+different layer of fiction, and the sequence is worth keeping because every
+step looked reasonable when it was written.
+
+**Migration 0011 — nights nobody bet on.** Migrations 0008 and 0009 had
+backfilled a buy-in for every (night, pool gamer) pair so that rooms carrying
+balances under the old per-night model kept them. That was right for nights
+people wagered on and invention for every evening played before wagering
+existed: 100 chips apiece for a season of football nobody had a bet on. 0011
+removes the backfill wherever no bet event names the night, matched on the
+deterministic migration ids so purchases the route wrote are untouched.
+Production went from 306 backfilled rows to 27.
+
+**Nights stopped granting chips (#24).** `DEFAULT_BUY_IN` meant two different
+things — the stack a person buys, and what a night hands out — so it split
+into `DEFAULT_BUY_IN` (100, still the suggested purchase) and
+`DEFAULT_NIGHT_BUY_IN` (**0**). Balances are room-wide and carry between
+nights, so a nightly grant handed a free stack to everyone in the pool whether
+they wagered or not; sit out ten evenings and you were a thousand chips richer
+for having done nothing. A night may still name a buy-in explicitly, and the
+old behaviour is exactly that with the amount filled in.
+
+The ledger also learned **where a chip came from**. `purchased` splits into
+`bought` (somebody chose to) and `granted` (a night issued it), which is what
+makes `hasChipActivity` possible: the Wager page lists a gamer only if they
+bought, won, lost, or have a stake riding. Filtering on "net is 0" would have
+been wrong — it hides someone who just topped up and hasn't bet, exactly when
+they want to see the purchase landed.
+
+**Migration 0012 — the grants themselves.** With nights no longer granting,
+every chip already granted was still in the ledger. 0012 removes every
+`chips_purchased` event the system issued on a gamer's behalf, matched on
+`reason` rather than an id prefix so it catches both the migration backfills
+and the grants the route wrote at the time. Balances became `bought + net`.
+Production revealed that **nobody had ever bought a chip** — all 27 remaining
+purchases were grants — so the room was left holding four non-zero balances,
+all of them pure wagering profit and loss.
+
+**Migration 0013 — the slate.** Clearing the wagering record itself so every
+balance is exactly 0 and nobody owes anybody. The trap here is that
+`game_recorded` carries **the match** — teams, clubs, result, selection
+strategy — and only *also* carries the settled wagers, so the event keeps its
+row and loses one key via `json_remove`. Deleting those rows would have taken
+the scoreboard and the whole season with them. Bets live in three places and
+all three are cleared: open `bets` rows, the `bet_*` events, and the
+settlements folded into the game.
+
+A night already in progress keeps its buy-in in the `game_nights` row, and
+adding somebody to that pool issues it, so 0013 zeroes the buy-in on active
+nights too. Without that, tonight would hand out chips again and quietly undo
+the reset. Finished nights keep their figure — it is a true record of how they
+were played, and nothing can issue against them.
+
+**Consequence, stated plainly:** the room now holds no chips at all, and
+nobody can bet until somebody buys some. That is the intended end state of the
+Splitwise-style model — chips enter only when a person puts money in — but it
+means the first night after this needs a purchase before a book can open. The
+refusal says so: `Cy is out of chips — buy some on the Wager page`, rather
+than the previous and useless `Cy has -20 chips available`.
+
+### The health check was asking a dead question (#25)
+
+`ledger-check.yml` counted pool members who had never been bought in. Nobody is
+bought in any more, so that count is now "everybody" and always will be — a
+permanent false alarm. It asks the arithmetic question instead: chips only
+enter by purchase and wagering only moves them between gamers, so every
+gamer's net must sum to **exactly zero** room-wide. A non-zero total means
+settlement invented or destroyed chips, which is the one bug in this subsystem
+worth being woken up for. A second step prints what everyone holds.
+
+Both queries are extracted from the workflow file and run against a seeded
+SQLite database before dispatch, covering the voided-game exclusion and the
+omission of gamers with no activity. Production D1 is not reachable from a
+development session, so a query that fails to parse costs a full round-trip to
+discover.
+
+### Wager page (#23)
+
+The history is long and mostly retrospective, so it collapses behind a
+`Show N games with bets` toggle; the chip balances above it are what people
+open the page for. The gamer filter now always offers **Everyone** — it used
+to be gated behind the settings unlock, which stopped nobody, since the
+endpoint returns the whole room's ledger to any session that can reach it.
+See [§27 Visibility is not access control](#visibility-is-not-access-control).
+
+### Tailwind, shadcn and Motion (#22)
+
+The client gained a real design system: Tailwind v4 via `@tailwindcss/vite`,
+shadcn/ui **vendored as source** under `src/components/ui/` (it is not a
+package — the components are meant to be edited), Radix primitives underneath,
+and Motion 13 for the small amount of animation that earns its place.
+
+Design tokens live in `src/index.css` as CSS custom properties with an
+`@theme inline` mapping, so the palette has one home rather than being spread
+through inline styles. Touch targets are sized for phones — `size-11` icon
+buttons, `py-3` tabs — and a global `prefers-reduced-motion` block turns the
+motion off rather than branching the markup.
+
+**The per-page header is gone.** Room controls, the version block and the
+Active Room description occupied roughly 470px above every screen. `RoomBar`
+replaces them with a 47px sticky bar — a live dot, the room name, a status
+badge — and `RoomDetailSheet` holds everything that was displaced: room ID,
+gamers, session expiry, Refresh / Install / Settings / Leave, and the three
+build versions. Nothing was removed, only folded.
+
+### Offline support (#27, #29)
+
+A service worker, contributed in #27 and finished in #29. See
+[§28](#28-offline--the-service-worker).
+
+### Bugs found, and how
+
+- **A test that passed for no reason.** #27's banner-precedence test asserted
+  that the version-floor banner wins over the service-worker update banner.
+  Registration is once-only by design — `main.tsx` registers at boot and a
+  second call would leak a duplicate workbox listener under StrictMode — and
+  the store is a module-level singleton, so the first test to register won and
+  every later test held a callback that did nothing. The precedence test never
+  signalled a waiting worker, so its "no reload button" assertion held
+  trivially. Caught by removing the precedence from `App.tsx` so both banners
+  render and watching all 21 tests pass anyway. One registration now serves
+  the file. **Sabotage the behaviour and re-run — a test that cannot fail is
+  not evidence.**
+- **A stale version bump.** #27 was branched before `0.1.19` landed, so its
+  `0.1.18 → 0.1.19` bump became a no-op against the new base and CI correctly
+  refused a 17-file client change carrying no version.
+
+### Tests
+
+496 passing: 219 shared, 155 worker, 122 web. Both migrations 0012 and 0013
+were verified against a seeded SQLite database before deploy — grants removed,
+manual purchases and settlement history intact, match records byte-for-byte
+unchanged, `schema_migrations` stamped.
 
 ---
 
@@ -252,6 +404,7 @@ Versions: `@fc26/web` → `0.1.2`, `@fc26/worker` → `0.1.1`, `@fc26/shared` �
 25. [Open Items](#25-open-items)
 26. [Appendix: External Dependencies](#26-appendix-external-dependencies)
 27. [Wagering & the Chip Ledger](#27-wagering--the-chip-ledger)
+28. [Offline & the Service Worker](#28-offline--the-service-worker)
 
 ---
 
@@ -1461,7 +1614,25 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 3. **Session cookie lifetime** — 30 days proposed; confirm before Phase 2.
 4. **Squad retention count** — 12 versions proposed; confirm before Phase 1.
 5. **PIN alphabet** — numeric 4-digit default, alphanumeric optional; confirm UI copy.
-6. **Bottom nav structure** — which primary mode tabs? Proposed: Game / Dashboard / Teams / Changes, with the logo as a fifth centered element that's also the Console trigger.
+6. **Bottom nav structure** — which primary mode tabs? Proposed: Game / Dashboard / Teams / Changes, with the logo as a fifth centered element that's also the Console trigger. *(Shipped since as Game / Scoreboard / FC26 / Wager / Roster.)*
+
+### Open as of 2026-08-19
+
+7. **The room holds no chips.** Migration 0013 reset every balance to zero and
+   nobody has bought any, so no bet can be placed until somebody does. This is
+   the intended end state, not a fault — but the first night after it needs a
+   purchase before a book can open.
+8. **The service worker has not been verified on a real device.** It was
+   tested under `vite preview` — registration, offline reload, the update
+   handshake — but not on iOS Safari, which is the platform most likely to
+   disagree about PWA behaviour. Worth doing before relying on offline at a
+   game night.
+9. **The sticky `RoomBar` is likewise unverified on iOS Safari**, where the
+   dynamic toolbar has a history of arguing with `position: sticky`.
+10. **CI actions still target Node 20**, which GitHub has deprecated and is
+    force-running on Node 24. Harmless today, a warning on every job, and it
+    will stop being harmless. `actions/checkout@v4`, `actions/setup-node@v4`
+    and `pnpm/action-setup@v4` all need bumping together.
 
 ---
 
@@ -1481,6 +1652,16 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 | `jose` | worker — JWT signing for session cookies |
 | `@google/genai` | worker — Gemini OCR (optional, Phase 10) |
 | `@anthropic-ai/sdk` | worker — Claude OCR fallback (optional, Phase 10) |
+| `motion` (v13) | web — the small amount of animation that earns its place |
+| `@radix-ui/*` | web — unstyled primitives under the vendored shadcn components |
+| `class-variance-authority`, `clsx`, `tailwind-merge` | web — shadcn's variant and class plumbing |
+| `tw-animate-css` | web — the animation utilities shadcn's components expect |
+| `vite-plugin-pwa` | web — precache manifest and service worker generation |
+| `workbox-window` | web — the client half of the update handshake |
+
+shadcn/ui is **not** in this table on purpose: it is not a dependency. Its
+components are vendored as source under `apps/web/src/components/ui/` and are
+meant to be edited in place.
 
 ---
 
@@ -1494,12 +1675,21 @@ UI is just `pot / stake-backing-this-outcome`, and it moves as bets come in.
 ### The ledger is derived, never stored
 
 ```
-purchased = Σ chips_purchased events        (the only way chips enter)
+bought    = Σ chips_purchased where reason = 'manual'      (somebody chose to)
+granted   = Σ chips_purchased where reason = 'game_night_buy_in'
+purchased = bought + granted                (the only way chips enter)
 net       = Σ (payout − stake) over every settled, non-voided game
 committed = stakes riding on games that have not resolved
 balance   = purchased + net
 available = balance − committed
 ```
+
+`bought` and `granted` are kept apart because a balance made of grants is not
+the same claim as one somebody paid for. `hasChipActivity(entry)` — `bought >
+0 || net !== 0 || committed > 0` — is what the Wager page lists on. Buying
+counts as taking part even before the first bet; being handed a stack does
+not. As of migration 0012 no `granted` rows survive in production, but the
+distinction stays: it is the difference between money and a gift.
 
 `roomChipLedger(events, openBets)` in `packages/shared/src/wager/ledger.ts`
 folds this out of the event log on every read. There is deliberately **no
@@ -1512,16 +1702,22 @@ Balances are **room-scoped**, so they carry from one night to the next.
 
 ### Where chips come from
 
-`chips_purchased` is the only source. Two ways it is written:
+`chips_purchased` is the only source, and in practice there is now only one
+way it is written: **`POST /rooms/:roomId/chips/purchases`**, at any time.
+Running dry mid-evening is exactly when someone buys in again, and making them
+wait for the next night would be the wrong shape.
 
-- **Starting a night** issues one to each gamer in the pool at the night's
-  `buy_in`. A buy-in of `0` issues nothing, which is how a room that carries
-  balances over plays on without topping anyone up.
-- **`POST /rooms/:roomId/chips/purchases`** at any time. Running dry
-  mid-evening is exactly when someone buys in again.
+**A game night grants nothing by default** (`DEFAULT_NIGHT_BUY_IN = 0`).
+Balances are room-wide and carry between nights, so a nightly grant mints
+chips for everyone in the pool whether they wager or not, and the balance
+stops meaning anything. A night may still name a `buy_in` explicitly — the
+start form takes it, and both issue paths are guarded on `buyIn > 0` — in
+which case starting the night issues one to each gamer in the pool, and adding
+a gamer to a live pool issues one too, guarded on the event log so removing
+and re-adding cannot mint a second stack.
 
-Adding a gamer to a live night's pool also issues one, guarded on the event
-log so removing and re-adding cannot mint a second stack.
+This is the whole reason a balance means something: **what this person put in,
+plus what they won.** Nothing else can move it.
 
 ### The two transient tables
 
@@ -1591,9 +1787,102 @@ convenience, not a permission. Making it real would need per-gamer sessions.
 ### Operational note
 
 `.github/workflows/ledger-check.yml` (manual dispatch, read-only, no inputs)
-answers "is anyone in a pool without a buy-in?" against production D1. A
-non-zero `missing` names a real person who cannot bet. Two separate bugs have
-produced that state, so it is worth asking after any wagering deploy.
+checks the **invariant** against production D1: chips only enter by purchase
+and wagering only moves them between gamers, so every gamer's net must sum to
+exactly zero room-wide. A non-zero `net_total` means settlement invented or
+destroyed chips — the one bug in this subsystem worth being woken up for. It
+also reports `granted` (should stay 0) and prints what everyone holds, folded
+the same way the Wager page folds it.
+
+Worth running after any wagering deploy. Its earlier form asked "is anyone in
+a pool without a buy-in?", which stopped having an answer once nights stopped
+buying anyone in.
+
+Production D1 is not reachable from a development session — no Cloudflare
+credentials, and the agent proxy refuses `api.cloudflare.com` — so this
+workflow is the only read path. Changes to its SQL should be run against a
+seeded SQLite database first; the queries are written to be extractable from
+the YAML for exactly that reason.
+
+---
+
+## 28. Offline & the Service Worker
+
+The installed PWA had a manifest and an install prompt but no service worker,
+so opening it without network was a white screen and every load re-downloaded
+the bundle. `vite-plugin-pwa` now precaches the app shell.
+
+### What is cached, and what must never be
+
+| Request | Handler | Why |
+|---|---|---|
+| App shell (js, css, html, svg, png, ico, woff2, manifest) | Precache | The thing that makes offline a screen rather than a white page |
+| `/api/squads/<version>/{clubs,leagues,players,diff}` | `StaleWhileRevalidate` | Immutable by construction — an ingest publishes a new tag rather than rewriting an old one |
+| Everything else under `/api/` | `NetworkOnly` | A cached scoreboard or bet list is a **wrong** answer, not an old one |
+
+`/api/squads/versions`, `/latest` and `/logos` are excluded from the squad
+rule by a negative lookahead: the first two are mutable aliases that must
+reflect the newest ingest, and logos carry no version in the path.
+
+Those patterns live in `apps/web/src/lib/swCacheRules.ts` **with tests**,
+rather than inline in `vite.config.ts`. Getting one wrong is invisible at
+build time and surfaces as a gamer looking at a room that quietly disagrees
+with itself.
+
+Sourcemaps are deliberately absent from the precache glob — large, and only
+ever wanted by a devtools session that has network.
+
+### Scope
+
+The worker registers at scope `/football/`, which is where
+`workers/football-app` serves the client (the prefix is kept so bookmarks and
+home-screen shortcuts from the old GitHub Pages URL still map 1:1). Scope
+limits which **pages** a worker controls, not which requests it may intercept
+— so a page at `/football/` still routes its `/api/*` fetches through the
+worker, which is what makes the rules above apply at all.
+
+`navigateFallback` points at the precached shell so an offline navigation
+renders something; `navigateFallbackDenylist: [/^\/api\//]` stops that
+fallback swallowing API requests, which must fail honestly rather than resolve
+to a page of HTML.
+
+### Updates are offered, never forced
+
+`registerType: 'prompt'`. A new build downloads in the background and then
+**waits** — it never takes over the page on its own. A game night is a
+long-lived tab, and swapping the bundle under someone mid-bet is worse than
+running a build a few minutes old. The waiting worker raises a banner with
+`Reload to update`; `Later` leaves it waiting until the next launch.
+
+`swUpdateStore` (`src/lib/swUpdate.ts`) is a plain observable rather than a
+hook, so registration happens once at boot in `main.tsx` while React
+subscribes separately. `register()` ignores repeat calls — StrictMode
+double-invokes effects and a second registration leaks a workbox listener.
+
+**That once-only guard has a testing consequence.** The store is a
+module-level singleton, so a per-test `register()` is silently ignored and
+that test ends up holding a callback that does nothing. `App.test.tsx`
+registers once for the whole file via `beforeAll` and shares the handle. A
+test that registers its own will pass whatever the app does.
+
+### Precedence
+
+When both the `minClientVersion` floor and a waiting service worker apply, the
+**version floor wins**: being under the floor is the more serious of the two,
+and two stacked banners would eat the top of a phone screen. The service
+worker banner is optional; the floor is not.
+
+### Manifest ownership
+
+`manifest: false`. `public/manifest.json` stays the single source of the
+installed identity — name, icons, theme colour. Generating a second manifest
+would risk silently re-identifying already-installed apps.
+
+### Testing it
+
+The service worker only runs in a production build, so `vite preview` is
+required — `.claude/launch.json` carries a `web-preview` entry for this. The
+dev server will not exercise any of the above.
 
 ---
 
