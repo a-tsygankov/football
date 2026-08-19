@@ -1,3 +1,4 @@
+import { DEFAULT_BUY_IN } from '@fc26/shared'
 import { expect } from 'vitest'
 import { buildApp } from '../app.js'
 import {
@@ -123,8 +124,11 @@ export interface LiveGameSeed {
  * ann (home) and bob (away). cy sits out, which is what makes it possible to
  * test both the participant and non-participant betting rules.
  *
- * The night takes the production default buy-in unless a test overrides it, so
- * a test that stakes more than a stack sees the same refusal a real room would.
+ * The night buys everyone in for `DEFAULT_BUY_IN` unless a test overrides it.
+ * Production nights now grant nothing by default — chips enter a room only
+ * when somebody buys them — but almost every test here is about wagering, and
+ * a stake needs a stack behind it. Tests that care about the default itself
+ * pass `buyIn` explicitly.
  */
 export async function seedLiveGame(
   app: ReturnType<typeof buildTestApp>,
@@ -148,7 +152,7 @@ export async function seedLiveGame(
     `/api/rooms/${roomId}/game-nights`,
     jsonInit(cookie, {
       activeGamerIds: [ann, bob, cy],
-      ...(options.buyIn === undefined ? {} : { buyIn: options.buyIn }),
+      buyIn: options.buyIn ?? DEFAULT_BUY_IN,
     }),
   )
   const night = (await nightRes.json()) as { gameNight: { id: string } }

@@ -82,6 +82,10 @@ function entry(
   return {
     gamerId,
     purchased,
+    // Bought rather than granted: betting rules only ever read `available`,
+    // and a stack you paid for spends the same as one a night handed you.
+    bought: purchased,
+    granted: 0,
     net,
     committed,
     balance: purchased + net,

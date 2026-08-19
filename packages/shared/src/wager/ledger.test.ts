@@ -6,7 +6,13 @@ import type {
   PersistedGameEvent,
 } from '../types/events.js'
 import { EventId, GameId, GameNightId, GamerId, RoomId } from '../types/ids.js'
-import { ledgerEntryFor, maxStakeOnGame, roomChipLedger, settleUp } from './ledger.js'
+import {
+  hasChipActivity,
+  ledgerEntryFor,
+  maxStakeOnGame,
+  roomChipLedger,
+  settleUp,
+} from './ledger.js'
 
 const roomId = RoomId('room-1')
 const ann = GamerId('ann')
@@ -28,7 +34,7 @@ function persist(payload: PersistedGameEvent['payload']): PersistedGameEvent {
   }
 }
 
-function bought(gamerId: typeof ann, amount: number, night = 'night-1'): PersistedGameEvent {
+function granted(gamerId: typeof ann, amount: number, night = 'night-1'): PersistedGameEvent {
   return persist({
     type: 'chips_purchased',
     schemaVersion: 1,
@@ -38,6 +44,20 @@ function bought(gamerId: typeof ann, amount: number, night = 'night-1'): Persist
     gameNightId: GameNightId(night),
     occurredAt: seq,
     reason: 'game_night_buy_in',
+  } satisfies ChipsPurchasedEvent)
+}
+
+/** Chips somebody chose to buy, as opposed to a night handing them over. */
+function bought(gamerId: typeof ann, amount: number, night = 'night-1'): PersistedGameEvent {
+  return persist({
+    type: 'chips_purchased',
+    schemaVersion: 1,
+    roomId,
+    gamerId,
+    amount,
+    gameNightId: GameNightId(night),
+    occurredAt: seq,
+    reason: 'manual',
   } satisfies ChipsPurchasedEvent)
 }
 
@@ -68,7 +88,7 @@ function settled(
 
 describe('roomChipLedger', () => {
   it('counts purchases as the only way chips enter', () => {
-    const ledger = roomChipLedger([bought(ann, 100), bought(ann, 50)])
+    const ledger = roomChipLedger([granted(ann, 100), granted(ann, 50)])
 
     expect(ledger.get(ann)!.purchased).toBe(150)
     expect(ledger.get(ann)!.balance).toBe(150)
@@ -77,8 +97,8 @@ describe('roomChipLedger', () => {
 
   it('carries balances across nights', () => {
     const ledger = roomChipLedger([
-      bought(ann, 100, 'night-1'),
-      bought(bob, 100, 'night-1'),
+      granted(ann, 100, 'night-1'),
+      granted(bob, 100, 'night-1'),
       settled('g1', [
         { gamerId: ann, stake: 50, payout: 100 },
         { gamerId: bob, stake: 50, payout: 0 },
@@ -101,8 +121,8 @@ describe('roomChipLedger', () => {
 
   it('excludes a voided game from the ledger', () => {
     const events = [
-      bought(ann, 100),
-      bought(bob, 100),
+      granted(ann, 100),
+      granted(bob, 100),
       settled('g1', [
         { gamerId: ann, stake: 50, payout: 100 },
         { gamerId: bob, stake: 50, payout: 0 },
@@ -127,7 +147,7 @@ describe('roomChipLedger', () => {
   })
 
   it('holds open stakes out of what can be bet again', () => {
-    const ledger = roomChipLedger([bought(ann, 100)], [{ gamerId: ann, stake: 30 }])
+    const ledger = roomChipLedger([granted(ann, 100)], [{ gamerId: ann, stake: 30 }])
 
     expect(ledger.get(ann)!.committed).toBe(30)
     expect(ledger.get(ann)!.balance).toBe(100)
@@ -135,7 +155,7 @@ describe('roomChipLedger', () => {
   })
 
   it('gives a gamer with no history an empty standing', () => {
-    const ledger = roomChipLedger([bought(ann, 100)])
+    const ledger = roomChipLedger([granted(ann, 100)])
 
     const missing = ledgerEntryFor(ledger, cy)
     expect(missing.balance).toBe(0)
@@ -145,7 +165,7 @@ describe('roomChipLedger', () => {
 
 describe('maxStakeOnGame', () => {
   it('lets an existing position be re-committed rather than double-counted', () => {
-    const ledger = roomChipLedger([bought(ann, 100)], [{ gamerId: ann, stake: 100 }])
+    const ledger = roomChipLedger([granted(ann, 100)], [{ gamerId: ann, stake: 100 }])
     const entry = ledger.get(ann)!
 
     expect(entry.available).toBe(0)
@@ -154,7 +174,7 @@ describe('maxStakeOnGame', () => {
 
   it('does not free up chips riding on a different game', () => {
     const ledger = roomChipLedger(
-      [bought(ann, 100)],
+      [granted(ann, 100)],
       [
         { gamerId: ann, stake: 40 },
         { gamerId: ann, stake: 30 },
@@ -168,8 +188,8 @@ describe('maxStakeOnGame', () => {
 describe('settleUp', () => {
   it('pays every winner out of the losers', () => {
     const ledger = roomChipLedger([
-      bought(ann, 100),
-      bought(bob, 100),
+      granted(ann, 100),
+      granted(bob, 100),
       settled('g1', [
         { gamerId: ann, stake: 50, payout: 100 },
         { gamerId: bob, stake: 50, payout: 0 },
@@ -218,15 +238,56 @@ describe('settleUp', () => {
     }
   })
 
+  it('keeps bought chips apart from the ones a night granted', () => {
+    const ledger = roomChipLedger([granted(ann, 100), bought(ann, 40)])
+
+    const entry = ledgerEntryFor(ledger, ann)
+    expect(entry.granted).toBe(100)
+    expect(entry.bought).toBe(40)
+    // The split is bookkeeping; what they hold is unchanged by it.
+    expect(entry.purchased).toBe(140)
+    expect(entry.balance).toBe(140)
+  })
+
+  it('counts a gamer who only ever received a night grant as inactive', () => {
+    const ledger = roomChipLedger([granted(ann, 100)])
+
+    // The old per-night buy-in issued one of these to everybody in the pool,
+    // so holding one says nothing about whether they took part.
+    expect(hasChipActivity(ledgerEntryFor(ledger, ann))).toBe(false)
+  })
+
+  it('counts buying chips as taking part, even before the first bet', () => {
+    const ledger = roomChipLedger([bought(ann, 100)])
+
+    expect(hasChipActivity(ledgerEntryFor(ledger, ann))).toBe(true)
+  })
+
+  it('counts a grant-only gamer as active once they win, lose or have a stake down', () => {
+    const wagered = roomChipLedger([
+      granted(ann, 100),
+      granted(bob, 100),
+      settled('g1', [
+        { gamerId: ann, stake: 20, payout: 40 },
+        { gamerId: bob, stake: 20, payout: 0 },
+      ]),
+    ])
+    expect(hasChipActivity(ledgerEntryFor(wagered, ann))).toBe(true)
+    expect(hasChipActivity(ledgerEntryFor(wagered, bob))).toBe(true)
+
+    const riding = roomChipLedger([granted(cy, 100)], [{ gamerId: cy, stake: 10 }])
+    expect(hasChipActivity(ledgerEntryFor(riding, cy))).toBe(true)
+  })
+
   it('has nothing to settle when nobody is up or down', () => {
-    const ledger = roomChipLedger([bought(ann, 100), bought(bob, 100)])
+    const ledger = roomChipLedger([granted(ann, 100), granted(bob, 100)])
 
     // Buying chips is not a debt to anyone in the room; only play creates one.
     expect(settleUp(ledger.values())).toEqual([])
   })
 
   it('ignores open stakes, which are neither won nor lost yet', () => {
-    const ledger = roomChipLedger([bought(ann, 100)], [{ gamerId: ann, stake: 60 }])
+    const ledger = roomChipLedger([granted(ann, 100)], [{ gamerId: ann, stake: 60 }])
 
     expect(settleUp(ledger.values())).toEqual([])
   })

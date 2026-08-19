@@ -8,7 +8,7 @@ import {
   type CreateRoomRequest,
   type ChipsPurchasedEvent,
   type CurrentGame,
-  DEFAULT_BUY_IN,
+  DEFAULT_NIGHT_BUY_IN,
   DEFAULT_SQUAD_PLATFORM,
   DEFAULT_STRATEGY_ID,
   EVENT_SCHEMA_VERSION,
@@ -820,7 +820,7 @@ roomRoutes.post('/rooms/:roomId/game-nights', async (c) => {
     id: gameNightId,
     roomId,
     status: 'active',
-    buyIn: parsed.data.buyIn ?? DEFAULT_BUY_IN,
+    buyIn: parsed.data.buyIn ?? DEFAULT_NIGHT_BUY_IN,
     startedAt: now,
     endedAt: null,
     lastGameAt: null,
@@ -837,10 +837,10 @@ roomRoutes.post('/rooms/:roomId/game-nights', async (c) => {
 
   await c.get('deps').gameNights.create(gameNight, activeGamers)
 
-  // Starting a night is the usual moment everyone buys in, so it issues the
-  // purchases in one go rather than making each person do it by hand. It is
-  // still an ordinary purchase — a buy-in of 0 skips it entirely and the room
-  // plays on with the balances it carried in.
+  // A night that names a buy-in still issues it in one go rather than making
+  // each person do it by hand. Nothing is issued by default any more: balances
+  // carry between nights, so a nightly grant hands chips to everyone in the
+  // pool whether they wager or not, and the balance stops meaning anything.
   if (gameNight.buyIn > 0) {
     for (const activeGamer of activeGamers) {
       await recordChipPurchase(c, {

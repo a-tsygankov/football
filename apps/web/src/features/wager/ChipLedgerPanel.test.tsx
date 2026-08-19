@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   GamerId,
@@ -26,15 +26,23 @@ function gamer(id: ReturnType<typeof GamerId>, name: string): Gamer {
   }
 }
 
+/**
+ * A ledger row. `purchased` is treated as chips the gamer bought unless some
+ * of it is handed over as `granted`, which is how the old per-night buy-in
+ * reaches the ledger — the panel tells the two apart when deciding who to list.
+ */
 function entry(
   gamerId: ReturnType<typeof GamerId>,
   purchased: number,
   net = 0,
   committed = 0,
+  granted = 0,
 ): ChipLedgerEntry {
   return {
     gamerId,
     purchased,
+    bought: purchased - granted,
+    granted,
     net,
     committed,
     balance: purchased + net,
@@ -67,6 +75,42 @@ describe('ChipLedgerPanel', () => {
     expect(screen.getByText('150')).toBeInTheDocument()
     expect(screen.getByText('+50')).toBeInTheDocument()
     expect(screen.getByText('-50')).toBeInTheDocument()
+  })
+
+  it('leaves out gamers who only ever received a night grant', () => {
+    renderPanel({
+      gamers: [gamer(ann, 'Ann'), gamer(bob, 'Bob')],
+      ledger: {
+        roomId: RoomId('room-1'),
+        // Bob holds 220 chips he never asked for: the old per-night buy-in
+        // issued one to everybody in the pool, wagering or not. Listing him
+        // reads as though he played and finished level.
+        entries: [entry(ann, 100, 50), entry(bob, 220, 0, 0, 220)],
+        transfers: [],
+      } as ChipLedgerResponse,
+    })
+
+    // Scoped to the balances list: every gamer is also an option in the
+    // "who's buying" picker, and being buyable is not the same as being listed.
+    const balances = within(screen.getByRole('list', { name: /chip balances/i }))
+    expect(balances.getByText('Ann')).toBeInTheDocument()
+    expect(balances.queryByText('Bob')).not.toBeInTheDocument()
+    expect(balances.queryByText('220')).not.toBeInTheDocument()
+  })
+
+  it('keeps a gamer who bought chips but has not bet yet', () => {
+    renderPanel({
+      ledger: {
+        roomId: RoomId('room-1'),
+        // Putting money in is taking part, and they need to see it landed.
+        entries: [entry(bob, 100)],
+        transfers: [],
+      } as ChipLedgerResponse,
+    })
+
+    const balances = within(screen.getByRole('list', { name: /chip balances/i }))
+    expect(balances.getByText('Bob')).toBeInTheDocument()
+    expect(balances.getByText('100')).toBeInTheDocument()
   })
 
   it('says who pays whom', () => {

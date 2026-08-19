@@ -6,14 +6,28 @@ import type {
 import type { GamerId } from '../types/ids.js'
 
 /**
- * Chips a game night hands each participant when it starts.
+ * The stack a gamer buys when they put money in.
  *
  * A round number that survives a bad run: at 100, a string of losing 10-chip
  * bets is a real dent rather than an instant bust, and the arithmetic stays
- * easy to do in your head at the table. Only a default — a night may buy in
- * for any amount, or for nothing at all when the room carries balances over.
+ * easy to do in your head at the table. Only a suggestion — the buy form takes
+ * any amount.
  */
 export const DEFAULT_BUY_IN = 100
+
+/**
+ * What a game night hands each participant when it starts: nothing.
+ *
+ * Balances are room-wide and carry between nights, so a nightly grant would
+ * mint chips for everyone in the pool whether they wagered or not — sit out
+ * ten evenings and you are a thousand chips richer for having done nothing.
+ * Chips now enter the room only when somebody deliberately buys them, which is
+ * what makes a balance mean "what this person put in, plus what they won".
+ *
+ * A night may still set a buy-in explicitly, and the old behaviour is exactly
+ * that with the amount filled in.
+ */
+export const DEFAULT_NIGHT_BUY_IN = 0
 
 /**
  * One gamer's standing in a room's chip ledger.
@@ -27,8 +41,18 @@ export const DEFAULT_BUY_IN = 100
  */
 export interface ChipLedgerEntry {
   gamerId: GamerId
-  /** Chips bought into the room, all time. */
+  /** Chips into the room, all time — `bought` plus `granted`. */
   purchased: number
+  /** The part of `purchased` somebody chose to buy. */
+  bought: number
+  /**
+   * The part of `purchased` a game night issued automatically.
+   *
+   * Only history now that nights buy in for nothing by default, but worth
+   * keeping apart: a gamer holding nothing but grants never took part, and a
+   * balance made of grants is not the same claim as one somebody paid for.
+   */
+  granted: number
   /** Winnings minus stakes across every settled game. Profit, in other words. */
   net: number
   /** Stakes riding on games that have not resolved. */
@@ -40,7 +64,7 @@ export interface ChipLedgerEntry {
 }
 
 function entry(gamerId: GamerId): ChipLedgerEntry {
-  return { gamerId, purchased: 0, net: 0, committed: 0, balance: 0, available: 0 }
+  return { gamerId, purchased: 0, bought: 0, granted: 0, net: 0, committed: 0, balance: 0, available: 0 }
 }
 
 /**
@@ -75,7 +99,10 @@ export function roomChipLedger(
   for (const event of events) {
     const payload = event.payload
     if (payload.type === 'chips_purchased') {
-      get(payload.gamerId).purchased += payload.amount
+      const item = get(payload.gamerId)
+      item.purchased += payload.amount
+      if (payload.reason === 'game_night_buy_in') item.granted += payload.amount
+      else item.bought += payload.amount
       continue
     }
     if (payload.type !== 'game_recorded') continue
@@ -103,6 +130,19 @@ export function ledgerEntryFor(
   gamerId: GamerId,
 ): ChipLedgerEntry {
   return ledger.get(gamerId) ?? entry(gamerId)
+}
+
+/**
+ * Has this gamer taken any part in the room's wagering?
+ *
+ * Buying chips counts even before the first bet — putting money in is taking
+ * part, and somebody who just topped up wants to see it landed. A night's
+ * automatic buy-in does not, which is the whole point: the old model issued
+ * one to everybody in the pool, so counting grants would list people who never
+ * placed a bet alongside those who did, at balances they never asked for.
+ */
+export function hasChipActivity(item: ChipLedgerEntry): boolean {
+  return item.bought > 0 || item.net !== 0 || item.committed > 0
 }
 
 /**

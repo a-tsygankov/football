@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_BUY_IN, type ChipLedgerResponse } from '@fc26/shared'
 import {
   buildTestApp,
+  cookieFrom,
   createGamer,
   placeBet,
   recordResult,
@@ -46,7 +47,56 @@ describe('chip ledger', () => {
     for (const entry of body.entries) {
       expect(entry.purchased).toBe(DEFAULT_BUY_IN)
       expect(entry.balance).toBe(DEFAULT_BUY_IN)
+      // Granted, not bought — nobody chose to put this in, and the Wager page
+      // uses the difference to decide whether they belong on the list at all.
+      expect(entry.granted).toBe(DEFAULT_BUY_IN)
+      expect(entry.bought).toBe(0)
     }
+  })
+
+  it('reports a manual purchase as bought rather than granted', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    expect((await buy(app, seed, seed.cy, 60)).status).toBe(201)
+
+    const entry = (await ledger(app, seed.roomId, seed.cookie)).entries.find(
+      (item) => item.gamerId === seed.cy,
+    )
+    expect(entry?.granted).toBe(DEFAULT_BUY_IN)
+    expect(entry?.bought).toBe(60)
+    expect(entry?.purchased).toBe(DEFAULT_BUY_IN + 60)
+  })
+
+  it('issues nothing when a night names no buy-in, because zero is the default', async () => {
+    const app = buildTestApp()
+    const createRes = await req(app, '/api/rooms', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Quiet Night' }),
+    })
+    const { room } = (await createRes.json()) as { room: { id: string } }
+    const cookie = cookieFrom(createRes)
+    const ann = await createGamer(app, room.id, cookie, 'Ann')
+    const bob = await createGamer(app, room.id, cookie, 'Bob')
+
+    // Deliberately no `buyIn`. Balances are room-wide and carry between
+    // nights, so granting a stack every evening would mint chips for people
+    // who never wagered — `seedLiveGame` asks for one explicitly precisely
+    // because the default no longer provides it.
+    const nightRes = await req(
+      app,
+      `/api/rooms/${room.id}/game-nights`,
+      {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ activeGamerIds: [ann, bob] }),
+      },
+    )
+    expect(nightRes.status).toBe(201)
+    const { gameNight } = (await nightRes.json()) as { gameNight: { buyIn: number } }
+    expect(gameNight.buyIn).toBe(0)
+
+    expect((await ledger(app, room.id, cookie)).entries).toHaveLength(0)
   })
 
   it('issues nothing when a night starts with a buy-in of zero', async () => {

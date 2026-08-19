@@ -5,6 +5,7 @@ import {
   DEFAULT_BUY_IN,
   type Gamer,
   type GamerId,
+  hasChipActivity,
 } from '@fc26/shared'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -69,7 +70,11 @@ export function ChipLedgerPanel({
     void onBuyChips(buyerId, parsed)
   }
 
-  const entries = ledger?.entries ?? []
+  // Only people who actually took part. The room used to hand every gamer in
+  // a night's pool an automatic buy-in, so the full ledger lists people who
+  // never placed a bet, holding a balance nobody asked for — noise on the one
+  // screen meant to say who is up and who is down.
+  const entries = (ledger?.entries ?? []).filter(hasChipActivity)
   const transfers = ledger?.transfers ?? []
   const rise = reduced ? 0 : 8
 
@@ -86,7 +91,7 @@ export function ChipLedgerPanel({
           {entries.length === 0 ? (
             <InlineNotice tone="info" message="Nobody has bought chips in this room yet." />
           ) : (
-            <ul className="m-0 grid list-none gap-1.5 p-0">
+            <ul aria-label="Chip balances" className="m-0 grid list-none gap-1.5 p-0">
               {entries.map((entry, index) => (
                 <m.li
                   key={entry.gamerId}
