@@ -256,6 +256,31 @@ export function App() {
     }
   }
 
+  /**
+   * Records one payment. Separate endpoint from the whole-room settle so a
+   * malformed request can never be mistaken for "settle everything".
+   */
+  async function settlePayment(from: GamerId, to: GamerId, amount: number): Promise<void> {
+    if (!bootstrap) return
+    setBusy('settling-up')
+    setError(null)
+    try {
+      const next = await apiJson<ChipLedgerResponse>(
+        `/api/rooms/${bootstrap.room.id}/chips/settlements/payment`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ from, to, amount }),
+        },
+      )
+      startTransition(() => setLedger(next))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function buyChips(gamerId: GamerId, amount: number): Promise<void> {
     if (!bootstrap) return
     setBusy('buying-chips')
@@ -1134,6 +1159,7 @@ export function App() {
             ledger={ledger}
             onBuyChips={buyChips}
             onSettleUp={settleUpRoom}
+            onSettlePayment={settlePayment}
             latestSquadVersion={worker?.latestSquadVersion ?? null}
             roomSquadPlatform={roomSquadPlatform}
             scoreboard={scoreboard}

@@ -27,6 +27,7 @@ import {
   type PlaceBetRequest,
   roomChipLedger,
   settlementAmounts,
+  settlementForPayment,
   RoomId,
   settleUp,
 } from '@fc26/shared'
@@ -376,18 +377,58 @@ betRoutes.post('/rooms/:roomId/chips/purchases', async (c) => {
  * refusing here would mean nobody could square up until the last game of the
  * night had been recorded.
  */
-betRoutes.post('/rooms/:roomId/chips/settlements', async (c) => {
+const paymentSchema = z.object({
+  from: z.string().min(1),
+  to: z.string().min(1),
+  amount: z.number().int().positive().max(MAX_STAKE),
+})
+
+/**
+ * Records one payment between two gamers.
+ *
+ * Separate from the whole-room route on purpose. `parseJson` cannot tell a
+ * missing body from a malformed one, so a single route keyed on "did a body
+ * arrive" would settle the entire room the day a client sent broken JSON.
+ * Two routes make the intent explicit and unmistakable.
+ *
+ * Debts are rarely cleared in one round — somebody pays on Tuesday, somebody
+ * else forgets until next month, somebody pays half now — so a payment stands
+ * on its own and leaves everyone else's position untouched.
+ */
+betRoutes.post('/rooms/:roomId/chips/settlements/payment', async (c) => {
   const roomId = RoomId(c.req.param('roomId'))
   const session = await requireRoomSession(c, roomId)
   if (!session) return c.json({ error: 'unauthorized' }, 401)
 
-  const events = await c.get('deps').events.listByRoom(roomId)
-  const ledger = roomChipLedger(events)
-  const amounts = settlementAmounts(ledger.values())
-  if (amounts.length === 0) {
-    return c.json({ error: 'nothing_to_settle' }, 400)
+  const parsed = paymentSchema.safeParse(await parseJson(c))
+  if (!parsed.success) {
+    return c.json({ error: 'invalid_body', issues: parsed.error.flatten() }, 400)
   }
 
+  const events = await c.get('deps').events.listByRoom(roomId)
+  const ledger = roomChipLedger(events)
+  const amounts = settlementForPayment(
+    ledger,
+    GamerId(parsed.data.from),
+    GamerId(parsed.data.to),
+    parsed.data.amount,
+  )
+  // Null means the payment answers to no debt the games created — paying
+  // somebody who is not owed, or paying more than they are owed.
+  if (!amounts) {
+    return c.json({ error: 'no_such_debt' }, 400)
+  }
+
+  await writeSettlement(c, roomId, amounts)
+  return c.json(await chipLedgerResponse(c, roomId), 201)
+})
+
+/** Appends one settlement round: every amount shares an id and they cancel. */
+async function writeSettlement(
+  c: RouteContext,
+  roomId: ReturnType<typeof RoomId>,
+  amounts: ReadonlyArray<{ gamerId: ReturnType<typeof GamerId>; amount: number }>,
+): Promise<void> {
   const settlementId = nanoid(12)
   const now = Date.now()
   for (const entry of amounts) {
@@ -401,7 +442,36 @@ betRoutes.post('/rooms/:roomId/chips/settlements', async (c) => {
       occurredAt: now,
     })
   }
+}
 
+/**
+ * Records that the whole room squared up at once.
+ *
+ * Takes no body: the amounts are whatever the ledger says right now, so there
+ * is nothing for a caller to get wrong or to disagree with the panel about.
+ *
+ * Chips are not returned. Settling pays the debt in cash and leaves everyone
+ * holding what they bought, which is what makes the next night start from the
+ * stacks people paid for rather than from nothing.
+ *
+ * Open stakes are deliberately not waited for. `settleUp` already ignores
+ * them, so a live game simply settles into a fresh balance afterwards — and
+ * refusing here would mean nobody could square up until the last game of the
+ * night had been recorded.
+ */
+betRoutes.post('/rooms/:roomId/chips/settlements', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const events = await c.get('deps').events.listByRoom(roomId)
+  const ledger = roomChipLedger(events)
+  const amounts = settlementAmounts(ledger.values())
+  if (amounts.length === 0) {
+    return c.json({ error: 'nothing_to_settle' }, 400)
+  }
+
+  await writeSettlement(c, roomId, amounts)
   return c.json(await chipLedgerResponse(c, roomId), 201)
 })
 

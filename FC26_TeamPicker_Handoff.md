@@ -1818,12 +1818,27 @@ in at most *n − 1* transfers rather than having each loser pay each winner.
 Open stakes are excluded — an unresolved bet is neither won nor lost, and
 settling mid-game would be a guess.
 
-**`POST /rooms/:roomId/chips/settlements` records that it happened.** It takes
-no body: the amounts are whatever the ledger says at that moment, so the button
-cannot disagree with the figures printed above it. One `chips_settled` event
-per gamer who is not already square, sharing a settlement id, each cancelling
-exactly that gamer's outstanding position — which is why the folded result is
-every net at zero.
+Two routes record that it happened, because debts are rarely cleared in one
+round — somebody pays on Tuesday, somebody else forgets until next month,
+somebody pays half now.
+
+- **`POST /chips/settlements`** settles the whole room. No body: the amounts
+  are whatever the ledger says at that moment, so the button cannot disagree
+  with the figures printed above it.
+- **`POST /chips/settlements/payment`** records one payment (`from`, `to`,
+  `amount`) and leaves everyone else's position untouched. Part payments are
+  accepted; paying more than is owed, paying somebody who is not owed, or
+  paying between two people who are both owed is rejected as `no_such_debt`,
+  since each would invent a position the games never created.
+
+Both write one `chips_settled` event per affected gamer, sharing a settlement
+id, with amounts that cancel — which is what keeps every net summing to zero
+however many payments are recorded.
+
+They are separate routes rather than one with an optional body because
+`parseJson` cannot tell a missing body from a malformed one: a single route
+keyed on "did a body arrive" would settle the entire room the day a client sent
+broken JSON.
 
 **Settling clears the debt, not the account.** Chips are not returned: the
 money changed hands in cash, so everyone keeps the stack they bought and the

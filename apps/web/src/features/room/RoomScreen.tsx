@@ -46,6 +46,7 @@ export function RoomScreen({
   ledger,
   onBuyChips,
   onSettleUp,
+  onSettlePayment,
   latestSquadVersion,
   roomSquadPlatform,
   scoreboard,
@@ -96,6 +97,7 @@ export function RoomScreen({
   ledger: ChipLedgerResponse | null
   onBuyChips: (gamerId: GamerId, amount: number) => Promise<void>
   onSettleUp: () => Promise<void>
+  onSettlePayment: (from: GamerId, to: GamerId, amount: number) => Promise<void>
   latestSquadVersion: string | null
   roomSquadPlatform: SquadPlatform
   scoreboard: RoomScoreboardResponse | null
@@ -306,6 +308,7 @@ export function RoomScreen({
             ledger={ledger}
             onBuyChips={onBuyChips}
             onSettleUp={onSettleUp}
+            onSettlePayment={onSettlePayment}
           />
           {chips ? (
             <ChipStandingsPanel

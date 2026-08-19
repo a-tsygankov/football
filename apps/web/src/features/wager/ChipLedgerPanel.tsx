@@ -42,12 +42,14 @@ export function ChipLedgerPanel({
   ledger,
   onBuyChips,
   onSettleUp,
+  onSettlePayment,
 }: {
   busy: BusyState
   gamers: ReadonlyArray<Gamer>
   ledger: ChipLedgerResponse | null
   onBuyChips: (gamerId: GamerId, amount: number) => Promise<void>
   onSettleUp: () => Promise<void>
+  onSettlePayment: (from: GamerId, to: GamerId, amount: number) => Promise<void>
 }) {
   const [buyerId, setBuyerId] = useState<GamerId | ''>('')
   const [amount, setAmount] = useState(String(DEFAULT_BUY_IN))
@@ -142,8 +144,25 @@ export function ChipLedgerPanel({
                     transition={{ duration: 0.26, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
                     className="text-[13px]"
                   >
-                    {nameOf(transfer.from)} pays {nameOf(transfer.to)}{' '}
-                    <strong>{transfer.amount}</strong>
+                    <span className="flex items-center gap-2">
+                      <span className="grow">
+                        {nameOf(transfer.from)} pays {nameOf(transfer.to)}{' '}
+                        <strong>{transfer.amount}</strong>
+                      </span>
+                      {/* Debts get cleared one at a time far more often than
+                          all at once, so each row settles on its own. */}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busy !== null}
+                        onClick={() =>
+                          void onSettlePayment(transfer.from, transfer.to, transfer.amount)
+                        }
+                      >
+                        Paid
+                      </Button>
+                    </span>
                   </m.li>
                 ))}
               </ul>
@@ -160,10 +179,10 @@ export function ChipLedgerPanel({
                   disabled={busy !== null}
                   onClick={() => void onSettleUp()}
                 >
-                  {busy === 'settling-up' ? 'Settling...' : 'Mark these payments as made'}
+                  {busy === 'settling-up' ? 'Settling...' : 'Mark all as paid'}
                 </Button>
                 <p className="m-0 text-[11px] text-muted-foreground">
-                  Clears the debts and leaves everyone the chips they bought.
+                  Clears every debt at once. Everyone keeps the chips they bought.
                 </p>
               </>
             ) : null}

@@ -11,6 +11,7 @@ import { ChipLedgerPanel } from './ChipLedgerPanel.jsx'
 
 const ann = GamerId('ann')
 const bob = GamerId('bob')
+const cy = GamerId('cy')
 
 function gamer(id: ReturnType<typeof GamerId>, name: string): Gamer {
   return {
@@ -65,6 +66,7 @@ function renderPanel(overrides: Partial<Parameters<typeof ChipLedgerPanel>[0]> =
     } as ChipLedgerResponse,
     onBuyChips: vi.fn().mockResolvedValue(undefined),
     onSettleUp: vi.fn().mockResolvedValue(undefined),
+    onSettlePayment: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   }
   render(<ChipLedgerPanel {...props} />)
@@ -119,9 +121,41 @@ describe('ChipLedgerPanel', () => {
   })
 
 
+
+  it('settles one payment on its own, naming who paid whom and how much', () => {
+    const props = renderPanel({
+      ledger: {
+        roomId: RoomId('room-1'),
+        entries: [entry(ann, 100, 50), entry(bob, 100, -50)],
+        transfers: [{ from: bob, to: ann, amount: 50 }],
+      } as ChipLedgerResponse,
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^paid$/i }))
+
+    expect(props.onSettlePayment).toHaveBeenCalledWith(bob, ann, 50)
+    // The one-payment button must not be the settle-everything one.
+    expect(props.onSettleUp).not.toHaveBeenCalled()
+  })
+
+  it('offers a Paid button per debt, not one for the lot', () => {
+    renderPanel({
+      gamers: [gamer(ann, 'Ann'), gamer(bob, 'Bob'), gamer(cy, 'Cyd')],
+      ledger: {
+        roomId: RoomId('room-1'),
+        entries: [entry(ann, 100, 50), entry(bob, 100, -20), entry(cy, 100, -30)],
+        transfers: [
+          { from: cy, to: ann, amount: 30 },
+          { from: bob, to: ann, amount: 20 },
+        ],
+      } as ChipLedgerResponse,
+    })
+
+    expect(screen.getAllByRole('button', { name: /^paid$/i })).toHaveLength(2)
+  })
+
   it('offers to record the payments once somebody owes somebody', () => {
     const props = renderPanel()
-    fireEvent.click(screen.getByRole('button', { name: /mark these payments as made/i }))
+    fireEvent.click(screen.getByRole('button', { name: /mark all as paid/i }))
 
     expect(props.onSettleUp).toHaveBeenCalledTimes(1)
   })
@@ -135,7 +169,7 @@ describe('ChipLedgerPanel', () => {
       },
     })
 
-    expect(screen.queryByRole('button', { name: /mark these payments as made/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /mark all as paid/i })).toBeNull()
   })
 
   it('says who pays whom', () => {
