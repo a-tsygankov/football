@@ -1667,10 +1667,12 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
    game night.
 9. **The sticky `RoomBar` is likewise unverified on iOS Safari**, where the
    dynamic toolbar has a history of arguing with `position: sticky`.
-10. **CI actions still target Node 20**, which GitHub has deprecated and is
-    force-running on Node 24. Harmless today, a warning on every job, and it
-    will stop being harmless. `actions/checkout@v4`, `actions/setup-node@v4`
-    and `pnpm/action-setup@v4` all need bumping together.
+10. **The GitHub Pages actions are still on older majors** —
+    `actions/configure-pages@v5`, `actions/upload-pages-artifact@v3`,
+    `actions/deploy-pages@v4`. They were not named in the Node 20 deprecation
+    warning, so they are not urgent, but they are the remaining stale pins in
+    `deploy.yml`. The three that *were* named — checkout, setup-node and
+    pnpm/action-setup — now run on `node24`.
 
 ---
 
