@@ -1047,10 +1047,6 @@ Before a room is joined, `App` renders `features/landing/LandingScreen`
 | `utils/` | `roster`, `scoreboard`, `squads` — pure derivations kept out of components |
 | `index.css` | Tailwind v4 entry plus the design tokens as CSS custom properties with an `@theme inline` mapping |
 
-`components/RatingSelector.tsx` is referenced by nothing but its own test. It
-is dead code, not a component you need to understand — see
-[§25 Open Items](#25-open-items).
-
 ### Game Session State Machine
 
 ```ts
@@ -1671,11 +1667,7 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
    game night.
 9. **The sticky `RoomBar` is likewise unverified on iOS Safari**, where the
    dynamic toolbar has a history of arguing with `position: sticky`.
-10. **`components/RatingSelector.tsx` is dead code** — imported by nothing
-    but its own test, which is why it kept passing. Either wire it into the
-    roster's star editor or delete it and its test; a component that only its
-    test knows about will drift until it is wrong.
-11. **CI actions still target Node 20**, which GitHub has deprecated and is
+10. **CI actions still target Node 20**, which GitHub has deprecated and is
     force-running on Node 24. Harmless today, a warning on every job, and it
     will stop being harmless. `actions/checkout@v4`, `actions/setup-node@v4`
     and `pnpm/action-setup@v4` all need bumping together.
