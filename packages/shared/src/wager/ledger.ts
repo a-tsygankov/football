@@ -53,7 +53,18 @@ export interface ChipLedgerEntry {
    * balance made of grants is not the same claim as one somebody paid for.
    */
   granted: number
-  /** Winnings minus stakes across every settled game. Profit, in other words. */
+  /** Winnings minus stakes across every settled game, all time. */
+  wagered: number
+  /** How much of `wagered` has since been squared up in cash. Signed. */
+  settled: number
+  /**
+   * `wagered − settled` — what is still owed or owing.
+   *
+   * This is the number `settleUp` divides into payments, and the one that
+   * matters to a player: lifetime profit is a statistic, an unsettled debt is
+   * a thing you owe somebody on Friday. Both sum to zero room-wide, because
+   * wagering only moves chips and a settlement clears equal credits and debits.
+   */
   net: number
   /** Stakes riding on games that have not resolved. */
   committed: number
@@ -64,7 +75,18 @@ export interface ChipLedgerEntry {
 }
 
 function entry(gamerId: GamerId): ChipLedgerEntry {
-  return { gamerId, purchased: 0, bought: 0, granted: 0, net: 0, committed: 0, balance: 0, available: 0 }
+  return {
+    gamerId,
+    purchased: 0,
+    bought: 0,
+    granted: 0,
+    wagered: 0,
+    settled: 0,
+    net: 0,
+    committed: 0,
+    balance: 0,
+    available: 0,
+  }
 }
 
 /**
@@ -105,10 +127,14 @@ export function roomChipLedger(
       else item.bought += payload.amount
       continue
     }
+    if (payload.type === 'chips_settled') {
+      get(payload.gamerId).settled += payload.amount
+      continue
+    }
     if (payload.type !== 'game_recorded') continue
     if (voidedGameIds.has(payload.gameId)) continue
     for (const wager of (payload as GameRecordedEvent).wagers ?? []) {
-      get(wager.gamerId).net += wager.payout - wager.stake
+      get(wager.gamerId).wagered += wager.payout - wager.stake
     }
   }
 
@@ -117,6 +143,9 @@ export function roomChipLedger(
   }
 
   for (const item of ledger.values()) {
+    // Settling hands the winnings over in cash, so they stop being chips: a
+    // fully settled room holds exactly what its players bought.
+    item.net = item.wagered - item.settled
     item.balance = item.purchased + item.net
     item.available = item.balance - item.committed
   }
@@ -154,6 +183,24 @@ export function hasChipActivity(item: ChipLedgerEntry): boolean {
  */
 export function maxStakeOnGame(entryFor: ChipLedgerEntry, currentStakeOnGame: number): number {
   return entryFor.available + currentStakeOnGame
+}
+
+/**
+ * What each gamer's `chips_settled` amount must be to close the room out.
+ *
+ * Exactly their outstanding position, so folding these back in leaves every
+ * net at zero. Gamers who are already square are omitted — writing a zero
+ * would be a row that says nothing happened.
+ *
+ * Derived here rather than in the route so the amounts that get written and
+ * the amounts the panel promised come from one place.
+ */
+export function settlementAmounts(
+  entries: Iterable<ChipLedgerEntry>,
+): Array<{ gamerId: GamerId; amount: number }> {
+  return [...entries]
+    .filter((item) => item.net !== 0)
+    .map((item) => ({ gamerId: item.gamerId, amount: item.net }))
 }
 
 /** One payment that settles part of the room up. */

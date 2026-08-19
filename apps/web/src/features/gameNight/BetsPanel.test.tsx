@@ -86,6 +86,8 @@ function entry(
     // and a stack you paid for spends the same as one a night handed you.
     bought: purchased,
     granted: 0,
+    wagered: net,
+    settled: 0,
     net,
     committed,
     balance: purchased + net,

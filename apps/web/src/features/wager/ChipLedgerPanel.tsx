@@ -41,11 +41,13 @@ export function ChipLedgerPanel({
   gamers,
   ledger,
   onBuyChips,
+  onSettleUp,
 }: {
   busy: BusyState
   gamers: ReadonlyArray<Gamer>
   ledger: ChipLedgerResponse | null
   onBuyChips: (gamerId: GamerId, amount: number) => Promise<void>
+  onSettleUp: () => Promise<void>
 }) {
   const [buyerId, setBuyerId] = useState<GamerId | ''>('')
   const [amount, setAmount] = useState(String(DEFAULT_BUY_IN))
@@ -146,6 +148,25 @@ export function ChipLedgerPanel({
                 ))}
               </ul>
             )}
+            {transfers.length > 0 ? (
+              <>
+                {/* Records that the money changed hands. Chips are not
+                    returned: the debt is paid, so everyone keeps the stack
+                    they bought and the next night starts from there. */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={busy !== null}
+                  onClick={() => void onSettleUp()}
+                >
+                  {busy === 'settling-up' ? 'Settling...' : 'Mark these payments as made'}
+                </Button>
+                <p className="m-0 text-[11px] text-muted-foreground">
+                  Clears the debts and leaves everyone the chips they bought.
+                </p>
+              </>
+            ) : null}
           </div>
 
           <div className="grid gap-2.5 border-t border-[#ecfdf5] pt-2.5">

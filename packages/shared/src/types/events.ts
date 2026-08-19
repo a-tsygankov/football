@@ -25,6 +25,7 @@ export type EventType =
   | 'bets_locked'
   | 'bets_discarded'
   | 'chips_purchased'
+  | 'chips_settled'
 
 export type GameResult = 'home' | 'away' | 'draw'
 
@@ -137,6 +138,36 @@ export interface ChipsPurchasedEvent {
   reason: 'game_night_buy_in' | 'manual'
 }
 
+/**
+ * A debt squared up in cash, outside the app.
+ *
+ * Wagering only moves chips between gamers, so a room's profits sum to zero
+ * and `settleUp` can name who pays whom. Until this event exists there is no
+ * way to say those payments *happened*: the ledger keeps folding the same
+ * lifetime result forever, and a room that settled up last week still shows
+ * last week's debts.
+ *
+ * Settling clears the debt, not the account. `amount` cancels what the gamer
+ * was owed or owed out — positive for someone who was up, negative for someone
+ * who was down — so their outstanding position returns to zero while the chips
+ * they bought stay theirs to play with. That is what a shared-expenses app
+ * does when you tap Settle Up, and it is why nothing is deleted here.
+ */
+export interface ChipsSettledEvent {
+  type: 'chips_settled'
+  schemaVersion: typeof EVENT_SCHEMA_VERSION
+  roomId: RoomId
+  gamerId: GamerId
+  /**
+   * Signed, and cancels the gamer's outstanding position exactly. Positive
+   * means they were owed this and have now been paid.
+   */
+  amount: number
+  /** Shared by every gamer cleared in one settle-up, so a round is one thing. */
+  settlementId: string
+  occurredAt: number
+}
+
 export interface GameRecordedEvent {
   type: 'game_recorded'
   schemaVersion: typeof EVENT_SCHEMA_VERSION
@@ -196,6 +227,7 @@ export type GameEventPayload =
   | BetsLockedEvent
   | BetsDiscardedEvent
   | ChipsPurchasedEvent
+  | ChipsSettledEvent
 
 /** Narrowing helper — the bet events share a shape the game events do not. */
 export type BetEventPayload =

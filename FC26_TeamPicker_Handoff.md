@@ -1718,7 +1718,9 @@ UI is just `pot / stake-backing-this-outcome`, and it moves as bets come in.
 bought    = Σ chips_purchased where reason = 'manual'      (somebody chose to)
 granted   = Σ chips_purchased where reason = 'game_night_buy_in'
 purchased = bought + granted                (the only way chips enter)
-net       = Σ (payout − stake) over every settled, non-voided game
+wagered   = Σ (payout − stake) over every settled, non-voided game
+settled   = Σ chips_settled amounts         (signed; debts paid in cash)
+net       = wagered − settled               (what is still owed or owing)
 committed = stakes riding on games that have not resolved
 balance   = purchased + net
 available = balance − committed
@@ -1815,6 +1817,25 @@ in at most *n − 1* transfers rather than having each loser pay each winner.
 
 Open stakes are excluded — an unresolved bet is neither won nor lost, and
 settling mid-game would be a guess.
+
+**`POST /rooms/:roomId/chips/settlements` records that it happened.** It takes
+no body: the amounts are whatever the ledger says at that moment, so the button
+cannot disagree with the figures printed above it. One `chips_settled` event
+per gamer who is not already square, sharing a settlement id, each cancelling
+exactly that gamer's outstanding position — which is why the folded result is
+every net at zero.
+
+**Settling clears the debt, not the account.** Chips are not returned: the
+money changed hands in cash, so everyone keeps the stack they bought and the
+next night starts from there. That distinction is why the entry carries both
+`wagered` and `settled`. Lifetime profit is a statistic and survives; an
+unsettled debt is a thing you owe somebody on Friday, and that is what `net`
+means and what the panel shows.
+
+Before this existed there was no way to say the payments had been made — the
+ledger kept folding the same lifetime result forever, so a room that squared up
+last week still showed last week's debts. Zeroing a room took a hand-written
+migration, which is how the gap was noticed.
 
 ### Visibility is not access control
 

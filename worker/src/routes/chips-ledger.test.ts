@@ -37,6 +37,13 @@ async function buy(
   })
 }
 
+async function settleRoom(app: App, seed: LiveGameSeed): Promise<Response> {
+  return req(app, `/api/rooms/${seed.roomId}/chips/settlements`, {
+    method: 'POST',
+    headers: { cookie: seed.cookie },
+  })
+}
+
 describe('chip ledger', () => {
   it('issues a buy-in to everyone in the pool when a night starts', async () => {
     const app = buildTestApp()
@@ -272,6 +279,85 @@ describe('chip ledger', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ gamerId: seed.cy, amount: 50 }),
     })
+    expect(res.status).toBe(401)
+  })
+
+  it('settles the room up, so nobody owes anybody and the bought chips remain', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    // Opposite sides, so somebody actually wins: ann plays home and may only
+    // back home; cy sits out and may back anything.
+    await placeBet(app, seed, seed.ann, 'home', 30)
+    await placeBet(app, seed, seed.cy, 'away', 40)
+    await recordResult(app, seed, { result: 'home' })
+
+    const before = await ledger(app, seed.roomId, seed.cookie)
+    expect(before.transfers).toEqual([{ from: seed.cy, to: seed.ann, amount: 40 }])
+
+    const res = await settleRoom(app, seed)
+    expect(res.status).toBe(201)
+    const after = (await res.json()) as ChipLedgerResponse
+
+    expect(after.transfers).toEqual([])
+    for (const entry of after.entries) {
+      expect(entry.net).toBe(0)
+      // Paid in cash; the stack they bought is still theirs to play with.
+      expect(entry.balance).toBe(entry.purchased)
+    }
+  })
+
+  it('keeps the lifetime result, which settling does not erase', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    await placeBet(app, seed, seed.ann, 'home', 30)
+    await placeBet(app, seed, seed.cy, 'away', 40)
+    await recordResult(app, seed, { result: 'home' })
+
+    await settleRoom(app, seed)
+    const after = await ledger(app, seed.roomId, seed.cookie)
+    const ann = after.entries.find((e) => e.gamerId === seed.ann)!
+
+    expect(ann.wagered).toBe(40)
+    expect(ann.settled).toBe(40)
+    expect(ann.net).toBe(0)
+  })
+
+  it('counts only what has happened since the last settle-up', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    await placeBet(app, seed, seed.ann, 'home', 30)
+    await placeBet(app, seed, seed.cy, 'away', 40)
+    await recordResult(app, seed, { result: 'home' })
+    await settleRoom(app, seed)
+
+    const next = await startNextGame(app, seed)
+    await placeBet(app, next, next.ann, 'home', 10)
+    await placeBet(app, next, next.cy, 'away', 20)
+    await recordResult(app, next, { result: 'home' })
+
+    const after = await ledger(app, next.roomId, next.cookie)
+    // The second game stands on its own: cy is down only the new stake.
+    expect(after.entries.find((e) => e.gamerId === next.cy)!.net).toBe(-20)
+    expect(after.transfers).toEqual([{ from: next.cy, to: next.ann, amount: 20 }])
+  })
+
+  it('refuses to settle a room where nobody owes anybody', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+
+    const res = await settleRoom(app, seed)
+    expect(res.status).toBe(400)
+    expect((await res.json()) as { error: string }).toEqual({ error: 'nothing_to_settle' })
+  })
+
+  it('refuses to settle for a session that does not hold the room', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    await placeBet(app, seed, seed.ann, 'home', 30)
+    await placeBet(app, seed, seed.cy, 'away', 40)
+    await recordResult(app, seed, { result: 'home' })
+
+    const res = await req(app, `/api/rooms/${seed.roomId}/chips/settlements`, { method: 'POST' })
     expect(res.status).toBe(401)
   })
 })

@@ -234,6 +234,28 @@ export function App() {
     }
   }
 
+  /**
+   * Records that everyone paid up. Sends no amounts — the worker settles for
+   * whatever the ledger says, so the button cannot disagree with the figures
+   * it sits under.
+   */
+  async function settleUpRoom(): Promise<void> {
+    if (!bootstrap) return
+    setBusy('settling-up')
+    setError(null)
+    try {
+      const next = await apiJson<ChipLedgerResponse>(
+        `/api/rooms/${bootstrap.room.id}/chips/settlements`,
+        { method: 'POST' },
+      )
+      startTransition(() => setLedger(next))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function buyChips(gamerId: GamerId, amount: number): Promise<void> {
     if (!bootstrap) return
     setBusy('buying-chips')
@@ -1111,6 +1133,7 @@ export function App() {
             chips={chips}
             ledger={ledger}
             onBuyChips={buyChips}
+            onSettleUp={settleUpRoom}
             latestSquadVersion={worker?.latestSquadVersion ?? null}
             roomSquadPlatform={roomSquadPlatform}
             scoreboard={scoreboard}
