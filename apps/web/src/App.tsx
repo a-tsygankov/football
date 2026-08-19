@@ -36,6 +36,8 @@ import {
 import { BottomNav } from './components/BottomNav.jsx'
 import { StatusCard } from './components/StatusCard.jsx'
 import { UpdateBanner } from './components/UpdateBanner.jsx'
+import { SwUpdateBanner } from './components/SwUpdateBanner.jsx'
+import { OfflineNotice } from './components/OfflineNotice.jsx'
 import { DebugConsole } from './debug/DebugConsole.jsx'
 import {
   apiJson,
@@ -45,11 +47,14 @@ import {
   readLastBettor,
 } from './lib/api.js'
 import { logger } from './lib/logger.js'
+import { swUpdateStore } from './lib/swUpdate.js'
 import { APP_VERSION, type WorkerVersionInfo } from './lib/version.js'
 import { LandingScreen } from './features/landing/LandingScreen.jsx'
 import { RoomScreen } from './features/room/RoomScreen.jsx'
 import type { BusyState } from './types/busyState.js'
 import { useInstallPrompt } from './hooks/useInstallPrompt.js'
+import { useOnlineStatus } from './hooks/useOnlineStatus.js'
+import { useSwUpdate } from './hooks/useSwUpdate.js'
 import { useHashRoute } from './hooks/useHashRoute.js'
 
 const LAST_ROOM_ID_KEY = 'fc26:last-room-id'
@@ -920,6 +925,16 @@ export function App() {
   const clientOutdated =
     worker !== null && isClientOutdated(APP_VERSION, worker.minClientVersion)
 
+  // Two more strips can appear above the app, both from the service worker.
+  //
+  // `swUpdate.updateReady` means a newer build finished downloading and is
+  // waiting; unlike `clientOutdated` above it is optional, so it is offered
+  // rather than forced. When both apply the version floor wins — being under
+  // the floor is the more serious of the two, and stacking banners would eat
+  // the top of a phone screen.
+  const swUpdate = useSwUpdate()
+  const online = useOnlineStatus()
+
   return (
     <div
       style={{
@@ -931,11 +946,17 @@ export function App() {
         color: '#052e16',
       }}
     >
+      {online ? null : <OfflineNotice />}
       {clientOutdated && worker ? (
         <UpdateBanner
           clientVersion={APP_VERSION}
           minClientVersion={worker.minClientVersion}
           onReload={() => window.location.reload()}
+        />
+      ) : swUpdate.updateReady ? (
+        <SwUpdateBanner
+          onReload={() => swUpdateStore.apply()}
+          onDismiss={() => swUpdateStore.dismiss()}
         />
       ) : null}
       <main style={{ padding: 20, maxWidth: 560, margin: '0 auto' }}>

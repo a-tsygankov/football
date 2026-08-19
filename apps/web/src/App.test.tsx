@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { App } from './App.jsx'
 
 function roomIdFromScoreboardUrl(url: string): string | null {
@@ -35,6 +35,23 @@ function selectTab(tab: HTMLElement): void {
   fireEvent.click(tab)
 }
 
+/**
+ * A minimal /api/version body, for tests whose subject is the PWA glue
+ * rather than anything the worker says.
+ */
+function versionResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      workerVersion: '9.9.9',
+      schemaVersion: 1,
+      minClientVersion: '0.0.1',
+      gitSha: null,
+      builtAt: new Date().toISOString(),
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' } },
+  )
+}
+
 function startAt(route: string): void {
   window.location.hash = `#/${route}`
 }
@@ -52,8 +69,13 @@ describe('App shell', () => {
     __resetDebugConsoleForTests()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup()
+    // The PWA state is module-level (registration happens once at boot), so
+    // put it back where a fresh launch would leave it.
+    Object.defineProperty(navigator, 'onLine', { value: true, configurable: true })
+    const { swUpdateStore } = await import('./lib/swUpdate.js')
+    swUpdateStore.dismiss()
   })
 
   it('renders the room create and join entry points', () => {
@@ -2153,4 +2175,78 @@ describe('App shell', () => {
     await screen.findByText(/schema 1/)
     expect(screen.queryByRole('alert')).toBeNull()
   })
+
+  it('offers to reload once the service worker has a new build waiting', async () => {
+    // registerType is 'prompt': the new build sits in the wings until the
+    // gamer says so, because a reload mid-bet is worse than a stale bundle.
+    vi.stubGlobal('fetch', vi.fn(async () => versionResponse()))
+    const { swUpdateStore } = await import('./lib/swUpdate.js')
+    let needRefresh = (): void => {}
+    swUpdateStore.register((options) => {
+      needRefresh = () => options.onNeedRefresh?.()
+      return async () => {}
+    })
+
+    render(<App />)
+    act(() => needRefresh())
+
+    const banner = await screen.findByRole('status')
+    expect(within(banner).getByRole('button', { name: /reload to update/i })).toBeInTheDocument()
+  })
+
+  it('keeps quiet until the service worker actually has something waiting', () => {
+    vi.stubGlobal('fetch', vi.fn(async () => versionResponse()))
+
+    render(<App />)
+
+    expect(screen.queryByRole('button', { name: /reload to update/i })).toBeNull()
+  })
+
+  it('tells the gamer they are offline instead of showing an empty shell', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline') }))
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true })
+
+    render(<App />)
+
+    const notice = await screen.findByText(/you are offline/i)
+    expect(notice).toBeInTheDocument()
+  })
+
+
+  it('lets the version-floor banner win when a service worker update is also waiting', async () => {
+    // Being under minClientVersion is the more serious of the two, and two
+    // stacked banners would eat the top of a phone screen.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input) => {
+        const url = String(input)
+        if (url.endsWith('/api/version')) {
+          return new Response(
+            JSON.stringify({
+              workerVersion: '9.9.9',
+              schemaVersion: 1,
+              minClientVersion: '99.0.0',
+              gitSha: null,
+              builtAt: new Date().toISOString(),
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      }),
+    )
+    const { swUpdateStore } = await import('./lib/swUpdate.js')
+    let needRefresh = (): void => {}
+    swUpdateStore.register((options) => {
+      needRefresh = () => options.onNeedRefresh?.()
+      return async () => {}
+    })
+
+    render(<App />)
+    act(() => needRefresh())
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('99.0.0')
+    expect(screen.queryByRole('button', { name: /reload to update/i })).toBeNull()
+  })
+
 })
