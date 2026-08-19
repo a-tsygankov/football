@@ -153,15 +153,12 @@ export function WagerPage({
   gamers,
   viewerId,
   onChangeViewer,
-  showAll,
   onLoadHistory,
 }: {
   gamers: ReadonlyArray<Gamer>
   /** Whose ledger to show. Null means everything. */
   viewerId: GamerId | null
   onChangeViewer: (next: GamerId | null) => void
-  /** Settings-unlocked clients may switch the filter off entirely. */
-  showAll: boolean
   onLoadHistory: () => Promise<BetHistoryResponse>
 }) {
   const [state, setState] = useState<
@@ -169,6 +166,10 @@ export function WagerPage({
     | { status: 'error'; message: string }
     | { status: 'ready'; games: ReadonlyArray<BetHistoryGame> }
   >({ status: 'loading' })
+  // The history is long and mostly retrospective, so it stays out of the way
+  // until asked for. The chip balances above it are the part people open this
+  // page to see.
+  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -211,9 +212,10 @@ export function WagerPage({
               }
               style={inputStyle}
             >
-              {/* Only offered when Settings is unlocked — it is the same soft
-                  admin notion used elsewhere, not a server-side permission. */}
-              {showAll ? <option value="">Everyone</option> : null}
+              {/* Everyone is always on offer. The endpoint returns the whole
+                  room's ledger to any session anyway, so hiding it here only
+                  stopped people seeing bets they could already fetch. */}
+              <option value="">Everyone</option>
               {gamers.map((gamer) => (
                 <option key={gamer.id} value={gamer.id}>
                   {gamer.name}
@@ -236,16 +238,61 @@ export function WagerPage({
               }
             />
           ) : (
-            <div style={{ display: 'grid', gap: 10 }}>
-              {visible.map((game) => (
-                <GameCard
-                  key={game.gameId}
-                  game={game}
-                  gamers={gamers}
-                  viewerId={viewerId}
-                />
-              ))}
-            </div>
+            <>
+              <button
+                type="button"
+                onClick={() => setExpanded((prev) => !prev)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  width: '100%',
+                  border: '1px solid #bbf7d0',
+                  borderRadius: 14,
+                  background: '#ffffff',
+                  color: '#166534',
+                  padding: '12px 14px',
+                  fontSize: 14,
+                  fontFamily: 'inherit',
+                  cursor: 'pointer',
+                }}
+                aria-expanded={expanded}
+              >
+                <span style={{ flexGrow: 1, textAlign: 'left' }}>
+                  {expanded ? 'Hide' : 'Show'} {visible.length} game
+                  {visible.length === 1 ? '' : 's'} with bets
+                </span>
+                <svg
+                  aria-hidden="true"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{
+                    transform: expanded ? 'rotate(180deg)' : 'none',
+                    transition: 'transform 160ms ease',
+                  }}
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              {expanded ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {visible.map((game) => (
+                    <GameCard
+                      key={game.gameId}
+                      game={game}
+                      gamers={gamers}
+                      viewerId={viewerId}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </>
           )}
         </div>
       </Panel>

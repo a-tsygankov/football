@@ -315,7 +315,6 @@ export function RoomScreen({
             gamers={bootstrap.gamers}
             viewerId={viewerId}
             onChangeViewer={onChangeViewer}
-            showAll={settingsUnlocked}
             onLoadHistory={onLoadBetHistory}
           />
         </>
