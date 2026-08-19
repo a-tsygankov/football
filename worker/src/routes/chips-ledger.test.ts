@@ -37,6 +37,18 @@ async function buy(
   })
 }
 
+async function payDebt(
+  app: App,
+  seed: LiveGameSeed,
+  body: unknown,
+): Promise<Response> {
+  return req(app, `/api/rooms/${seed.roomId}/chips/settlements/payment`, {
+    method: 'POST',
+    headers: { cookie: seed.cookie, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
 async function settleRoom(app: App, seed: LiveGameSeed): Promise<Response> {
   return req(app, `/api/rooms/${seed.roomId}/chips/settlements`, {
     method: 'POST',
@@ -359,5 +371,93 @@ describe('chip ledger', () => {
 
     const res = await req(app, `/api/rooms/${seed.roomId}/chips/settlements`, { method: 'POST' })
     expect(res.status).toBe(401)
+  })
+
+  describe('one payment at a time', () => {
+    /** cy is down 40 to ann; bob played but never bet, so he is square. */
+    async function owing(app: App): Promise<LiveGameSeed> {
+      const seed = await seedLiveGame(app)
+      await placeBet(app, seed, seed.ann, 'home', 30)
+      await placeBet(app, seed, seed.cy, 'away', 40)
+      await recordResult(app, seed, { result: 'home' })
+      return seed
+    }
+
+    it('clears just that debt and leaves everyone else alone', async () => {
+      const app = buildTestApp()
+      const seed = await owing(app)
+      const before = await ledger(app, seed.roomId, seed.cookie)
+      const bobBefore = before.entries.find((e) => e.gamerId === seed.bob)!
+
+      const res = await payDebt(app, seed, { from: seed.cy, to: seed.ann, amount: 40 })
+      expect(res.status).toBe(201)
+      const after = (await res.json()) as ChipLedgerResponse
+
+      expect(after.transfers).toEqual([])
+      expect(after.entries.find((e) => e.gamerId === seed.ann)!.net).toBe(0)
+      expect(after.entries.find((e) => e.gamerId === seed.cy)!.net).toBe(0)
+      // Untouched, which is the whole point of settling one pair.
+      const bobAfter = after.entries.find((e) => e.gamerId === seed.bob)!
+      expect(bobAfter.balance).toBe(bobBefore.balance)
+      expect(bobAfter.settled).toBe(0)
+    })
+
+    it('takes a part payment and leaves the rest owing', async () => {
+      const app = buildTestApp()
+      const seed = await owing(app)
+
+      expect((await payDebt(app, seed, { from: seed.cy, to: seed.ann, amount: 15 })).status).toBe(201)
+      const after = await ledger(app, seed.roomId, seed.cookie)
+
+      expect(after.entries.find((e) => e.gamerId === seed.cy)!.net).toBe(-25)
+      expect(after.transfers).toEqual([{ from: seed.cy, to: seed.ann, amount: 25 }])
+    })
+
+    it('refuses to pay more than is owed', async () => {
+      const app = buildTestApp()
+      const seed = await owing(app)
+
+      const res = await payDebt(app, seed, { from: seed.cy, to: seed.ann, amount: 41 })
+      expect(res.status).toBe(400)
+      expect((await res.json()) as { error: string }).toEqual({ error: 'no_such_debt' })
+    })
+
+    it('refuses a payment that answers to no debt', async () => {
+      const app = buildTestApp()
+      const seed = await owing(app)
+
+      // bob is square, so paying him would invent a position.
+      expect((await payDebt(app, seed, { from: seed.cy, to: seed.bob, amount: 10 })).status).toBe(400)
+      // And the creditor does not pay the debtor.
+      expect((await payDebt(app, seed, { from: seed.ann, to: seed.cy, amount: 10 })).status).toBe(400)
+    })
+
+    it('rejects a malformed body rather than settling anything', async () => {
+      const app = buildTestApp()
+      const seed = await owing(app)
+
+      const res = await req(app, `/api/rooms/${seed.roomId}/chips/settlements/payment`, {
+        method: 'POST',
+        headers: { cookie: seed.cookie, 'content-type': 'application/json' },
+        body: '{ not json',
+      })
+      expect(res.status).toBe(400)
+
+      // Nothing was written: the debt is exactly as it was.
+      const after = await ledger(app, seed.roomId, seed.cookie)
+      expect(after.transfers).toEqual([{ from: seed.cy, to: seed.ann, amount: 40 }])
+    })
+
+    it('refuses a payment for a session that does not hold the room', async () => {
+      const app = buildTestApp()
+      const seed = await owing(app)
+
+      const res = await req(app, `/api/rooms/${seed.roomId}/chips/settlements/payment`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ from: seed.cy, to: seed.ann, amount: 40 }),
+      })
+      expect(res.status).toBe(401)
+    })
   })
 })

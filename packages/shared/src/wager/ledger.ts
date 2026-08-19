@@ -203,6 +203,44 @@ export function settlementAmounts(
     .map((item) => ({ gamerId: item.gamerId, amount: item.net }))
 }
 
+/**
+ * The two `chips_settled` amounts recording one payment between two gamers.
+ *
+ * Debts do not get paid off in one round of everybody-hands-everybody-cash.
+ * Somebody settles on Tuesday, somebody else forgets until next month, and
+ * somebody pays half now and half later. So a payment is recorded on its own:
+ * the payer's debt shrinks, the payee's credit shrinks, and everyone else's
+ * position is untouched.
+ *
+ * Null when the payment does not answer to a debt that exists — paying
+ * somebody who is not owed, or paying more than is owed, would push both
+ * parties into a position the games never created. Partial amounts are fine
+ * and expected; over-payment is not.
+ *
+ * The two amounts sum to zero, which is what keeps the room-wide invariant
+ * true however many payments are recorded.
+ */
+export function settlementForPayment(
+  ledger: ReadonlyMap<GamerId, ChipLedgerEntry>,
+  from: GamerId,
+  to: GamerId,
+  amount: number,
+): Array<{ gamerId: GamerId; amount: number }> | null {
+  if (from === to) return null
+  if (!Number.isSafeInteger(amount) || amount <= 0) return null
+
+  const owes = -ledgerEntryFor(ledger, from).net
+  const owed = ledgerEntryFor(ledger, to).net
+  if (owes < amount || owed < amount) return null
+
+  // Signs mirror `settlementAmounts`: `settled` cancels `wagered`, so the one
+  // who was owed banks a positive amount and the one who owed banks a negative.
+  return [
+    { gamerId: to, amount },
+    { gamerId: from, amount: -amount },
+  ]
+}
+
 /** One payment that settles part of the room up. */
 export interface ChipTransfer {
   from: GamerId

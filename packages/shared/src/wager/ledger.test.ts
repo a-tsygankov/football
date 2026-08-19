@@ -10,6 +10,7 @@ import { EventId, GameId, GameNightId, GamerId, RoomId } from '../types/ids.js'
 import {
   hasChipActivity,
   settlementAmounts,
+  settlementForPayment,
   ledgerEntryFor,
   maxStakeOnGame,
   roomChipLedger,
@@ -376,6 +377,112 @@ describe('settleUp', () => {
     // Folding them back in must leave the room square — that is the whole job.
     expect(amounts.reduce((sum, a) => sum + a.amount, 0)).toBe(0)
     expect(amounts.some((a) => a.gamerId === cy)).toBe(false)
+  })
+
+
+  describe('settling one payment at a time', () => {
+    /** cy is down 30 to ann, and bob is square. */
+    function owing() {
+      return roomChipLedger([
+        bought(ann, 100),
+        bought(cy, 100),
+        settled('g1', [
+          { gamerId: ann, stake: 20, payout: 50 },
+          { gamerId: cy, stake: 30, payout: 0 },
+        ]),
+      ])
+    }
+
+    it('records a payment as two amounts that cancel', () => {
+      expect(settlementForPayment(owing(), cy, ann, 30)).toEqual([
+        { gamerId: ann, amount: 30 },
+        { gamerId: cy, amount: -30 },
+      ])
+    })
+
+    it('leaves the payer and payee square, and nobody else touched', () => {
+      const paid = settlementForPayment(owing(), cy, ann, 30)!
+      const after = roomChipLedger([
+        bought(ann, 100),
+        bought(cy, 100),
+        settled('g1', [
+          { gamerId: ann, stake: 20, payout: 50 },
+          { gamerId: cy, stake: 30, payout: 0 },
+        ]),
+        ...paid.map((entry) => settledUp(entry.gamerId, entry.amount)),
+      ])
+
+      expect(ledgerEntryFor(after, ann).net).toBe(0)
+      expect(ledgerEntryFor(after, cy).net).toBe(0)
+      expect(settleUp(after.values())).toEqual([])
+    })
+
+    it('takes a part payment, because people pay what cash they have', () => {
+      const part = settlementForPayment(owing(), cy, ann, 10)
+      expect(part).toEqual([
+        { gamerId: ann, amount: 10 },
+        { gamerId: cy, amount: -10 },
+      ])
+
+      const after = roomChipLedger([
+        bought(ann, 100),
+        bought(cy, 100),
+        settled('g1', [
+          { gamerId: ann, stake: 20, payout: 50 },
+          { gamerId: cy, stake: 30, payout: 0 },
+        ]),
+        ...part!.map((entry) => settledUp(entry.gamerId, entry.amount)),
+      ])
+
+      // 20 of the 30 is still outstanding, and still points the same way.
+      expect(ledgerEntryFor(after, ann).net).toBe(20)
+      expect(ledgerEntryFor(after, cy).net).toBe(-20)
+      expect(settleUp(after.values())).toEqual([{ from: cy, to: ann, amount: 20 }])
+    })
+
+    it('refuses to pay more than is owed', () => {
+      expect(settlementForPayment(owing(), cy, ann, 31)).toBeNull()
+    })
+
+    it('refuses a payment to somebody who is not owed anything', () => {
+      expect(settlementForPayment(owing(), cy, bob, 10)).toBeNull()
+    })
+
+    it('refuses a payment from somebody who owes nothing', () => {
+      // bob is square, so this would invent a debt in both directions.
+      expect(settlementForPayment(owing(), bob, ann, 10)).toBeNull()
+    })
+
+    it('refuses the wrong direction — the creditor does not pay the debtor', () => {
+      expect(settlementForPayment(owing(), ann, cy, 30)).toBeNull()
+    })
+
+    it('refuses a payment between two people who are both owed money', () => {
+      // ann +30, bob +20, cy -50. Neither creditor owes the other anything, so
+      // a payment between them would invent a debt in both directions. The
+      // check on the payer's side is what catches this — the payee's side
+      // cannot, because being owed is exactly what makes them a valid payee.
+      const twoCreditors = roomChipLedger([
+        settled('g1', [
+          { gamerId: ann, stake: 20, payout: 50 },
+          { gamerId: bob, stake: 10, payout: 30 },
+          { gamerId: cy, stake: 50, payout: 0 },
+        ]),
+      ])
+      expect(ledgerEntryFor(twoCreditors, ann).net).toBe(30)
+      expect(ledgerEntryFor(twoCreditors, bob).net).toBe(20)
+
+      expect(settlementForPayment(twoCreditors, ann, bob, 10)).toBeNull()
+      expect(settlementForPayment(twoCreditors, bob, ann, 10)).toBeNull()
+    })
+
+    it('refuses nonsense amounts', () => {
+      const ledger = owing()
+      expect(settlementForPayment(ledger, cy, ann, 0)).toBeNull()
+      expect(settlementForPayment(ledger, cy, ann, -10)).toBeNull()
+      expect(settlementForPayment(ledger, cy, ann, 1.5)).toBeNull()
+      expect(settlementForPayment(ledger, cy, cy, 10)).toBeNull()
+    })
   })
 
   it('has nothing to settle when nobody is up or down', () => {
