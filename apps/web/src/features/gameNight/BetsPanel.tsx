@@ -128,8 +128,13 @@ export function BetsPanel({
     const total = existing ? existing.stake + parsed : parsed
     if (balance && total > maxStakeOnGame(balance, existing?.stake ?? 0)) {
       setError(
-        `${nameOf(bettorId)} has ${balance.available} chips available` +
-          (existing ? ` on top of the ${existing.stake} already staked.` : '.'),
+        // Chips only enter a room by purchase now, so being out of them is an
+        // ordinary state with an obvious remedy — and "has -20 chips
+        // available" is a true sentence that tells nobody what to do.
+        balance.available <= 0
+          ? `${nameOf(bettorId)} is out of chips — buy some on the Wager page.`
+          : `${nameOf(bettorId)} has ${balance.available} chips available` +
+            (existing ? ` on top of the ${existing.stake} already staked.` : '.'),
       )
       return
     }
@@ -209,7 +214,7 @@ export function BetsPanel({
             <div style={{ fontSize: 13, opacity: 0.8 }}>
               {balance.balance} chips
               {balance.committed > 0 ? ` — ${balance.available} available` : ''}
-              <span style={{ opacity: 0.7 }}> (bought {balance.purchased})</span>
+              <span style={{ opacity: 0.7 }}> (bought {balance.bought})</span>
             </div>
           ) : null}
 

@@ -236,7 +236,22 @@ describe('BetsPanel', () => {
     // Covering a second outcome costs a second stake; the first is committed,
     // not freed. Only topping up the same position re-commits chips.
     expect(props.onPlaceBet).not.toHaveBeenCalled()
-    expect(screen.getByText(/cy has 0 chips available/i)).toBeInTheDocument()
+    expect(screen.getByText(/cy is out of chips/i)).toBeInTheDocument()
+  })
+
+  it('points a gamer at the Wager page when their balance has gone negative', () => {
+    const props = renderPanel({
+      // What losing looks like once nights stop handing out chips: nothing
+      // bought, and a settled game taken off them.
+      ledger: [entry(cy, 0, -20)],
+    })
+    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
+    fireEvent.click(screen.getByRole('button', { name: /^home$/i }))
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '5' } })
+    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
+
+    expect(props.onPlaceBet).not.toHaveBeenCalled()
+    expect(screen.getByText(/cy is out of chips — buy some on the wager page/i)).toBeInTheDocument()
   })
 
   it('measures a top-up against the position on that outcome only', () => {
