@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type {
   ChipsPurchasedEvent,
+  ChipsSettledEvent,
   GameRecordedEvent,
   GameVoidedEvent,
   PersistedGameEvent,
@@ -8,6 +9,7 @@ import type {
 import { EventId, GameId, GameNightId, GamerId, RoomId } from '../types/ids.js'
 import {
   hasChipActivity,
+  settlementAmounts,
   ledgerEntryFor,
   maxStakeOnGame,
   roomChipLedger,
@@ -59,6 +61,19 @@ function bought(gamerId: typeof ann, amount: number, night = 'night-1'): Persist
     occurredAt: seq,
     reason: 'manual',
   } satisfies ChipsPurchasedEvent)
+}
+
+/** A debt squared up in cash, cancelling that gamer's outstanding position. */
+function settledUp(gamerId: typeof ann, amount: number, id = 's1'): PersistedGameEvent {
+  return persist({
+    type: 'chips_settled',
+    schemaVersion: 1,
+    roomId,
+    gamerId,
+    amount,
+    settlementId: id,
+    occurredAt: seq,
+  } satisfies ChipsSettledEvent)
 }
 
 /** A settled game whose wagers move chips between the named gamers. */
@@ -277,6 +292,90 @@ describe('settleUp', () => {
 
     const riding = roomChipLedger([granted(cy, 100)], [{ gamerId: cy, stake: 10 }])
     expect(hasChipActivity(ledgerEntryFor(riding, cy))).toBe(true)
+  })
+
+
+  it('leaves nobody owing anything once the room has settled up', () => {
+    const events = [
+      bought(ann, 100),
+      bought(bob, 100),
+      settled('g1', [
+        { gamerId: ann, stake: 20, payout: 50 },
+        { gamerId: bob, stake: 30, payout: 0 },
+      ]),
+    ]
+    const before = roomChipLedger(events)
+    expect(ledgerEntryFor(before, ann).net).toBe(30)
+    expect(ledgerEntryFor(before, bob).net).toBe(-30)
+
+    const after = roomChipLedger([...events, settledUp(ann, 30), settledUp(bob, -30)])
+
+    // Paid in cash, so the debt is gone and the chips they bought remain.
+    expect(ledgerEntryFor(after, ann).net).toBe(0)
+    expect(ledgerEntryFor(after, bob).net).toBe(0)
+    expect(ledgerEntryFor(after, ann).balance).toBe(100)
+    expect(ledgerEntryFor(after, bob).balance).toBe(100)
+    expect(settleUp(after.values())).toEqual([])
+  })
+
+  it('keeps the lifetime result after settling, because it is a different question', () => {
+    const after = roomChipLedger([
+      bought(ann, 100),
+      bought(bob, 100),
+      settled('g1', [
+        { gamerId: ann, stake: 20, payout: 50 },
+        { gamerId: bob, stake: 30, payout: 0 },
+      ]),
+      settledUp(ann, 30),
+      settledUp(bob, -30),
+    ])
+
+    // Ann is still up 30 all-time; she has simply been paid it.
+    expect(ledgerEntryFor(after, ann).wagered).toBe(30)
+    expect(ledgerEntryFor(after, ann).settled).toBe(30)
+    expect(ledgerEntryFor(after, bob).wagered).toBe(-30)
+  })
+
+  it('counts only what has happened since the last settle-up', () => {
+    const events = [
+      bought(ann, 100),
+      bought(bob, 100),
+      settled('g1', [
+        { gamerId: ann, stake: 20, payout: 50 },
+        { gamerId: bob, stake: 30, payout: 0 },
+      ]),
+      settledUp(ann, 30),
+      settledUp(bob, -30),
+      settled('g2', [
+        { gamerId: ann, stake: 10, payout: 0 },
+        { gamerId: bob, stake: 5, payout: 15 },
+      ]),
+    ]
+    const after = roomChipLedger(events)
+
+    // The second night stands on its own: ann owes 10, bob is owed 10.
+    expect(ledgerEntryFor(after, ann).net).toBe(-10)
+    expect(ledgerEntryFor(after, bob).net).toBe(10)
+    expect(settleUp(after.values())).toEqual([{ from: ann, to: bob, amount: 10 }])
+  })
+
+  it('names the amount each gamer must settle for, and skips the square', () => {
+    const ledger = roomChipLedger([
+      bought(cy, 100),
+      settled('g1', [
+        { gamerId: ann, stake: 20, payout: 50 },
+        { gamerId: bob, stake: 30, payout: 0 },
+      ]),
+    ])
+
+    const amounts = settlementAmounts(ledger.values())
+    expect(amounts).toEqual([
+      { gamerId: ann, amount: 30 },
+      { gamerId: bob, amount: -30 },
+    ])
+    // Folding them back in must leave the room square — that is the whole job.
+    expect(amounts.reduce((sum, a) => sum + a.amount, 0)).toBe(0)
+    expect(amounts.some((a) => a.gamerId === cy)).toBe(false)
   })
 
   it('has nothing to settle when nobody is up or down', () => {

@@ -26,13 +26,19 @@ import {
   nightChipPositions,
   type PlaceBetRequest,
   roomChipLedger,
+  settlementAmounts,
   RoomId,
   settleUp,
 } from '@fc26/shared'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { AppContext } from '../app.js'
-import { recordBetEvent, recordChipPurchase, toSnapshot } from '../bets/event-log.js'
+import {
+  recordBetEvent,
+  recordChipPurchase,
+  recordChipSettlement,
+  toSnapshot,
+} from '../bets/event-log.js'
 import {
   parseJson,
   requireActiveGameNight,
@@ -349,6 +355,52 @@ betRoutes.post('/rooms/:roomId/chips/purchases', async (c) => {
     occurredAt: now,
     reason: 'manual',
   })
+
+  return c.json(await chipLedgerResponse(c, roomId), 201)
+})
+
+/**
+ * Records that the room squared up.
+ *
+ * Takes no body: the amounts are whatever the ledger says right now, so there
+ * is nothing for a caller to get wrong or to disagree with the panel about.
+ * One `chips_settled` event per gamer who is not already square, all sharing a
+ * settlement id, each cancelling exactly that gamer's outstanding position.
+ *
+ * Chips are not returned. Settling pays the debt in cash and leaves everyone
+ * holding what they bought, which is what makes the next night start from the
+ * stacks people paid for rather than from nothing.
+ *
+ * Open stakes are deliberately not waited for. `settleUp` already ignores
+ * them, so a live game simply settles into a fresh balance afterwards — and
+ * refusing here would mean nobody could square up until the last game of the
+ * night had been recorded.
+ */
+betRoutes.post('/rooms/:roomId/chips/settlements', async (c) => {
+  const roomId = RoomId(c.req.param('roomId'))
+  const session = await requireRoomSession(c, roomId)
+  if (!session) return c.json({ error: 'unauthorized' }, 401)
+
+  const events = await c.get('deps').events.listByRoom(roomId)
+  const ledger = roomChipLedger(events)
+  const amounts = settlementAmounts(ledger.values())
+  if (amounts.length === 0) {
+    return c.json({ error: 'nothing_to_settle' }, 400)
+  }
+
+  const settlementId = nanoid(12)
+  const now = Date.now()
+  for (const entry of amounts) {
+    await recordChipSettlement(c, {
+      type: 'chips_settled',
+      schemaVersion: EVENT_SCHEMA_VERSION,
+      roomId,
+      gamerId: entry.gamerId,
+      amount: entry.amount,
+      settlementId,
+      occurredAt: now,
+    })
+  }
 
   return c.json(await chipLedgerResponse(c, roomId), 201)
 })

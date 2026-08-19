@@ -43,6 +43,10 @@ function entry(
     purchased,
     bought: purchased - granted,
     granted,
+    // Nothing settled yet in these fixtures, so the outstanding position and
+    // the lifetime result are the same number.
+    wagered: net,
+    settled: 0,
     net,
     committed,
     balance: purchased + net,
@@ -60,6 +64,7 @@ function renderPanel(overrides: Partial<Parameters<typeof ChipLedgerPanel>[0]> =
       transfers: [{ from: bob, to: ann, amount: 50 }],
     } as ChipLedgerResponse,
     onBuyChips: vi.fn().mockResolvedValue(undefined),
+    onSettleUp: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   }
   render(<ChipLedgerPanel {...props} />)
@@ -111,6 +116,26 @@ describe('ChipLedgerPanel', () => {
     const balances = within(screen.getByRole('list', { name: /chip balances/i }))
     expect(balances.getByText('Bob')).toBeInTheDocument()
     expect(balances.getByText('100')).toBeInTheDocument()
+  })
+
+
+  it('offers to record the payments once somebody owes somebody', () => {
+    const props = renderPanel()
+    fireEvent.click(screen.getByRole('button', { name: /mark these payments as made/i }))
+
+    expect(props.onSettleUp).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers nothing to settle when the room is already square', () => {
+    renderPanel({
+      ledger: {
+        roomId: RoomId('room-1'),
+        entries: [entry(ann, 100), entry(bob, 100)],
+        transfers: [],
+      },
+    })
+
+    expect(screen.queryByRole('button', { name: /mark these payments as made/i })).toBeNull()
   })
 
   it('says who pays whom', () => {

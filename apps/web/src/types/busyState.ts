@@ -12,6 +12,7 @@ export type BusyState =
   | 'placing-bet'
   | 'removing-bet'
   | 'buying-chips'
+  | 'settling-up'
   | 'saving-room-settings'
   | 'refreshing-squad-assets'
   | 'hard-refreshing-squad-assets'

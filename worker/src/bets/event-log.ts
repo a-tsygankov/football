@@ -4,6 +4,7 @@ import {
   type BetEventPayload,
   type BetSnapshot,
   type ChipsPurchasedEvent,
+  type ChipsSettledEvent,
   EventId,
 } from '@fc26/shared'
 import type { RouteContext } from '../routes/room-context.js'
@@ -30,9 +31,16 @@ export function toSnapshot(bet: Bet): BetSnapshot {
   }
 }
 
-export async function recordChipPurchase(
+/**
+ * Appends one wager-domain event.
+ *
+ * Every payload here carries its own room, type, schema version and time, so
+ * the row is the same shape whatever the event is. The named wrappers below
+ * exist for the types they accept, not for behaviour they add.
+ */
+async function append(
   c: RouteContext,
-  payload: ChipsPurchasedEvent,
+  payload: BetEventPayload | ChipsPurchasedEvent | ChipsSettledEvent,
 ): Promise<void> {
   await c.get('deps').events.insert({
     id: EventId(nanoid(12)),
@@ -46,18 +54,24 @@ export async function recordChipPurchase(
   })
 }
 
+export async function recordChipPurchase(
+  c: RouteContext,
+  payload: ChipsPurchasedEvent,
+): Promise<void> {
+  await append(c, payload)
+}
+
+/** A debt paid off outside the app. See `ChipsSettledEvent`. */
+export async function recordChipSettlement(
+  c: RouteContext,
+  payload: ChipsSettledEvent,
+): Promise<void> {
+  await append(c, payload)
+}
+
 export async function recordBetEvent(
   c: RouteContext,
   payload: BetEventPayload,
 ): Promise<void> {
-  await c.get('deps').events.insert({
-    id: EventId(nanoid(12)),
-    roomId: payload.roomId,
-    eventType: payload.type,
-    payload,
-    schemaVersion: payload.schemaVersion,
-    correlationId: c.get('correlationId') ?? null,
-    occurredAt: payload.occurredAt,
-    recordedAt: Date.now(),
-  })
+  await append(c, payload)
 }
