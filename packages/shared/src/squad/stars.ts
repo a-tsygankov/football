@@ -19,8 +19,9 @@
  * ```
  *
  * The half-star integer (0–10) is the canonical scale we store, display,
- * and filter on. `RatingSelector` emits it, `EaTeamCard` / `StarRow` render
- * it, and `Club.starRating` is persisted on this scale from ingest onwards.
+ * and filter on. `EaTeamCard` / `StarRow` render it, and `Club.starRating` is
+ * persisted on this scale from ingest onwards. Nothing edits it: club ratings
+ * come from ingest, and a gamer's rating is a separate whole-number 1–5.
  *
  * Use {@link starRating10FromOverall} going OVR → stars, and
  * {@link overallRangeForStarRating10} going stars → OVR range.
