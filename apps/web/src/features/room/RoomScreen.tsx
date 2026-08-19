@@ -29,6 +29,7 @@ import { RoomBar } from './RoomBar.jsx'
 import { SettingsPanel } from './SettingsPanel.jsx'
 import { ChipStandingsPanel } from '../gameNight/ChipStandingsPanel.jsx'
 import { ChipLedgerPanel } from '../wager/ChipLedgerPanel.jsx'
+import { SettleUpPanel } from '../wager/SettleUpPanel.jsx'
 import { WagerPage } from '../wager/WagerPage.jsx'
 import type { Route } from '../../hooks/useHashRoute.js'
 import type { BusyState } from '../../types/busyState.js'
@@ -311,6 +312,13 @@ export function RoomScreen({
               lastGameDeltas={chips.lastGameDeltas}
             />
           ) : null}
+          {/* Read-only, and last on the page: closing the room out is the end
+              of the night, not the thing anyone opens this page to do. */}
+          <SettleUpPanel
+            gamers={bootstrap.gamers}
+            ledger={ledger}
+            liveGame={bootstrap.currentGame != null}
+          />
           <WagerPage
             gamers={bootstrap.gamers}
             viewerId={viewerId}

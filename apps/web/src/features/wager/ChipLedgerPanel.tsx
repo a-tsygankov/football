@@ -24,11 +24,12 @@ function toneOf(value: number): string {
 }
 
 /**
- * The room's chip ledger and what it would take to settle up.
+ * The room's chip ledger.
  *
  * Balances are room-wide and carry across nights, so this is the running
  * account rather than a scoreboard for tonight — `ChipStandingsPanel` still
- * covers the evening's swing.
+ * covers the evening's swing, and `SettleUpPanel` turns these balances into
+ * who hands cash to whom.
  *
  * Motion is deliberate and narrow: rows stagger in so the list reads as a
  * list, and a balance that changed animates rather than snapping, because a
@@ -75,7 +76,6 @@ export function ChipLedgerPanel({
   // never placed a bet, holding a balance nobody asked for — noise on the one
   // screen meant to say who is up and who is down.
   const entries = (ledger?.entries ?? []).filter(hasChipActivity)
-  const transfers = ledger?.transfers ?? []
   const rise = reduced ? 0 : 8
 
   return (
@@ -121,32 +121,6 @@ export function ChipLedgerPanel({
               ))}
             </ul>
           )}
-
-          {/* What it would take to close the room out right now. Winnings are
-              paid by the losers, so the payments always cancel exactly. */}
-          <div className="grid gap-1.5">
-            <strong className="text-sm">Settle up</strong>
-            {transfers.length === 0 ? (
-              <p className="m-0 text-[13px] text-muted-foreground">
-                Nobody owes anybody — everyone is level on what they bought.
-              </p>
-            ) : (
-              <ul className="m-0 grid list-none gap-1 p-0">
-                {transfers.map((transfer, index) => (
-                  <m.li
-                    key={`${transfer.from}-${transfer.to}`}
-                    initial={{ opacity: 0, y: rise }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.26, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
-                    className="text-[13px]"
-                  >
-                    {nameOf(transfer.from)} pays {nameOf(transfer.to)}{' '}
-                    <strong>{transfer.amount}</strong>
-                  </m.li>
-                ))}
-              </ul>
-            )}
-          </div>
 
           <div className="grid gap-2.5 border-t border-[#ecfdf5] pt-2.5">
             <Field label="Who's buying">

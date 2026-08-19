@@ -1,6 +1,7 @@
 export * from './types.js'
 export * from './ledger.js'
 export * from './settle.js'
+export * from './settle-up.js'
 export * from './eligibility.js'
 export * from './positions.js'
 export * from './history.js'
