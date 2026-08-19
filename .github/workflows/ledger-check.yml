@@ -40,6 +40,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Only nights that actually had wagering are expected to carry buy-ins.
+      # Migration 0011 removed the backfill for nights nobody bet on, so
+      # counting those here would report a gap for every quiet evening in the
+      # room's history.
+      #
       # `expected` counts (night, pool gamer) pairs that should have a buy-in;
       # `missing` counts those that do not. They are computed the same way, so
       # `missing` is the only number that matters — a non-zero value names a
@@ -60,10 +65,20 @@ jobs:
             SELECT
               (SELECT COUNT(*) FROM game_nights gn
                  JOIN game_night_active_gamers g ON g.game_night_id = gn.id
-               WHERE gn.buy_in > 0) AS expected,
+               WHERE gn.buy_in > 0
+                 AND EXISTS (
+                   SELECT 1 FROM game_events b
+                   WHERE b.event_type IN ('bet_placed','bet_removed','bets_locked','bets_discarded')
+                     AND json_extract(b.payload, '\$.gameNightId') = gn.id
+                 )) AS expected,
               (SELECT COUNT(*) FROM game_nights gn
                  JOIN game_night_active_gamers g ON g.game_night_id = gn.id
                WHERE gn.buy_in > 0
+                 AND EXISTS (
+                   SELECT 1 FROM game_events b
+                   WHERE b.event_type IN ('bet_placed','bet_removed','bets_locked','bets_discarded')
+                     AND json_extract(b.payload, '\$.gameNightId') = gn.id
+                 )
                  AND NOT EXISTS (
                    SELECT 1 FROM game_events e
                    WHERE e.event_type = 'chips_purchased'
