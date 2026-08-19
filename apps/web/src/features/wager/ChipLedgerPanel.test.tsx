@@ -113,23 +113,13 @@ describe('ChipLedgerPanel', () => {
     expect(balances.getByText('100')).toBeInTheDocument()
   })
 
-  it('says who pays whom', () => {
+  it('leaves settling up to the panel that owns it', () => {
     renderPanel()
 
-    expect(screen.getByText(/bob pays ann/i)).toBeInTheDocument()
-  })
-
-  it('says there is nothing to settle when everyone is level', () => {
-    renderPanel({
-      ledger: {
-        roomId: RoomId('room-1'),
-        entries: [entry(ann, 100), entry(bob, 100)],
-        transfers: [],
-      },
-    })
-
-    // Buying chips is not a debt to anyone in the room; only play creates one.
-    expect(screen.getByText(/nobody owes anybody/i)).toBeInTheDocument()
+    // Two "who pays whom" lists on one page can disagree — this one read the
+    // server's precomputed transfers while `SettleUpPanel` derives its own
+    // from the balances printed directly above it.
+    expect(screen.queryByText(/bob pays ann/i)).not.toBeInTheDocument()
   })
 
   it('marks chips that are riding on an open game', () => {
