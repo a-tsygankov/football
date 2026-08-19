@@ -42,12 +42,31 @@ describe('settleWagers', () => {
     expect(netTotal(settled)).toBe(0)
   })
 
-  it('breaks a remainder tie by the larger stake', () => {
+  it('gives the leftover to the larger fractional remainder', () => {
     // pot 12, winning stake 5 → ann 2*12/5 = 4.8, bob 3*12/5 = 7.2.
     // Whole 4 + 7 = 11, one chip over. Remainders 4/5 vs 1/5 → ann takes it.
+    //
+    // Named for what it measures: the remainders differ, so this settles on
+    // the first comparator and never reaches the stake one. It used to be
+    // called "breaks a remainder tie by the larger stake", which no test in
+    // this file actually did — see below.
     const settled = settleWagers([bet(ann, 'home', 2), bet(bob, 'home', 3), bet(cy, 'away', 7)], 'home')
 
     expect(settled.map((s) => s.payout)).toEqual([5, 7, 0])
+    expect(netTotal(settled)).toBe(0)
+  })
+
+  it('breaks a genuine remainder tie by the larger stake', () => {
+    // pot 9, winning stake 6. ann 1*9/6 = 1.5 → whole 1 remainder 3;
+    // bob 5*9/6 = 7.5 → whole 7 remainder 3. One chip over and the
+    // remainders are equal, so the stake comparator decides it: bob.
+    //
+    // ann sorts first by gamerId, so if the stake rule were dropped or
+    // reversed the chip would land on ann instead. That is what makes this
+    // case pin the rule rather than agree with it by luck.
+    const settled = settleWagers([bet(ann, 'home', 1), bet(bob, 'home', 5), bet(cy, 'away', 3)], 'home')
+
+    expect(settled.map((s) => s.payout)).toEqual([1, 8, 0])
     expect(netTotal(settled)).toBe(0)
   })
 
