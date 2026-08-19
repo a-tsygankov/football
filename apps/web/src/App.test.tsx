@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { App } from './App.jsx'
 
@@ -51,6 +51,25 @@ function versionResponse(): Response {
     { status: 200, headers: { 'content-type': 'application/json' } },
   )
 }
+
+/**
+ * Signals a waiting service worker to the app.
+ *
+ * Registration is deliberately once-only — `main.tsx` registers at boot and a
+ * second call would leak a duplicate workbox listener under StrictMode — and
+ * the store is a module-level singleton. So the whole file shares one handle:
+ * a per-test `register` call is silently ignored, leaving that test holding a
+ * callback that does nothing and an assertion that passes for no reason.
+ */
+let signalUpdateReady = (): void => {}
+
+beforeAll(async () => {
+  const { swUpdateStore } = await import('./lib/swUpdate.js')
+  swUpdateStore.register((options) => {
+    signalUpdateReady = () => options.onNeedRefresh?.()
+    return async () => {}
+  })
+})
 
 function startAt(route: string): void {
   window.location.hash = `#/${route}`
@@ -2180,15 +2199,9 @@ describe('App shell', () => {
     // registerType is 'prompt': the new build sits in the wings until the
     // gamer says so, because a reload mid-bet is worse than a stale bundle.
     vi.stubGlobal('fetch', vi.fn(async () => versionResponse()))
-    const { swUpdateStore } = await import('./lib/swUpdate.js')
-    let needRefresh = (): void => {}
-    swUpdateStore.register((options) => {
-      needRefresh = () => options.onNeedRefresh?.()
-      return async () => {}
-    })
 
     render(<App />)
-    act(() => needRefresh())
+    act(() => signalUpdateReady())
 
     const banner = await screen.findByRole('status')
     expect(within(banner).getByRole('button', { name: /reload to update/i })).toBeInTheDocument()
@@ -2235,15 +2248,9 @@ describe('App shell', () => {
         throw new Error(`unexpected fetch ${url}`)
       }),
     )
-    const { swUpdateStore } = await import('./lib/swUpdate.js')
-    let needRefresh = (): void => {}
-    swUpdateStore.register((options) => {
-      needRefresh = () => options.onNeedRefresh?.()
-      return async () => {}
-    })
 
     render(<App />)
-    act(() => needRefresh())
+    act(() => signalUpdateReady())
 
     expect(await screen.findByRole('alert')).toHaveTextContent('99.0.0')
     expect(screen.queryByRole('button', { name: /reload to update/i })).toBeNull()
