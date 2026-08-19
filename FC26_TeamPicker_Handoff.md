@@ -995,19 +995,61 @@ All room-scoped endpoints require a valid session cookie if the room has a PIN.
 
 ## 12. Frontend Feature Map
 
-| Feature Module | Key Components |
+There is no router library. `useHashRoute` reads a hash route (`#/wager`) and
+`RoomScreen` renders one page per route — the bottom nav is real navigation,
+not a set of scroll anchors. Everything below lives under `apps/web/src/`.
+
+### Pages
+
+| Route | Renders | Notes |
+|---|---|---|
+| `game` | `features/gameNight/GameCreationPanel` when a night is live, else `StartGameNightPanel` | The night's buy-in is asked for here and defaults to 0 |
+| `scoreboard` | `features/scoreboard/ScoreboardPanel` | Tabs over standings, gamers and gamer-team pairs; `MatchHistoryList` below |
+| `wager` | `features/wager/ChipLedgerPanel`, `features/gameNight/ChipStandingsPanel`, `features/wager/WagerPage` | Room balances and settle-up, tonight's swing, then the collapsed bet history |
+| `roster` | `features/gamers/RosterPanel` | CRUD and active toggle; add/edit open in Sheets |
+| `teams` | `features/squads/TeamsPanel` | Reached by the centre FC26 logo, not a nav label |
+| `settings` | `features/room/SettingsPanel` | Reached from the room sheet, not the nav |
+
+Before a room is joined, `App` renders `features/landing/LandingScreen`
+(`CreateRoomPanel` + `JoinRoomPanel`) instead.
+
+### Feature modules
+
+| Module | Components |
 |---|---|
-| `room/` | `RoomJoin.tsx` (enter ID + PIN), `RoomCreate.tsx`, `RoomSettings.tsx` (strategy picker, PIN change) |
-| `gamers/` | `GamerRoster.tsx` (CRUD + active toggle), `GamerCard.tsx` (name + star editor) |
-| `game/select/` | `RosterSelect.tsx` (Step 1a), `LineupSelect.tsx` (Step 1b, 2/4 toggle, locks, 🎲) |
-| `game/sides/` | `SideAssign.tsx` (tap-to-flip, auto-assign, drag fallback) |
-| `game/draw/` | `LeagueFilter.tsx`, `TeamDraw.tsx` (club cards + re-roll) |
-| `game/result/` | `GameResult.tsx` (three big buttons + numeric pad), `OcrCapture.tsx` |
-| `modes/dashboard/` | `Dashboard.tsx` (charts + win rates), `GamerProfile.tsx`, `GamerTeamProfile.tsx`, `GameHistory.tsx` |
-| `modes/view-teams/` | `TeamsBrowser.tsx` (list + filter), `TeamDetail.tsx`, `FcPlayerDetail.tsx` (radar + change chips) |
-| `modes/update-changes/` | `VersionPicker.tsx`, `DiffBrowser.tsx`, `DiffPlayerRow.tsx` |
-| `layout/` | `StepLayout.tsx` (progress dots + Skip/Back/Next controls), `BottomNav.tsx` |
-| `debug/` | `Console.tsx` (triple-tap target), `LogEntryRow.tsx`, `SystemTab.tsx` |
+| `features/room/` | `RoomScreen` (page switch), `RoomBar` (47px sticky header), `RoomDetailSheet` (room ID, gamers, session expiry, Refresh/Install/Settings/Leave, build versions), `SettingsPanel` |
+| `features/gameNight/` | `GameCreationPanel`, `StartGameNightPanel`, `CurrentGameCard` (result entry — three buttons or a numeric pad), `TeamColumn`, `InlineTeamPicker`, `BetsPanel` (place/remove/hedge), `ChipStandingsPanel`, `TvPhotoCapture` → `PhotoResultPreview` (OCR path) |
+| `features/wager/` | `ChipLedgerPanel` (balances, settle-up, buy chips), `WagerPage` (bet history, collapsed by default) |
+| `features/gamers/` | `RosterPanel`, `AddGamerPanel` |
+| `features/scoreboard/` | `ScoreboardPanel`, `MatchHistoryList` |
+| `features/squads/` | `TeamsPanel`, `ChangesPanel` (version diff, rendered as a tab inside Teams), `HistoricalRatingsChart`, `useSquadBrowser` |
+| `features/landing/` | `LandingScreen`, `CreateRoomPanel`, `JoinRoomPanel` |
+| `debug/` | `DebugConsole` (triple-tap target), `console-store` |
+
+### Shared components
+
+| Component | Purpose |
+|---|---|
+| `components/ui/*` | **Vendored shadcn/ui** — `button`, `card`, `badge`, `sheet`, `tabs`. Source, not a dependency; edit in place |
+| `Panel`, `Field`, `InlineNotice`, `MiniStat` | The pre-shadcn primitives, still used widely |
+| `BottomNav` | Game / Scoreboard / **FC26** / Wager / Roster; the centre logo routes to `teams` and is the Console trigger |
+| `UpdateBanner`, `SwUpdateBanner`, `OfflineNotice`, `StatusCard` | The strips above the app. See [§28 Precedence](#precedence) for which banner wins |
+| `EntityIdentity` (`FcPlayerAvatar`, `FcPlayerIdentity`), `GamerPanel`, `GamerTeamPanel`, `FcClubPanel`, `entity-shared` | Avatar and identity rendering for the four entity kinds |
+| `EaTeamCard`, `EmptyTeamCard`, `EaPremierLeagueLivePanel`, `LeaguePills` | Club cards and league filtering |
+| `AvatarPicker` | Gamer avatar selection, used by both roster panels |
+
+### Hooks, lib and utils
+
+| Path | Contents |
+|---|---|
+| `hooks/` | `useHashRoute`, `useInstallPrompt`, `useOnlineStatus`, `useSwUpdate`, `useLinkedPair` |
+| `lib/` | `api` (fetch + correlation-ID middleware), `logger`, `version`, `swUpdate` + `swCacheRules` (see [§28](#28-offline--the-service-worker)), `avatars`, `image`, `utils` (the shadcn `cn` helper) |
+| `utils/` | `roster`, `scoreboard`, `squads` — pure derivations kept out of components |
+| `index.css` | Tailwind v4 entry plus the design tokens as CSS custom properties with an `@theme inline` mapping |
+
+`components/RatingSelector.tsx` is referenced by nothing but its own test. It
+is dead code, not a component you need to understand — see
+[§25 Open Items](#25-open-items).
 
 ### Game Session State Machine
 
@@ -1629,7 +1671,11 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
    game night.
 9. **The sticky `RoomBar` is likewise unverified on iOS Safari**, where the
    dynamic toolbar has a history of arguing with `position: sticky`.
-10. **CI actions still target Node 20**, which GitHub has deprecated and is
+10. **`components/RatingSelector.tsx` is dead code** — imported by nothing
+    but its own test, which is why it kept passing. Either wire it into the
+    roster's star editor or delete it and its test; a component that only its
+    test knows about will drift until it is wrong.
+11. **CI actions still target Node 20**, which GitHub has deprecated and is
     force-running on Node 24. Harmless today, a warning on every job, and it
     will stop being harmless. `actions/checkout@v4`, `actions/setup-node@v4`
     and `pnpm/action-setup@v4` all need bumping together.
