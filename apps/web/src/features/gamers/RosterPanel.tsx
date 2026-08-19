@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   type Gamer,
   NAME_STEM_MIN_LENGTH,
@@ -7,18 +7,24 @@ import {
   isValidNameStem,
   normalizeNameStem,
 } from '@fc26/shared'
+import { LazyMotion, domAnimation, m, useReducedMotion } from 'motion/react'
 import { useDebugConsole } from '../../debug/console-store.js'
 import { AvatarPicker } from '../../components/AvatarPicker.jsx'
 import { GamerIdentity } from '../../components/GamerPanel.jsx'
 import { Field } from '../../components/Field.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
-import { Panel } from '../../components/Panel.jsx'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  compactButtonStyle,
-  inputStyle,
-  primaryButtonStyle,
-  secondaryButtonStyle,
-} from '../../styles/controls.js'
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
+import { inputStyle } from '../../styles/controls.js'
 import type { BusyState } from '../../types/busyState.js'
 import { getRosterStatusDot } from '../../utils/roster.js'
 import { AddGamerPanel } from './AddGamerPanel.jsx'
@@ -61,6 +67,7 @@ export function RosterPanel({
   // create so casual gamers don't see the form unless they want it.
   const [addingGamer, setAddingGamer] = useState(false)
   const [editingGamerId, setEditingGamerId] = useState<string | null>(null)
+  const reduced = useReducedMotion()
   const [editingName, setEditingName] = useState('')
   const [editingRating, setEditingRating] = useState('3')
   const [editingAvatarUrl, setEditingAvatarUrl] = useState<string | null>(null)
@@ -114,247 +121,277 @@ export function RosterPanel({
     setEditingNextPin('')
   }
 
-  // Wrap the create handler so a successful add collapses the form. If the
-  // parent throws (validation / collision), the form stays open so the user
-  // can adjust their input.
-  async function handleCreateGamer(): Promise<void> {
-    const beforeCount = bootstrap.gamers.length
-    await onCreateGamer()
-    // App.tsx clears its `gamerName` state on success — use that as the
-    // signal that the create resolved without an error.
-    if (bootstrap.gamers.length !== beforeCount || gamerName.trim().length === 0) {
+  // Close the add sheet when the roster actually grows. The previous
+  // heuristic compared `bootstrap.gamers.length` and `gamerName` from inside
+  // the submit handler, but both are props captured at render, so neither had
+  // updated by the time it read them — the form simply never closed itself.
+  // Inline that was invisible; as a modal sheet it traps you behind it.
+  const gamerCount = bootstrap.gamers.length
+  const countAtSubmit = useRef<number | null>(null)
+  useEffect(() => {
+    if (countAtSubmit.current !== null && gamerCount > countAtSubmit.current) {
+      countAtSubmit.current = null
       setAddingGamer(false)
     }
+  }, [gamerCount])
+
+  async function handleCreateGamer(): Promise<void> {
+    countAtSubmit.current = bootstrap.gamers.length
+    await onCreateGamer()
   }
 
+  const editingGamer = bootstrap.gamers.find((gamer) => gamer.id === editingGamerId) ?? null
+  const nameTaken =
+    editingGamer !== null &&
+    bootstrap.gamers.some(
+      (item) =>
+        item.id !== editingGamer.id &&
+        normalizeNameStem(item.name) === normalizeNameStem(editingName),
+    )
+
   return (
-    <section style={{ marginTop: 18 }}>
-      <Panel
-        title="Roster"
-        subtitle="Dots show who is playing now, who is active but sitting out, and who is inactive."
-      >
-        <div style={{ display: 'grid', gap: 10 }}>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              disabled={busy !== null}
-              onClick={() => setAddingGamer((prev) => !prev)}
-              style={addingGamer ? secondaryButtonStyle : primaryButtonStyle}
-            >
-              {addingGamer ? 'Cancel' : '+ Add gamer'}
-            </button>
-          </div>
-          {addingGamer ? (
-            <AddGamerPanel
-              bootstrap={bootstrap}
-              busy={busy}
-              gamerName={gamerName}
-              gamerRating={gamerRating}
-              gamerPin={gamerPin}
-              gamerAvatarUrl={gamerAvatarUrl}
-              onChangeGamerName={onChangeGamerName}
-              onChangeGamerPin={onChangeGamerPin}
-              onChangeGamerRating={onChangeGamerRating}
-              onChangeGamerAvatar={onChangeGamerAvatar}
-              onCreateGamer={handleCreateGamer}
-            />
-          ) : null}
-          {bootstrap.gamers.length === 0 ? (
-            <div
-              style={{
-                padding: 18,
-                borderRadius: 18,
-                background: '#f0fdf4',
-                border: '1px dashed #86efac',
-              }}
-            >
-              No gamers yet. Add the first one above.
+    <LazyMotion features={domAnimation} strict>
+      <section style={{ marginTop: 18 }}>
+        <Card>
+          <CardHeader className="flex-row items-start justify-between gap-3">
+            <div className="grid gap-2">
+              <CardTitle>Roster</CardTitle>
+              <CardDescription>
+                {bootstrap.gamers.length} gamer{bootstrap.gamers.length === 1 ? '' : 's'} · dots
+                show who is playing now, who is sitting out, and who is inactive.
+              </CardDescription>
             </div>
-          ) : (
-            bootstrap.gamers.map((gamer) => {
-              const statusDot = getRosterStatusDot({
-                gamer,
-                activeGameNightGamerIds,
-                currentGameGamerIds,
-                hasCurrentGame: bootstrap.currentGame !== null,
-              })
-              return (
-                <article
-                  key={gamer.id}
-                  style={{
-                    position: 'relative',
-                    borderRadius: 22,
-                    padding: 16,
-                    background: gamer.active ? '#ffffff' : '#f8fafc',
-                    border: `1px solid ${gamer.active ? '#bbf7d0' : '#cbd5e1'}`,
-                    boxShadow: '0 8px 24px rgba(5,46,22,0.06)',
-                  }}
-                >
-                  <span
-                    aria-label={statusDot.ariaLabel}
-                    style={{
-                      position: 'absolute',
-                      top: 12,
-                      right: 12,
-                      width: 12,
-                      height: 12,
-                      borderRadius: '50%',
-                      background: statusDot.background,
-                      border: statusDot.border,
-                      boxShadow: statusDot.boxShadow,
-                    }}
+            {/* The add form used to expand inline and shove the whole list
+                down. In a sheet it covers the list instead of moving it. */}
+            <Sheet open={addingGamer} onOpenChange={setAddingGamer}>
+              <SheetTrigger asChild>
+                <Button size="sm" disabled={busy !== null}>
+                  + Add gamer
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="bottom" className="max-h-[88dvh] overflow-y-auto pb-6">
+                <SheetHeader>
+                  <SheetTitle>Add gamer</SheetTitle>
+                  <SheetDescription>
+                    Ratings feed the balanced draw. A PIN is optional and protects edits.
+                  </SheetDescription>
+                </SheetHeader>
+                <div className="px-5 pb-2">
+                  <AddGamerPanel
+                    bootstrap={bootstrap}
+                    busy={busy}
+                    gamerName={gamerName}
+                    gamerRating={gamerRating}
+                    gamerPin={gamerPin}
+                    gamerAvatarUrl={gamerAvatarUrl}
+                    onChangeGamerName={onChangeGamerName}
+                    onChangeGamerPin={onChangeGamerPin}
+                    onChangeGamerRating={onChangeGamerRating}
+                    onChangeGamerAvatar={onChangeGamerAvatar}
+                    onCreateGamer={handleCreateGamer}
                   />
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-                    <div style={{ flex: '1 1 auto', minWidth: 0 }}>
-                      <GamerIdentity
-                        gamer={gamer}
-                        size={48}
-                        subtitle={`Rating ${gamer.rating} • ${gamer.active ? 'Available' : 'Inactive'}${gamer.hasPin ? ' • PIN' : ''}`}
-                        nameStyle={{ fontSize: 18 }}
+                </div>
+              </SheetContent>
+            </Sheet>
+          </CardHeader>
+
+          <CardContent>
+            {bootstrap.gamers.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-[#86efac] bg-secondary p-4 text-sm">
+                No gamers yet. Add the first one with the button above.
+              </div>
+            ) : (
+              <ul className="m-0 grid list-none gap-1.5 p-0">
+                {bootstrap.gamers.map((gamer, index) => {
+                  const statusDot = getRosterStatusDot({
+                    gamer,
+                    activeGameNightGamerIds,
+                    currentGameGamerIds,
+                    hasCurrentGame: bootstrap.currentGame !== null,
+                  })
+                  return (
+                    <m.li
+                      key={gamer.id}
+                      initial={{ opacity: 0, y: reduced ? 0 : 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{
+                        duration: 0.24,
+                        delay: Math.min(index, 8) * 0.04,
+                        ease: [0.22, 1, 0.36, 1],
+                      }}
+                      // min-w-0 matters: these are grid items, and a grid
+                      // item's default min-width:auto refuses to shrink below
+                      // its content, so a long name widens the whole page.
+                      className={`flex min-w-0 items-center gap-3 overflow-hidden rounded-lg border p-2.5 ${
+                        gamer.active ? 'border-input bg-white' : 'border-[#cbd5e1] bg-[#f8fafc]'
+                      }`}
+                    >
+                      <div className="min-w-0 grow overflow-hidden">
+                        <GamerIdentity
+                          gamer={gamer}
+                          size={38}
+                          subtitle={`Rating ${gamer.rating}${gamer.hasPin ? ' · PIN' : ''}`}
+                          // A long name must clip, not shove the row's actions
+                          // out past the card edge.
+                          nameStyle={{
+                            fontSize: 16,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        />
+                      </div>
+                      <span
+                        aria-label={statusDot.ariaLabel}
+                        className="size-2.5 shrink-0 rounded-full"
+                        style={{
+                          background: statusDot.background,
+                          border: statusDot.border,
+                          boxShadow: statusDot.boxShadow,
+                        }}
                       />
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                      <button
-                        type="button"
+                      {/* Two actions, so they stay visible. An overflow menu
+                          would trade a tap for nothing. */}
+                      <Button
+                        size="sm"
+                        variant={gamer.active ? 'outline' : 'default'}
                         disabled={busy !== null}
                         onClick={() => void onToggleGamer(gamer)}
-                        style={gamer.active
-                          ? { ...secondaryButtonStyle, padding: '8px 12px', fontSize: 13 }
-                          : { ...primaryButtonStyle, padding: '8px 12px', fontSize: 13 }}
                       >
                         {busy === 'updating-gamer'
                           ? 'Saving...'
                           : gamer.active
                             ? 'Inactive'
                             : 'Reactivate'}
-                      </button>
-                      <button
-                        type="button"
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
                         disabled={busy !== null}
-                        onClick={() =>
-                          editingGamerId === gamer.id
-                            ? setEditingGamerId(null)
-                            : startEditingGamer(gamer)
-                        }
-                        style={compactButtonStyle}
+                        onClick={() => startEditingGamer(gamer)}
                       >
-                        {editingGamerId === gamer.id ? 'Close' : 'Edit'}
-                      </button>
-                    </div>
-                  </div>
-                  {editingGamerId === gamer.id ? (
-                    <div
-                      style={{
-                        marginTop: 14,
-                        paddingTop: 14,
-                        borderTop: '1px solid #dcfce7',
-                        display: 'grid',
-                        gap: 10,
-                      }}
+                        Edit
+                      </Button>
+                    </m.li>
+                  )
+                })}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* One sheet for whichever gamer is being edited, rather than a form
+            unfolding inside a row and pushing everything below it around. */}
+        <Sheet
+          open={editingGamer !== null}
+          onOpenChange={(open) => {
+            if (!open) setEditingGamerId(null)
+          }}
+        >
+          <SheetContent side="bottom" className="max-h-[88dvh] overflow-y-auto pb-6">
+            {editingGamer ? (
+              <>
+                <SheetHeader>
+                  <SheetTitle>Edit {editingGamer.name}</SheetTitle>
+                  <SheetDescription>
+                    Changes apply to the whole room, including past results.
+                  </SheetDescription>
+                </SheetHeader>
+                <div className="grid gap-2.5 px-5 pb-2">
+                  <Field label="Avatar">
+                    <AvatarPicker
+                      kind="gamer"
+                      value={editingAvatarUrl}
+                      onChange={setEditingAvatarUrl}
+                      disabled={busy !== null}
+                    />
+                  </Field>
+                  <Field label="Name">
+                    <input
+                      value={editingName}
+                      onChange={(event) => setEditingName(event.target.value)}
+                      style={inputStyle}
+                    />
+                  </Field>
+                  <Field label="Rating">
+                    <select
+                      value={editingRating}
+                      onChange={(event) => setEditingRating(event.target.value)}
+                      style={inputStyle}
                     >
-                      <Field label="Avatar">
-                        <AvatarPicker
-                          kind="gamer"
-                          value={editingAvatarUrl}
-                          onChange={setEditingAvatarUrl}
-                          disabled={busy !== null}
-                        />
-                      </Field>
-                      <Field label="Name">
-                        <input
-                          value={editingName}
-                          onChange={(event) => setEditingName(event.target.value)}
-                          style={inputStyle}
-                        />
-                      </Field>
-                      <Field label="Rating">
-                        <select
-                          value={editingRating}
-                          onChange={(event) => setEditingRating(event.target.value)}
-                          style={inputStyle}
-                        >
-                          {[1, 2, 3, 4, 5].map((value) => (
-                            <option key={value} value={value}>
-                              {value}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      {gamer.hasPin && !settingsUnlocked ? (
-                        <Field label="Current PIN">
-                          <input
-                            value={editingCurrentPin}
-                            onChange={(event) => setEditingCurrentPin(event.target.value)}
-                            inputMode="numeric"
-                            maxLength={4}
-                            placeholder="Current 4-digit PIN"
-                            style={inputStyle}
-                          />
-                        </Field>
-                      ) : null}
-                      {gamer.hasPin && settingsUnlocked ? (
-                        <InlineNotice
-                          tone="info"
-                          message="Settings unlocked: this PIN-protected gamer can be edited without entering the current PIN."
-                        />
-                      ) : null}
-                      <Field label={gamer.hasPin ? 'New PIN (leave blank to clear)' : 'Set PIN'}>
-                        <input
-                          value={editingNextPin}
-                          onChange={(event) => setEditingNextPin(event.target.value)}
-                          inputMode="numeric"
-                          maxLength={4}
-                          placeholder={gamer.hasPin ? 'Blank clears PIN' : 'Optional 4-digit PIN'}
-                          style={inputStyle}
-                        />
-                      </Field>
-                      {!isValidNameStem(editingName) && editingName.trim().length > 0 ? (
-                        <InlineNotice
-                          tone="warn"
-                          message={`Gamer name must contain at least ${NAME_STEM_MIN_LENGTH} letters or digits.`}
-                        />
-                      ) : null}
-                      {bootstrap.gamers.some(
-                        (item) =>
-                          item.id !== gamer.id &&
-                          normalizeNameStem(item.name) === normalizeNameStem(editingName),
-                      ) ? (
-                        <InlineNotice tone="warn" message="That gamer name stem is already taken." />
-                      ) : null}
-                      {editingCurrentPin.trim().length > 0 &&
-                      !/^\d{4}$/.test(editingCurrentPin.trim()) ? (
-                        <InlineNotice tone="warn" message="Current PIN must be exactly 4 digits." />
-                      ) : null}
-                      {editingNextPin.trim().length > 0 &&
-                      !/^\d{4}$/.test(editingNextPin.trim()) ? (
-                        <InlineNotice tone="warn" message="New PIN must be exactly 4 digits." />
-                      ) : null}
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          disabled={busy !== null}
-                          onClick={() => void saveGamerDetails()}
-                          style={primaryButtonStyle}
-                        >
-                          {busy === 'updating-gamer' ? 'Saving...' : 'Save gamer'}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy !== null}
-                          onClick={() => setEditingGamerId(null)}
-                          style={secondaryButtonStyle}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
+                      {[1, 2, 3, 4, 5].map((value) => (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {editingGamer.hasPin && !settingsUnlocked ? (
+                    <Field label="Current PIN">
+                      <input
+                        value={editingCurrentPin}
+                        onChange={(event) => setEditingCurrentPin(event.target.value)}
+                        inputMode="numeric"
+                        maxLength={4}
+                        placeholder="Current 4-digit PIN"
+                        style={inputStyle}
+                      />
+                    </Field>
                   ) : null}
-                </article>
-              )
-            })
-          )}
-        </div>
-      </Panel>
-    </section>
+                  {editingGamer.hasPin && settingsUnlocked ? (
+                    <InlineNotice
+                      tone="info"
+                      message="Settings unlocked: this PIN-protected gamer can be edited without entering the current PIN."
+                    />
+                  ) : null}
+                  <Field label={editingGamer.hasPin ? 'New PIN (leave blank to clear)' : 'Set PIN'}>
+                    <input
+                      value={editingNextPin}
+                      onChange={(event) => setEditingNextPin(event.target.value)}
+                      inputMode="numeric"
+                      maxLength={4}
+                      placeholder={
+                        editingGamer.hasPin ? 'Blank clears PIN' : 'Optional 4-digit PIN'
+                      }
+                      style={inputStyle}
+                    />
+                  </Field>
+                  {!isValidNameStem(editingName) && editingName.trim().length > 0 ? (
+                    <InlineNotice
+                      tone="warn"
+                      message={`Gamer name must contain at least ${NAME_STEM_MIN_LENGTH} letters or digits.`}
+                    />
+                  ) : null}
+                  {nameTaken ? (
+                    <InlineNotice tone="warn" message="That gamer name stem is already taken." />
+                  ) : null}
+                  {editingCurrentPin.trim().length > 0 &&
+                  !/^\d{4}$/.test(editingCurrentPin.trim()) ? (
+                    <InlineNotice tone="warn" message="Current PIN must be exactly 4 digits." />
+                  ) : null}
+                  {editingNextPin.trim().length > 0 && !/^\d{4}$/.test(editingNextPin.trim()) ? (
+                    <InlineNotice tone="warn" message="New PIN must be exactly 4 digits." />
+                  ) : null}
+                  <div className="mt-1 flex gap-2">
+                    <Button
+                      disabled={busy !== null}
+                      onClick={() => void saveGamerDetails()}
+                      className="grow"
+                    >
+                      {busy === 'updating-gamer' ? 'Saving...' : 'Save gamer'}
+                    </Button>
+                    <SheetClose asChild>
+                      <Button variant="secondary" disabled={busy !== null}>
+                        Cancel
+                      </Button>
+                    </SheetClose>
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </SheetContent>
+        </Sheet>
+      </section>
+    </LazyMotion>
   )
 }

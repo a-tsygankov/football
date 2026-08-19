@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
@@ -13,7 +14,10 @@ export default defineConfig({
   // GitHub Pages project sites are served from /<repo>/, not /.
   // Keep this in sync with the repository name.
   base: '/football/',
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: { '@': resolve(__dirname, 'src') },
+  },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __GIT_SHA__: JSON.stringify(process.env.GIT_SHA ?? 'dev'),

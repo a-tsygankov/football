@@ -9,11 +9,8 @@ import { GamerIdentity } from '../../components/GamerPanel.jsx'
 import { GamerTeamIdentity } from '../../components/GamerTeamPanel.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
 import { Panel } from '../../components/Panel.jsx'
-import {
-  compactButtonStyle,
-  primaryButtonStyle,
-  secondaryButtonStyle,
-} from '../../styles/controls.js'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   formatPercent,
   formatSignedNumber,
@@ -59,61 +56,27 @@ export function ScoreboardPanel({
         title="Scoreboard"
         subtitle="Best gamers and gamer teams. Pair standings only count results earned together."
       >
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr 1fr',
-            gap: 10,
-            marginBottom: 14,
-          }}
+        <Tabs
+          value={scoreboardView}
+          onValueChange={(next) => setScoreboardView(next as 'gamers' | 'teams' | 'all')}
         >
-          <button
-            type="button"
-            onClick={() => setScoreboardView('gamers')}
-            style={scoreboardView === 'gamers' ? primaryButtonStyle : secondaryButtonStyle}
-          >
-            Gamers
-          </button>
-          <button
-            type="button"
-            onClick={() => setScoreboardView('teams')}
-            style={scoreboardView === 'teams' ? primaryButtonStyle : secondaryButtonStyle}
-          >
-            Gamer teams
-          </button>
-          <button
-            type="button"
-            onClick={() => setScoreboardView('all')}
-            style={scoreboardView === 'all' ? primaryButtonStyle : secondaryButtonStyle}
-          >
-            All games
-          </button>
-        </div>
+          <TabsList>
+            <TabsTrigger value="gamers">Gamers</TabsTrigger>
+            <TabsTrigger value="teams">Gamer teams</TabsTrigger>
+            <TabsTrigger value="all">All games</TabsTrigger>
+          </TabsList>
 
-        {scoreboardView === 'gamers' ? (
-          <>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: 8,
-                marginBottom: 14,
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setIncludeTeamGamesInGamerBoard(true)}
-                style={includeTeamGamesInGamerBoard ? primaryButtonStyle : compactButtonStyle}
+          <TabsContent value="gamers">
+            <div className="mb-3.5 flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Counting</span>
+              <Button
+                variant="secondary"
+                size="sm"
+                aria-pressed={includeTeamGamesInGamerBoard}
+                onClick={() => setIncludeTeamGamesInGamerBoard((prev) => !prev)}
               >
-                Use team games
-              </button>
-              <button
-                type="button"
-                onClick={() => setIncludeTeamGamesInGamerBoard(false)}
-                style={!includeTeamGamesInGamerBoard ? primaryButtonStyle : compactButtonStyle}
-              >
-                Ignore team games
-              </button>
+                {includeTeamGamesInGamerBoard ? 'solo + team games' : 'solo games only'}
+              </Button>
             </div>
             <p style={{ margin: '0 0 14px', fontSize: 13, opacity: 0.72 }}>
               {includeTeamGamesInGamerBoard
@@ -198,8 +161,9 @@ export function ScoreboardPanel({
                 })}
               </div>
             )}
-          </>
-        ) : scoreboardView === 'all' ? (
+          </TabsContent>
+
+          <TabsContent value="all">
           <div style={{ display: 'grid', gap: 8 }}>
             <p style={{ margin: '0 0 6px', fontSize: 13, opacity: 0.72 }}>
               Most recent games across the room (up to 20).
@@ -210,7 +174,10 @@ export function ScoreboardPanel({
               onVoidGame={onVoidGame}
             />
           </div>
-        ) : sortedGamerTeamRows.length === 0 ? (
+          </TabsContent>
+
+          <TabsContent value="teams">
+            {sortedGamerTeamRows.length === 0 ? (
           <InlineNotice
             tone="info"
             message="No two-gamer team results yet. Team standings appear once pairs finish games together."
@@ -280,7 +247,9 @@ export function ScoreboardPanel({
               )
             })}
           </div>
-        )}
+            )}
+          </TabsContent>
+        </Tabs>
       </Panel>
     </section>
   )

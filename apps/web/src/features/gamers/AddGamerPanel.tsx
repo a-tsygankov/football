@@ -7,7 +7,6 @@ import {
 import { AvatarPicker } from '../../components/AvatarPicker.jsx'
 import { Field } from '../../components/Field.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
-import { Panel } from '../../components/Panel.jsx'
 import { inputStyle, secondaryButtonStyle } from '../../styles/controls.js'
 import type { BusyState } from '../../types/busyState.js'
 
@@ -47,7 +46,7 @@ export function AddGamerPanel({
     (gamerPin.trim().length === 0 || /^\d{4}$/.test(gamerPin.trim()))
 
   return (
-    <Panel title="Add gamer" subtitle="New gamers appear in the room roster immediately.">
+    <>
       <Field label="Avatar">
         <AvatarPicker
           kind="gamer"
@@ -110,6 +109,6 @@ export function AddGamerPanel({
       >
         {busy === 'creating-gamer' ? 'Adding...' : 'Add gamer'}
       </button>
-    </Panel>
+    </>
   )
 }

@@ -939,6 +939,8 @@ export function App() {
         />
       ) : null}
       <main style={{ padding: 20, maxWidth: 560, margin: '0 auto' }}>
+        {bootstrap ? null : (
+          <>
         <section
           style={{
             borderRadius: 28,
@@ -1039,6 +1041,9 @@ export function App() {
           </div>
         )}
 
+          </>
+        )}
+
         {error ? (
           <div
             role="alert"
@@ -1078,6 +1083,10 @@ export function App() {
             onLoadBetHistory={loadBetHistory}
             bootstrap={bootstrap}
             busy={busy}
+            worker={worker}
+            workerError={workerError}
+            installStatus={install.status}
+            onInstall={onPinClick}
             chips={chips}
             ledger={ledger}
             onBuyChips={buyChips}

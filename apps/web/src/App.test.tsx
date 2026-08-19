@@ -25,6 +25,16 @@ function emptyScoreboardResponse(roomId: string): Response {
  * at. Set before render() — the router reads the hash for its initial state,
  * which avoids needing act() around a hashchange.
  */
+/**
+ * Radix Tabs activate on pointer-down, not on click, so `fireEvent.click`
+ * alone never selects a tab — it dispatches no mousedown. Firing both is what
+ * a real pointer does.
+ */
+function selectTab(tab: HTMLElement): void {
+  fireEvent.mouseDown(tab)
+  fireEvent.click(tab)
+}
+
 function startAt(route: string): void {
   window.location.hash = `#/${route}`
 }
@@ -208,17 +218,24 @@ describe('App shell', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /Sunday Ladder/i })).toBeInTheDocument(),
     )
-    expect(screen.getAllByText(/Active game night/i).length).toBeGreaterThan(0)
+    // The "Active game night" label went with the room panel; the state it
+    // carried is the status pill, which is the part that actually changes.
     expect(screen.getByText(/1 ready/i)).toBeInTheDocument()
+    // Room ID, session and build numbers are all one tap away now.
+    expect(screen.getByRole('button', { name: /room details/i })).toBeInTheDocument()
     expect(screen.getAllByText(/Alice/i).length).toBeGreaterThan(0)
 
     // Settings is hidden by default — it exposes destructive controls and is
     // only meant for power-users. The triple-tap unlock on the bottom-nav
     // logo flips a persisted flag in the debug-console store; once unlocked
-    // the Settings heading appears.
+    // the way in appears inside the room-detail sheet.
     expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull()
     const { useDebugConsole } = await import('./debug/console-store.js')
     useDebugConsole.getState().toggle() // simulates the third tap
+
+    // The room detail moved behind a sheet, so the controls that used to sit
+    // in the header are one deliberate tap away now.
+    fireEvent.click(screen.getByRole('button', { name: /room details/i }))
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument(),
     )
@@ -938,7 +955,7 @@ describe('App shell', () => {
       scoreboard.getByText(/9 pts • 3-0-1 • 4 games • Win rate 75% • GD \+5/i),
     ).toBeInTheDocument()
 
-    fireEvent.click(scoreboard.getByRole('button', { name: /Ignore team games/i }))
+    fireEvent.click(scoreboard.getByRole('button', { name: /solo \+ team games/i }))
     expect(
       scoreboard.getByText(/Individual standings count only 1 vs 1 results\./i),
     ).toBeInTheDocument()
@@ -946,7 +963,7 @@ describe('App shell', () => {
       scoreboard.getByText(/6 pts • 2-0-0 • 2 games • Win rate 100% • GD \+3/i),
     ).toBeInTheDocument()
 
-    fireEvent.click(scoreboard.getByRole('button', { name: /Gamer teams/i }))
+    selectTab(scoreboard.getByRole('tab', { name: /Gamer teams/i }))
     expect(scoreboard.getByText(/Alice \+ Bob|Bob \+ Alice/)).toBeInTheDocument()
     expect(scoreboard.getByText(/2-0-1 • 3 games • Win rate 67% • GD \+3/i)).toBeInTheDocument()
   })
@@ -1527,6 +1544,9 @@ describe('App shell', () => {
     fireEvent.click(screen.getByRole('button', { name: /\+ Add gamer/i }))
     fireEvent.change(screen.getByPlaceholderText(/Alice/i), { target: { value: 'Cara' } })
     fireEvent.click(screen.getByRole('button', { name: /^Add gamer$/i }))
+    // The add form is a modal sheet, so the nav behind it is inert until the
+    // create lands and the sheet closes itself — which is the point of it.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     fireEvent.click(screen.getByRole('button', { name: 'Game' }))
 
     await waitFor(() => {
@@ -1958,7 +1978,7 @@ describe('App shell', () => {
       .closest('section')!
     expect(within(scoreboardPanel).queryByText('Chelsea')).toBeNull()
 
-    fireEvent.click(within(scoreboardPanel).getByRole('button', { name: /All games/i }))
+    selectTab(within(scoreboardPanel).getByRole('tab', { name: /All games/i }))
 
     await waitFor(() =>
       expect(within(scoreboardPanel).getByText('Arsenal')).toBeInTheDocument(),
@@ -2056,14 +2076,18 @@ describe('App shell', () => {
     const rosterPanel = screen.getByRole('heading', { name: 'Roster' }).closest('section')!
     fireEvent.click(within(rosterPanel).getByRole('button', { name: 'Edit' }))
 
-    // The edit form now exposes the avatar picker for the gamer's existing image.
-    expect(within(rosterPanel).getByText('Replace image')).toBeInTheDocument()
-    expect(within(rosterPanel).getByRole('button', { name: 'Remove' })).toBeInTheDocument()
+    // Editing happens in a sheet now, and a sheet is portalled to the body —
+    // so it is deliberately outside the roster section this scopes to.
+    const editSheet = within(await screen.findByRole('dialog'))
 
-    fireEvent.change(within(rosterPanel).getByDisplayValue('Alice'), {
+    // The edit form still exposes the avatar picker for the existing image.
+    expect(editSheet.getByText('Replace image')).toBeInTheDocument()
+    expect(editSheet.getByRole('button', { name: 'Remove' })).toBeInTheDocument()
+
+    fireEvent.change(editSheet.getByDisplayValue('Alice'), {
       target: { value: 'Alicia' },
     })
-    fireEvent.click(within(rosterPanel).getByRole('button', { name: 'Save gamer' }))
+    fireEvent.click(editSheet.getByRole('button', { name: 'Save gamer' }))
 
     await waitFor(() => expect(patchBody).not.toBeNull())
     // Name change is sent and the existing avatar is threaded through the save.
