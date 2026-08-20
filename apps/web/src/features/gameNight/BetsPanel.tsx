@@ -225,7 +225,14 @@ export function BetsPanel({
             </div>
           ) : null}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+          {/* Labelled because "Draw" also names a result button further down
+              the page, and three unlabelled buttons in a row are not obviously
+              a choice to a screen reader either. */}
+          <div
+            role="group"
+            aria-label="Outcome to back"
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}
+          >
             {OUTCOMES.map((item) => {
               const allowed = bettorId === '' || canBack(bettorId, currentGame, item.id)
               return (

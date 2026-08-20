@@ -1786,9 +1786,10 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
     in one day because nothing makes it fail when the model moves. A third time
     and it should be derived from `roomChipLedger` rather than hand-written
     twice.
-13. **End-to-end coverage is one path.** Two specs cover buy → bet → settle →
-    history. Hedging, the whole-room settle button and a part payment are all
-    easy to add against the harness now that it exists, and none is covered.
+13. **End-to-end coverage still misses two flows.** Five specs now cover buy →
+    bet → settle → history, hedging, top-ups and backing eligibility. The
+    whole-room settle button and a part payment are not covered, and both are
+    easy against the harness.
 14. **The wager viewer's seeding guard is unverified.** It moved from guarding
     on `viewerId !== null` to a ref, on the reasoning that the former is a
     feedback loop — null is exactly what "Everyone" means. It was observed
