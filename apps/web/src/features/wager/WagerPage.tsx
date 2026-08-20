@@ -4,7 +4,9 @@ import {
   type BetHistoryResponse,
   type Gamer,
   type GamerId,
+  type MoneyEntry,
   filterBetHistory,
+  filterMoneyHistory,
   formatLocal,
   netForGamer,
 } from '@fc26/shared'
@@ -67,6 +69,97 @@ function EventLine({
       <span style={{ overflowWrap: 'anywhere' }}>{text}</span>
       <span style={{ opacity: 0.55, whiteSpace: 'nowrap', fontSize: 11 }}>
         {formatLocal(event.occurredAt)}
+      </span>
+    </li>
+  )
+}
+
+/** The show/hide control both histories sit behind. */
+function CollapseToggle({
+  open,
+  label,
+  onToggle,
+}: {
+  open: boolean
+  label: string
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        width: '100%',
+        border: '1px solid #bbf7d0',
+        borderRadius: 14,
+        background: '#ffffff',
+        color: '#166534',
+        padding: '12px 14px',
+        fontSize: 14,
+        fontFamily: 'inherit',
+        cursor: 'pointer',
+      }}
+      aria-expanded={open}
+    >
+      <span style={{ flexGrow: 1, textAlign: 'left' }}>{label}</span>
+      <svg
+        aria-hidden="true"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{
+          transform: open ? 'rotate(180deg)' : 'none',
+          transition: 'transform 160ms ease',
+        }}
+      >
+        <polyline points="6 9 12 15 18 9" />
+      </svg>
+    </button>
+  )
+}
+
+/**
+ * One line of the money history.
+ *
+ * A settlement between exactly two people is the common case and reads as the
+ * sentence it is. A round with more than one payer cannot be written that way:
+ * the events record each gamer's net change, not who handed cash to whom, so
+ * it is reported as the round it was rather than as invented pairings.
+ */
+function MoneyLine({ entry, gamers }: { entry: MoneyEntry; gamers: ReadonlyArray<Gamer> }) {
+  const name = (id: string) => nameOf(gamers, id)
+  let text: string
+
+  if (entry.kind === 'purchase') {
+    text =
+      entry.reason === 'manual'
+        ? `${name(entry.gamerId)} bought ${entry.amount} chips`
+        : `${name(entry.gamerId)} was bought in for ${entry.amount}`
+  } else {
+    const paid = [...entry.paid].sort((a, b) => b.amount - a.amount)
+    const owed = paid.filter((item) => item.amount > 0)
+    const owing = paid.filter((item) => item.amount < 0)
+    text =
+      owed.length === 1 && owing.length === 1 && owed[0] && owing[0]
+        ? `${name(owing[0].gamerId)} paid ${name(owed[0].gamerId)} ${owed[0].amount}`
+        : `Settled up — ${paid
+            .map((item) => `${name(item.gamerId)} ${item.amount > 0 ? '+' : ''}${item.amount}`)
+            .join(', ')}`
+  }
+
+  return (
+    <li style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13 }}>
+      <span style={{ overflowWrap: 'anywhere' }}>{text}</span>
+      <span style={{ opacity: 0.55, whiteSpace: 'nowrap', fontSize: 11 }}>
+        {formatLocal(entry.occurredAt)}
       </span>
     </li>
   )
@@ -164,19 +257,20 @@ export function WagerPage({
   const [state, setState] = useState<
     | { status: 'loading' }
     | { status: 'error'; message: string }
-    | { status: 'ready'; games: ReadonlyArray<BetHistoryGame> }
+    | { status: 'ready'; games: ReadonlyArray<BetHistoryGame>; money: ReadonlyArray<MoneyEntry> }
   >({ status: 'loading' })
   // The history is long and mostly retrospective, so it stays out of the way
   // until asked for. The chip balances above it are the part people open this
   // page to see.
   const [expanded, setExpanded] = useState(false)
+  const [moneyOpen, setMoneyOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     setState({ status: 'loading' })
     onLoadHistory()
       .then((res) => {
-        if (!cancelled) setState({ status: 'ready', games: res.games })
+        if (!cancelled) setState({ status: 'ready', games: res.games, money: res.money })
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -196,15 +290,19 @@ export function WagerPage({
     () => (state.status === 'ready' ? filterBetHistory(state.games, viewerId) : []),
     [state, viewerId],
   )
+  const money = useMemo(
+    () => (state.status === 'ready' ? filterMoneyHistory(state.money, viewerId) : []),
+    [state, viewerId],
+  )
 
   return (
     <section id="fc26-wager-section" style={{ marginTop: 18 }}>
       <Panel
         title="Wager"
-        subtitle="Every bet placed, changed, locked and settled."
+        subtitle="Every bet placed, changed, locked and settled, and every chip bought or paid."
       >
         <div style={{ display: 'grid', gap: 12 }}>
-          <Field label="Show bets for">
+          <Field label="Show history for">
             <select
               value={viewerId ?? ''}
               onChange={(event) =>
@@ -239,47 +337,13 @@ export function WagerPage({
             />
           ) : (
             <>
-              <button
-                type="button"
-                onClick={() => setExpanded((prev) => !prev)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  width: '100%',
-                  border: '1px solid #bbf7d0',
-                  borderRadius: 14,
-                  background: '#ffffff',
-                  color: '#166534',
-                  padding: '12px 14px',
-                  fontSize: 14,
-                  fontFamily: 'inherit',
-                  cursor: 'pointer',
-                }}
-                aria-expanded={expanded}
-              >
-                <span style={{ flexGrow: 1, textAlign: 'left' }}>
-                  {expanded ? 'Hide' : 'Show'} {visible.length} game
-                  {visible.length === 1 ? '' : 's'} with bets
-                </span>
-                <svg
-                  aria-hidden="true"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{
-                    transform: expanded ? 'rotate(180deg)' : 'none',
-                    transition: 'transform 160ms ease',
-                  }}
-                >
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
+              <CollapseToggle
+                open={expanded}
+                onToggle={() => setExpanded((prev) => !prev)}
+                label={`${expanded ? 'Hide' : 'Show'} ${visible.length} game${
+                  visible.length === 1 ? '' : 's'
+                } with bets`}
+              />
               {expanded ? (
                 <div style={{ display: 'grid', gap: 10 }}>
                   {visible.map((game) => (
@@ -294,6 +358,47 @@ export function WagerPage({
               ) : null}
             </>
           )}
+
+          {/* Chips bought and debts paid. Both were recorded from the day the
+              ledger existed and neither was ever shown, so a settled debt just
+              vanished off the screen with nothing to say it had been paid. */}
+          {state.status === 'ready' ? (
+            money.length === 0 ? (
+              <InlineNotice
+                tone="info"
+                message={
+                  state.money.length === 0
+                    ? 'No chips have been bought or paid in this room yet.'
+                    : 'No chips bought or paid involving this gamer yet.'
+                }
+              />
+            ) : (
+              <>
+                <CollapseToggle
+                  open={moneyOpen}
+                  onToggle={() => setMoneyOpen((prev) => !prev)}
+                  label={`${moneyOpen ? 'Hide' : 'Show'} ${money.length} chip movement${
+                    money.length === 1 ? '' : 's'
+                  }`}
+                />
+                {moneyOpen ? (
+                  <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 4 }}>
+                    {money.map((entry) => (
+                      <MoneyLine
+                        key={
+                          entry.kind === 'settlement'
+                            ? `s-${entry.settlementId}`
+                            : `p-${entry.gamerId}-${entry.occurredAt}-${entry.amount}`
+                        }
+                        entry={entry}
+                        gamers={gamers}
+                      />
+                    ))}
+                  </ul>
+                ) : null}
+              </>
+            )
+          ) : null}
         </div>
       </Panel>
     </section>

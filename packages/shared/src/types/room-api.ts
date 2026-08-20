@@ -11,6 +11,7 @@ import type {
 } from './domain.js'
 import type { BetEventPayload, GameResult, WagerSettlement } from './events.js'
 import type { ChipLedgerEntry, ChipTransfer } from '../wager/ledger.js'
+import type { MoneyEntry } from '../wager/money.js'
 import type {
   BetId,
   EventId,
@@ -259,6 +260,14 @@ export interface BetHistoryResponse {
   roomId: RoomId
   /** Newest game first. */
   games: ReadonlyArray<BetHistoryGame>
+  /**
+   * Purchases and settlements, newest first.
+   *
+   * Carried on this response rather than its own endpoint because the Wager
+   * page wants both halves at once, and a second round trip to render one
+   * screen buys nothing.
+   */
+  money: ReadonlyArray<MoneyEntry>
 }
 
 export interface MatchHistoryResponse {
