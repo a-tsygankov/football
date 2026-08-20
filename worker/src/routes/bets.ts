@@ -25,6 +25,7 @@ import {
   maxStakeOnGame,
   nightChipPositions,
   type PlaceBetRequest,
+  moneyHistory,
   roomChipLedger,
   settlementAmounts,
   settlementForPayment,
@@ -548,7 +549,9 @@ betRoutes.get('/rooms/:roomId/bet-history', async (c) => {
     .filter((game) => game.events.length > 0)
     .sort((a, b) => b.occurredAt - a.occurredAt)
 
-  return c.json({ roomId, games } satisfies BetHistoryResponse)
+  // Purchases and settlements ride along: the Wager page renders both halves
+  // of the story and a second round trip for one screen buys nothing.
+  return c.json({ roomId, games, money: moneyHistory(all) } satisfies BetHistoryResponse)
 })
 
 // Deliberately no requireActiveGameNight here — standings stay readable after

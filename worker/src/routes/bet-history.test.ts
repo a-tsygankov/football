@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { BetHistoryResponse, BetsResponse } from '@fc26/shared'
 import {
   buildTestApp,
+  placeBet,
+  recordResult,
   req,
   seedLiveGame,
   type LiveGameSeed,
@@ -117,5 +119,53 @@ describe('bet history', () => {
 
     const res = await req(app, `/api/rooms/${seed.roomId}/bet-history`)
     expect(res.status).toBe(401)
+  })
+
+  it('carries the money history: purchases and settlements the bets never show', async () => {
+    const app = buildTestApp()
+    const seed = await seedLiveGame(app)
+    await req(app, `/api/rooms/${seed.roomId}/chips/purchases`, {
+      method: 'POST',
+      headers: { cookie: seed.cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ gamerId: seed.cy, amount: 60 }),
+    })
+    await placeBet(app, seed, seed.ann, 'home', 30)
+    await placeBet(app, seed, seed.cy, 'away', 40)
+    await recordResult(app, seed, { result: 'home' })
+    await req(app, `/api/rooms/${seed.roomId}/chips/settlements`, {
+      method: 'POST',
+      headers: { cookie: seed.cookie },
+    })
+
+    const res = await req(app, `/api/rooms/${seed.roomId}/bet-history`, {
+      headers: { cookie: seed.cookie },
+    })
+    const body = (await res.json()) as BetHistoryResponse
+
+    // The settle-up is one entry naming both sides, not one row per gamer.
+    const settlements = body.money.filter((entry) => entry.kind === 'settlement')
+    expect(settlements).toHaveLength(1)
+    const round = settlements[0]
+    if (round?.kind !== 'settlement') throw new Error('expected a settlement')
+    expect(round.paid.reduce((sum, p) => sum + p.amount, 0)).toBe(0)
+
+    // The manual purchase is there, and so are the night's buy-ins.
+    const purchases = body.money.filter((entry) => entry.kind === 'purchase')
+    expect(purchases.some((p) => p.kind === 'purchase' && p.amount === 60)).toBe(true)
+
+    // Newest first.
+    const times = body.money.map((entry) => entry.occurredAt)
+    expect([...times].sort((a, b) => b - a)).toEqual(times)
+  })
+
+  it('reports no money history for a room where nothing has been bought or settled', async () => {
+    const app = buildTestApp()
+    // buyIn 0 issues nothing, so the room genuinely has no chip movements.
+    const seed = await seedLiveGame(app, { buyIn: 0 })
+
+    const res = await req(app, `/api/rooms/${seed.roomId}/bet-history`, {
+      headers: { cookie: seed.cookie },
+    })
+    expect(((await res.json()) as BetHistoryResponse).money).toEqual([])
   })
 })
