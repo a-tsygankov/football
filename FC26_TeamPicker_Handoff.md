@@ -2,7 +2,103 @@
 
 **Stack:** TypeScript · Vite · React · Cloudflare Workers · D1 · R2
 **Target devices:** Android and iPhone phones (mobile-first PWA)
-**Document version:** 5 (2026-08-19) — supersedes the original `.docx` handoff
+**Document version:** 6 (2026-08-20) — supersedes the original `.docx` handoff
+
+---
+
+## Recent Changes (2026-08-20)
+
+Shipped as PRs #35–#42. Versions at the end of it: `@fc26/web` → `0.1.26`,
+`@fc26/worker` → `0.1.18`, `@fc26/shared` → `0.1.14`, `WORKER_VERSION` →
+`0.1.18`, `SCHEMA_VERSION` → `14` (migration 0014). `EVENT_SCHEMA_VERSION` is
+still `1`; the new event type was additive.
+
+Three threads: settling up became a thing the app can record rather than only
+compute, the money side of the ledger became visible, and the project gained
+browser tests — which immediately found two bugs nothing else could see.
+
+### Settling up (#35, #37)
+
+The room could say who owed whom and never that they had **paid**. The ledger
+kept folding the same lifetime result forever, so a room that squared up last
+week still showed last week's debts, and the only way out was a hand-written
+migration — which is exactly how the gap surfaced.
+
+`chips_settled` closes it, and settling clears the debt rather than the
+account: chips are not returned, so everyone keeps the stack they bought and
+the next night starts from there. See
+[§27 Settling up](#settling-up) for the model and the two routes.
+
+#37 followed immediately because all-or-nothing is not how debts get paid.
+Somebody pays on Tuesday, somebody else forgets until next month, somebody
+pays half now. Each transfer row settles on its own.
+
+The rule that took the most care is the one refusing a payment **between two
+people who are both owed money**. Mutation testing found it: replacing `-net`
+with `Math.abs(net)` on the payer survived the entire suite, because every
+case written by then was already being caught by the *payee* check. Two
+creditors could have paid each other and invented debt.
+
+### The money history (#40)
+
+`chips_purchased` had existed since the ledger did and `chips_settled` since
+the day before. **Neither was ever displayed.** Settle a debt and it vanished
+off the screen with nothing to say anybody had handed over anything.
+
+The Wager page now carries a second collapsed section beside the bet list. See
+[§27 The money history](#the-money-history) for how settlements are grouped and
+why a multi-party round is not written as pairings.
+
+### End-to-end tests (#41)
+
+See [§29](#29-end-to-end-tests). Worth recording here is what they caught on
+the first run, because both were invisible to every existing suite:
+
+- **The money history never refreshed.** Fetched once on mount, so settling a
+  debt left the payment absent from the very list that exists to record it.
+  Shipped a day earlier and untestable by unit tests, because each half worked
+  correctly on its own.
+- **A gamer with no ledger row was treated as unknown rather than as holding
+  zero.** `ledger.find(...)` returned `undefined`, so the affordability check
+  was skipped entirely and the bet went to the worker to be refused there.
+  Anybody who had never bought a chip got the raw server error instead of
+  "is out of chips — buy some on the Wager page" — which is every gamer in the
+  room today, so that message had never once fired.
+
+### Gamer names are per room (#42)
+
+`idx_gamers_name_key` was unique on `name_key` alone, so **two rooms could not
+both have an Ann**. Wrong for an app whose whole shape is "a room is a group of
+friends": the second group to sign up finds the common names gone, taken by
+people they will never play against and cannot see. Migration 0014 moves the
+index to `(room_id, name_key)`.
+
+The stem namespace rooms and gamers share was **not** changed, though the first
+attempt dissolved it. A room is joined by typing its name, so that pairing is
+what keeps the lookup unambiguous — and there was a test saying so, which is
+how the overreach was caught. The repository now asks the two questions
+separately: `getByNameKey` for "anywhere at all", which room creation needs,
+and `getInRoomByNameKey` for "in this room", the only place a gamer's name has
+to be unique.
+
+### The health check drifted twice in one day (#36)
+
+Its SQL reimplements the ledger fold, so it went stale when nights stopped
+granting chips and again when settlement landed — the second time reporting a
+debt the room had already paid. Both were caught by checking it rather than by
+it going wrong, but the pattern is the point: **nothing makes that workflow
+fail when the model under it moves.** If it drifts a third time, derive it from
+`roomChipLedger` instead of hand-writing the arithmetic twice.
+
+### Tests
+
+554 unit (245 shared, 174 worker, 135 web) plus 2 end-to-end.
+
+Every behavioural change in this batch was **sabotage-checked**: break the rule,
+confirm a test fails, restore. That found the two-creditor hole above, an
+earlier settlement test that could not fail, and — pointing the other way — a
+change to the wager viewer that survived its own sabotage and is therefore
+recorded as unverified rather than claimed as a fix.
 
 ---
 
@@ -405,6 +501,7 @@ Versions: `@fc26/web` → `0.1.2`, `@fc26/worker` → `0.1.1`, `@fc26/shared` �
 26. [Appendix: External Dependencies](#26-appendix-external-dependencies)
 27. [Wagering & the Chip Ledger](#27-wagering--the-chip-ledger)
 28. [Offline & the Service Worker](#28-offline--the-service-worker)
+29. [End-to-End Tests](#29-end-to-end-tests)
 
 ---
 
@@ -739,6 +836,7 @@ CREATE TABLE schema_migrations (
 - **`game_events` is append-only.** The repository interface does not expose update or delete. Corrections are expressed as new events (`game_voided` + a new `game_recorded`).
 - **Game size constraint:** `GameSize = 2 | 4` enforced at the type layer, Zod boundary, and event payload validation. No `CHECK(size IN (2, 4))` column because size lives inside the event payload.
 - **`bets` is unique on `(game_id, gamer_id, outcome)`.** One position per outcome, so a repeat bet on the same outcome merges into a top-up while a different outcome opens a hedge. It was `(game_id, gamer_id)` until migration 0010; anything keying settlement by gamer rather than by row depends on the *old* shape and is now wrong.
+- **`gamers` is unique on `(room_id, name_key)`.** A name only has to be free inside its own room. It was unique on `name_key` alone until migration 0014, which meant two rooms could not both have an Ann. `rooms.name_key` stays globally unique — a room is joined by typing its name — and the two share one stem namespace in both directions, so a room may not take a gamer's name or a gamer a room's.
 - **`event_type` has no CHECK constraint** and every consumer filters on `payload.type`, which is why new event types have needed no migration.
 
 ---
@@ -1591,6 +1689,8 @@ Data migration is optional per migration — many will have only the `.sql` file
 - **Boundary validation via Zod.** Inside the app, types are trusted.
 - **Deterministic tests.** Inject `rng` and `now` — never call `Math.random` or `Date.now` in production code paths (except in composition roots that build the context).
 - **Integration tests** for the event-sourcing write path: "append event → both projections updated correctly → rebuild from log produces identical projection state."
+- **End-to-end tests** for wiring the mocked suites cannot see — see [§29](#29-end-to-end-tests). They are the slow tier and deliberately thin: seed over the API, click only the feature under test.
+- **Sabotage every new guarantee.** Break the behaviour, confirm a test fails, restore it. A test that cannot fail is not evidence, and this project has shipped several: a service-worker precedence test that never signalled an update, a remainder tie-break whose case had no tie in it, a settlement rule already covered by a check on the other side. All three looked fine in review and passed forever.
 
 ---
 
@@ -1677,6 +1777,25 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
     `deploy.yml`. The three that *were* named — checkout, setup-node and
     pnpm/action-setup — now run on `node24`.
 
+### Open as of 2026-08-20
+
+11. **Nothing has been played for real since the reset.** Every part of
+    wagering is covered by tests and none of it by a game night. Item 7 is what
+    blocks it: somebody has to buy the first chips.
+12. **The health check reimplements the ledger fold in SQL**, and drifted twice
+    in one day because nothing makes it fail when the model moves. A third time
+    and it should be derived from `roomChipLedger` rather than hand-written
+    twice.
+13. **End-to-end coverage is one path.** Two specs cover buy → bet → settle →
+    history. Hedging, the whole-room settle button and a part payment are all
+    easy to add against the harness now that it exists, and none is covered.
+14. **The wager viewer's seeding guard is unverified.** It moved from guarding
+    on `viewerId !== null` to a ref, on the reasoning that the former is a
+    feedback loop — null is exactly what "Everyone" means. It was observed
+    putting a gamer back into the select, but only in combination with other
+    renders: reverting it alone leaves the suite green. Either construct a case
+    that pins it or revert it; an unverified change is worse than either.
+
 ---
 
 ## 26. Appendix: External Dependencies
@@ -1701,6 +1820,7 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 | `tw-animate-css` | web — the animation utilities shadcn's components expect |
 | `vite-plugin-pwa` | web — precache manifest and service worker generation |
 | `workbox-window` | web — the client half of the update handshake |
+| `@playwright/test` | root — browser tests against the real stack (see [§29](#29-end-to-end-tests)) |
 
 shadcn/ui is **not** in this table on purpose: it is not a dependency. Its
 components are vendored as source under `apps/web/src/components/ui/` and are
@@ -1855,6 +1975,34 @@ ledger kept folding the same lifetime result forever, so a room that squared up
 last week still showed last week's debts. Zeroing a room took a hand-written
 migration, which is how the gap was noticed.
 
+### The money history
+
+`chips_purchased` and `chips_settled` are folded into `MoneyEntry` values by
+`moneyHistory(events)` and ride on the bet-history response — the Wager page
+wants both halves at once, and a second round trip for one screen buys nothing.
+
+Purchases read as purchases, and a night's automatic buy-in is worded
+differently from a stack somebody chose to buy, because they are not the same
+claim. Only history predating migration 0012 has the former.
+
+**Settlements group by `settlementId`.** A two-party payment is then the
+sentence it is — "Cyd paid Ann 40" — and a round with more than one payer is
+reported as the round it was:
+
+```
+Settled up — Ann +50, Bob −20, Cyd −30
+```
+
+That asymmetry is deliberate. The events record each gamer's **net change**,
+not who handed cash to whom, so writing a three-way round as pairings would be
+inventing facts the room never recorded. There is a test asserting the
+multi-party case does not say "paid".
+
+The page fetches this once on mount, so the room bumps a token whenever chips
+move (`historyToken` → `reloadToken`). Without it, settling a debt left the
+payment absent from the list that exists to record it — which is precisely the
+bug the end-to-end suite caught on its first run.
+
 ### Visibility is not access control
 
 `GET /rooms/:roomId/bet-history` returns the whole room's ledger to anyone
@@ -1962,6 +2110,57 @@ would risk silently re-identifying already-installed apps.
 The service worker only runs in a production build, so `vite preview` is
 required — `.claude/launch.json` carries a `web-preview` entry for this. The
 dev server will not exercise any of the above.
+
+---
+
+## 29. End-to-End Tests
+
+The unit suites mock at every boundary: worker routes run against in-memory
+repositories, components against stubbed callbacks. Both are fast and neither
+can see the **wiring** between them — a button calling the wrong endpoint, a
+response the client never applies, a cookie that does not round trip. That is
+what these cover.
+
+`playwright.config.ts`, specs in `e2e/`. Locally `pnpm test:e2e`; in CI a job
+that gates both deploys.
+
+### The stack under test is real
+
+| Piece | How |
+|---|---|
+| Worker | `wrangler dev --local` — Miniflare with a SQLite D1 in `.wrangler/state`. No Cloudflare credentials. |
+| Database | Wiped and re-migrated before every run: the wager assertions are about exact balances, and leftovers would make them lie. |
+| Client | `vite dev`, proxying `/api` to the Worker so the session cookie stays same-origin. Without that proxy every authed request is a 401. |
+| Session secret | Supplied on the command line. It normally lives in a gitignored `worker/.dev.vars`, so a fresh checkout cannot sign a cookie and every room creation 500s. |
+| Viewport | `devices['Pixel 7']`. The app is mobile-first; desktop width would exercise a shape nobody uses. |
+
+`workers: 1` and `fullyParallel: false` — one local database, and parallel
+workers would race on it.
+
+### Seed through the API, click the feature
+
+Everything the room needs to *exist* is seeded over HTTP; everything about
+wagering is clicked. Game creation is covered thoroughly by the worker and
+component suites, and driving it here would add a dozen fragile selectors to a
+test whose subject is money.
+
+Seeding runs on `page.request`, which **shares a cookie jar with the page**, so
+the browser is genuinely authenticated as the session that created the room.
+The app is then pointed at it by writing `fc26:last-room-id` into
+`localStorage` and reloading, which is what a returning visit does.
+
+### Writing one
+
+- **Assert on what the fix changes, not near it.** A first attempt at pinning
+  the "Everyone" filter asserted on the list contents and passed with the fix
+  reverted, because whichever gamer it snapped back to still had rows of their
+  own. Asserting the select's value is what discriminates.
+- **Sabotage it.** Break the behaviour, watch the test fail, restore. Two of
+  the three fixes shipped with the suite are pinned that way; the third
+  survived its own sabotage and is recorded as unverified rather than claimed.
+- **Room names are globally unique**, so each test needs its own. Gamer names
+  are not — per-room since migration 0014 — and the specs deliberately seed a
+  plain "Ann" into each room, so the fix is proven through the whole stack.
 
 ---
 
