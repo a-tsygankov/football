@@ -2717,3 +2717,140 @@ describe('room routes', () => {
     expect(bothRes.status).toBe(400)
   })
 })
+
+describe('name uniqueness', () => {
+  async function makeRoom(app: ReturnType<typeof buildTestApp>, name: string) {
+    const res = await app.request(
+      '/api/rooms',
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) },
+      env,
+      execCtx(),
+    )
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { room: { id: string } }
+    return { id: body.room.id, cookie: cookieFrom(res) }
+  }
+
+  async function addGamer(
+    app: ReturnType<typeof buildTestApp>,
+    room: { id: string; cookie: string },
+    name: string,
+  ) {
+    return app.request(
+      `/api/rooms/${room.id}/gamers`,
+      {
+        method: 'POST',
+        headers: { cookie: room.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      },
+      env,
+      execCtx(),
+    )
+  }
+
+  it('lets two rooms each have a gamer of the same name', async () => {
+    const app = buildTestApp()
+    const first = await makeRoom(app, 'Tuesday Lot')
+    const second = await makeRoom(app, 'Thursday Lot')
+
+    expect((await addGamer(app, first, 'Ann')).status).toBe(201)
+    // Two groups of friends who never play each other: the second to sign up
+    // should not find the ordinary names already gone.
+    expect((await addGamer(app, second, 'Ann')).status).toBe(201)
+  })
+
+  it('still refuses a duplicate name inside one room', async () => {
+    const app = buildTestApp()
+    const room = await makeRoom(app, 'Tuesday Lot')
+
+    expect((await addGamer(app, room, 'Ann')).status).toBe(201)
+    const again = await addGamer(app, room, 'Ann')
+    expect(again.status).toBe(409)
+    expect((await again.json()) as { error: string }).toMatchObject({ error: 'gamer_name_taken' })
+  })
+
+  it('refuses a rename onto a name another gamer in the room already holds', async () => {
+    const app = buildTestApp()
+    const room = await makeRoom(app, 'Tuesday Lot')
+    await addGamer(app, room, 'Ann')
+    const bobRes = await addGamer(app, room, 'Bob')
+    const bob = (await bobRes.json()) as { gamer: { id: string } }
+
+    const res = await app.request(
+      `/api/rooms/${room.id}/gamers/${bob.gamer.id}`,
+      {
+        method: 'PATCH',
+        headers: { cookie: room.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Ann' }),
+      },
+      env,
+      execCtx(),
+    )
+    expect(res.status).toBe(409)
+  })
+
+  it('allows a rename onto a name only another room uses', async () => {
+    const app = buildTestApp()
+    const first = await makeRoom(app, 'Tuesday Lot')
+    const second = await makeRoom(app, 'Thursday Lot')
+    await addGamer(app, first, 'Ann')
+    const bobRes = await addGamer(app, second, 'Bob')
+    const bob = (await bobRes.json()) as { gamer: { id: string } }
+
+    const res = await app.request(
+      `/api/rooms/${second.id}/gamers/${bob.gamer.id}`,
+      {
+        method: 'PATCH',
+        headers: { cookie: second.cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Ann' }),
+      },
+      env,
+      execCtx(),
+    )
+    expect(res.status).toBe(200)
+  })
+
+  it('keeps room names globally unique, because a room is joined by name', async () => {
+    const app = buildTestApp()
+    await makeRoom(app, 'Tuesday Lot')
+
+    const res = await app.request(
+      '/api/rooms',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Tuesday Lot' }),
+      },
+      env,
+      execCtx(),
+    )
+    expect(res.status).toBe(409)
+    expect((await res.json()) as { error: string }).toMatchObject({ error: 'room_name_taken' })
+  })
+
+  it('keeps the room and gamer stem namespace shared, which scoping did not change', async () => {
+    const app = buildTestApp()
+    const room = await makeRoom(app, 'Tuesday Lot')
+    await addGamer(app, room, 'Ann')
+
+    // Rooms are addressed by name, so this pairing stays global in both
+    // directions: a room may not take a gamer's name, or a gamer a room's.
+    const asRoom = await app.request(
+      '/api/rooms',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Ann' }),
+      },
+      env,
+      execCtx(),
+    )
+    expect(asRoom.status).toBe(409)
+
+    const asGamer = await addGamer(app, room, 'Thursday Lot 2')
+    expect(asGamer.status).toBe(201)
+
+    const second = await makeRoom(app, 'Wednesday Lot')
+    expect((await addGamer(app, second, 'Tuesday Lot')).status).toBe(409)
+  })
+})

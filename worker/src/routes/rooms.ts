@@ -592,7 +592,14 @@ roomRoutes.post('/rooms/:roomId/gamers', async (c) => {
     return c.json({ error: 'invalid_gamer_name_stem' }, 400)
   }
   const nameKey = normalizeNameStem(body.name)
-  const existingGamerByName = await c.get('deps').gamers.getByNameKey(nameKey)
+  // Gamers clash only with their own room's gamers: two rooms are two groups
+  // of friends who never play each other and cannot see each other's rosters,
+  // so the second to sign up should not find the ordinary names gone.
+  //
+  // Room names stay global on both sides of the check. A room is joined by
+  // typing its name, so the stem namespace it shares with gamers is what keeps
+  // that lookup unambiguous.
+  const existingGamerByName = await c.get('deps').gamers.getInRoomByNameKey(roomId, nameKey)
   const existingRoomByName = await c.get('deps').rooms.getByNameKey(nameKey)
   if (existingGamerByName || existingRoomByName) {
     return c.json({ error: 'gamer_name_taken', nameKey }, 409)
@@ -692,7 +699,7 @@ roomRoutes.patch('/rooms/:roomId/gamers/:gamerId', async (c) => {
     return c.json({ error: 'invalid_gamer_name_stem' }, 400)
   }
   const nextNameKey = normalizeNameStem(nextName)
-  const existingGamerByName = await c.get('deps').gamers.getByNameKey(nextNameKey)
+  const existingGamerByName = await c.get('deps').gamers.getInRoomByNameKey(roomId, nextNameKey)
   if (existingGamerByName && existingGamerByName.id !== existing.id) {
     return c.json({ error: 'gamer_name_taken', nameKey: nextNameKey }, 409)
   }

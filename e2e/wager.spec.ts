@@ -47,10 +47,10 @@ async function seedRoom(api: APIRequestContext, name: string): Promise<Seed> {
   }
   const roomId = room.room.id
 
-  // Gamer names are globally unique, not unique per room —
-  // `idx_gamers_name_key` has no room_id in it — so two rooms cannot both hold
-  // an "Ann" and every test needs its own set.
-  const names = [`Ann ${name}`, `Bob ${name}`, `Cyd ${name}`]
+  // Plain names, deliberately: gamer names are unique per room since migration
+  // 0014, so both tests seeding an "Ann" into their own room is the fix
+  // working. Before it, the second room here could not have been built.
+  const names = ['Ann', 'Bob', 'Cyd']
   const gamerIds: string[] = []
   for (const gamerName of names) {
     const created = (await post(api, `/api/rooms/${roomId}/gamers`, { name: gamerName })) as {
