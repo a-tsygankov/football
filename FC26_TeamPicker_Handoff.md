@@ -1660,13 +1660,16 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
    nobody has bought any, so no bet can be placed until somebody does. This is
    the intended end state, not a fault — but the first night after it needs a
    purchase before a book can open.
-8. **The service worker has not been verified on a real device.** It was
-   tested under `vite preview` — registration, offline reload, the update
-   handshake — but not on iOS Safari, which is the platform most likely to
-   disagree about PWA behaviour. Worth doing before relying on offline at a
-   game night.
-9. **The sticky `RoomBar` is likewise unverified on iOS Safari**, where the
-   dynamic toolbar has a history of arguing with `position: sticky`.
+8. **Offline and the update handshake are unverified on a real device.** Both
+   were exercised under `vite preview` only. Installing to the Home Screen is
+   now confirmed on iPhone — it launches standalone with no browser chrome
+   (2026-08-20) — so the manifest, scope and install path are known good. What
+   that does *not* prove is that a launch with no network renders the
+   precached shell, or that a waiting worker raises the banner on iOS. Worth
+   doing before relying on offline at a game night: turn on airplane mode and
+   open the app.
+9. ~~The sticky `RoomBar` on iOS Safari.~~ **Confirmed** — renders correctly
+   both in Safari and in the installed app, on iPhone (2026-08-20).
 10. **The GitHub Pages actions are still on older majors** —
     `actions/configure-pages@v5`, `actions/upload-pages-artifact@v3`,
     `actions/deploy-pages@v4`. They were not named in the Node 20 deprecation
