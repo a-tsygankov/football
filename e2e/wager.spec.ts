@@ -116,6 +116,11 @@ async function buyChips(page: Page, gamerName: string, amount: number): Promise<
   ).toBeVisible()
 }
 
+/** Selects a bettor without placing anything, to read their standing. */
+async function selectBettor(page: Page, gamerName: string): Promise<void> {
+  await page.getByLabel(/who's betting/i).selectOption({ label: gamerName })
+}
+
 async function placeBet(page: Page, gamerName: string, outcome: string, stake: number): Promise<void> {
   await page.getByLabel(/who's betting/i).selectOption({ label: gamerName })
   await page.getByRole('button', { name: new RegExp(`^${outcome}$`, 'i') }).click()
@@ -176,5 +181,90 @@ test.describe('wagering', () => {
     await placeBet(page, seed.cyName, 'Away', 10)
 
     await expect(page.getByText(/is out of chips/i)).toBeVisible()
+  })
+
+  test('a hedge is two positions, costs both stakes, and settles each on its own', async ({
+    page,
+  }) => {
+    const seed = await seedRoom(page.request, test.info().testId)
+    await openRoom(page, seed.roomId)
+
+    await gotoTab(page, /^wager$/i)
+    await buyChips(page, seed.annName, 100)
+    await buyChips(page, seed.cyName, 100)
+
+    await gotoTab(page, /^game$/i)
+    // ann plays home, so she may only back home. cy sits out and may cover
+    // both sides — which is the whole point of a hedge.
+    await placeBet(page, seed.annName, 'Home', 40)
+    await placeBet(page, seed.cyName, 'Home', 20)
+    await placeBet(page, seed.cyName, 'Away', 30)
+
+    // Two rows for cy, not one moved position: backing a different outcome
+    // opens a second one rather than replacing the first.
+    const bets = page.getByRole('listitem').filter({ hasText: seed.cyName })
+    await expect(bets).toHaveCount(2)
+    await expect(bets.filter({ hasText: /home/i })).toContainText('20')
+    await expect(bets.filter({ hasText: /away/i })).toContainText('30')
+
+    // Covering both sides costs both stakes: 100 held, 50 of it committed.
+    await selectBettor(page, seed.cyName)
+    await expect(page.getByText(/100 chips — 50 available/i)).toBeVisible()
+
+    await page.getByRole('button', { name: /^home win$/i }).click()
+
+    // Pot 90, winning stake 60. ann takes 60 for her 40; cy's home row takes
+    // 30 for its 20 and the away row takes nothing, so cy is down 20 overall.
+    //
+    // Paying by gamer rather than by row would credit that 30 against *both*
+    // of cy's rows and invent chips — which is exactly what this catches.
+    await gotoTab(page, /^wager$/i)
+    await expect(
+      page.getByText(new RegExp(`${seed.cyName} pays ${seed.annName} 20`, 'i')),
+    ).toBeVisible()
+  })
+
+  test('backing the same outcome again tops the position up rather than opening another', async ({
+    page,
+  }) => {
+    const seed = await seedRoom(page.request, test.info().testId)
+    await openRoom(page, seed.roomId)
+
+    await gotoTab(page, /^wager$/i)
+    await buyChips(page, seed.cyName, 100)
+
+    await gotoTab(page, /^game$/i)
+    await placeBet(page, seed.cyName, 'Home', 20)
+    await placeBet(page, seed.cyName, 'Home', 15)
+
+    const bets = page.getByRole('listitem').filter({ hasText: seed.cyName })
+    await expect(bets).toHaveCount(1)
+    await expect(bets).toContainText('35')
+  })
+
+  test('a player may not back against their own side', async ({ page }) => {
+    const seed = await seedRoom(page.request, test.info().testId)
+    await openRoom(page, seed.roomId)
+
+    await gotoTab(page, /^wager$/i)
+    await buyChips(page, seed.annName, 100)
+
+    await gotoTab(page, /^game$/i)
+    await selectBettor(page, seed.annName)
+
+    // Scoped to the bet controls: "Draw" also names a result button below.
+    const outcomes = page.getByRole('group', { name: /outcome to back/i })
+
+    // ann is the home side. She may back herself and nothing else — a player
+    // taking money against their own result is the one thing the pool cannot
+    // allow, since they decide it.
+    await expect(outcomes.getByRole('button', { name: /^home$/i })).toBeEnabled()
+    await expect(outcomes.getByRole('button', { name: /^away$/i })).toBeDisabled()
+    await expect(outcomes.getByRole('button', { name: /^draw$/i })).toBeDisabled()
+
+    // cy sits out, so every outcome is open to them.
+    await selectBettor(page, seed.cyName)
+    await expect(outcomes.getByRole('button', { name: /^away$/i })).toBeEnabled()
+    await expect(outcomes.getByRole('button', { name: /^draw$/i })).toBeEnabled()
   })
 })
