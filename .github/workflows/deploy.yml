@@ -20,6 +20,8 @@ on:
       # very job it was editing.
       - 'e2e/**'
       - 'playwright.config.ts'
+      - 'scripts/**'
+      - 'tsconfig.scripts.json'
       - '.github/workflows/deploy.yml'
   push:
     branches: [main]
@@ -37,6 +39,8 @@ on:
       # very job it was editing.
       - 'e2e/**'
       - 'playwright.config.ts'
+      - 'scripts/**'
+      - 'tsconfig.scripts.json'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
@@ -90,6 +94,12 @@ jobs:
 
       - name: Typecheck (all packages)
         run: pnpm -r typecheck
+
+      # `pnpm -r` covers the workspace packages; the operational scripts belong
+      # to none of them. `ledger-report.ts` imports the ledger, so leaving it
+      # unchecked would relocate the drift the health check exists to prevent.
+      - name: Typecheck scripts
+        run: pnpm run typecheck:scripts
 
       - name: Test (all packages)
         run: pnpm -r test:run
