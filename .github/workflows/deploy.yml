@@ -15,6 +15,11 @@ on:
       - 'package.json'
       - 'workers/**'
       - 'redirect-page/**'
+      # The e2e suite and its config gate the deploys, so a change to either
+      # has to run them. Without these a PR touching only `e2e/` skipped the
+      # very job it was editing.
+      - 'e2e/**'
+      - 'playwright.config.ts'
       - '.github/workflows/deploy.yml'
   push:
     branches: [main]
@@ -27,6 +32,11 @@ on:
       - 'package.json'
       - 'workers/**'
       - 'redirect-page/**'
+      # The e2e suite and its config gate the deploys, so a change to either
+      # has to run them. Without these a PR touching only `e2e/` skipped the
+      # very job it was editing.
+      - 'e2e/**'
+      - 'playwright.config.ts'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
