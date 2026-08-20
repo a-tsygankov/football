@@ -8,14 +8,15 @@
 
 ## Recent Changes (2026-08-20)
 
-Shipped as PRs #35–#42. Versions at the end of it: `@fc26/web` → `0.1.26`,
+Shipped as PRs #35–#46. Versions at the end of it: `@fc26/web` → `0.1.28`,
 `@fc26/worker` → `0.1.18`, `@fc26/shared` → `0.1.14`, `WORKER_VERSION` →
 `0.1.18`, `SCHEMA_VERSION` → `14` (migration 0014). `EVENT_SCHEMA_VERSION` is
 still `1`; the new event type was additive.
 
 Three threads: settling up became a thing the app can record rather than only
 compute, the money side of the ledger became visible, and the project gained
-browser tests — which immediately found two bugs nothing else could see.
+browser tests — which immediately found two bugs nothing else could see, and
+then went on to find a third in the workflow meant to run them.
 
 ### Settling up (#35, #37)
 
@@ -90,9 +91,44 @@ it going wrong, but the pattern is the point: **nothing makes that workflow
 fail when the model under it moves.** If it drifts a third time, derive it from
 `roomChipLedger` instead of hand-writing the arithmetic twice.
 
+### Wagering covered end to end (#44, #45)
+
+Seven specs now, up from the two the harness shipped with. The hedge is the one
+that earns its place: cy covers both sides of a game ann is playing, opens two
+positions rather than moving one, commits both stakes at once, and finishes
+**down 20 despite winning a side**. Paying by gamer rather than by row would
+credit that win against both of cy's rows and invent chips, which §27 calls the
+single easiest way to reintroduce a serious bug here.
+
+The rest: a repeat bet on one outcome tops the position up rather than opening
+a second, a player may back their own side and nothing else, one button clears
+a three-way debt, and a settle-up with two payers is recorded as **one round**
+rather than three payments.
+
+Then a third bug, this one in the tooling. #45 added two specs and CI ran
+neither: the workflow's path filters list the packages that get deployed, so a
+change confined to `e2e/` matched nothing and only the version check fired — on
+the very suite it was editing. A broken spec could have merged behind a green
+tick, which is worse than not having the job. `e2e/**` and
+`playwright.config.ts` are in both filters now.
+
+### Paying part of a debt (#46)
+
+The model took a part payment and so did the API; the Paid button always sent
+the whole transfer. #45's spec had to seed one over the API and recorded the
+gap; #46 closed it. Each row now carries the amount as an editable field,
+pre-filled with the whole debt — see
+[§27 Settling up](#settling-up).
+
+Worth keeping for the argument it settles about test tiers. Three mutations,
+two caught by exactly one of them: a stale override surviving a payment is
+**only** caught end to end, because it needs a real round trip, and the
+client-side over-payment guard is **only** caught by the unit tests. They are
+not duplicating each other.
+
 ### Tests
 
-554 unit (245 shared, 174 worker, 135 web) plus 2 end-to-end.
+559 unit (245 shared, 174 worker, 140 web) plus 7 end-to-end.
 
 Every behavioural change in this batch was **sabotage-checked**: break the rule,
 confirm a test fails, restore. That found the two-creditor hole above, an
@@ -2129,7 +2165,27 @@ response the client never applies, a cookie that does not round trip. That is
 what these cover.
 
 `playwright.config.ts`, specs in `e2e/`. Locally `pnpm test:e2e`; in CI a job
-that gates both deploys.
+that gates both deploys. `e2e/**` and `playwright.config.ts` are in the
+workflow's path filters — without them a PR touching only the suite skipped the
+job it was editing, which it did once.
+
+### What is covered
+
+Seven specs, all of the wager journey:
+
+| Spec | The thing it pins |
+|---|---|
+| Debt created, shown, settled | The whole loop, and that the money history refreshes when chips move |
+| Out of chips | A gamer with no ledger row is told to buy, not shown a negative |
+| A hedge | Two positions, both stakes committed, **each row settling on its own** |
+| Top-up | A repeat bet on one outcome merges rather than opening a second |
+| Backing eligibility | A player may back their own side and nothing else |
+| Whole-room settle | One click clears a three-way debt, recorded as one round |
+| Part payment | Typing over the pre-filled amount leaves the rest owing |
+
+Deliberately absent: game creation, squad browsing, the scoreboard. They are
+covered by the worker and component suites, and driving them here would add
+fragile selectors to specs whose subject is money.
 
 ### The stack under test is real
 
@@ -2168,6 +2224,15 @@ The app is then pointed at it by writing `fc26:last-room-id` into
 - **Room names are globally unique**, so each test needs its own. Gamer names
   are not — per-room since migration 0014 — and the specs deliberately seed a
   plain "Ann" into each room, so the fix is proven through the whole stack.
+- **Read a value from where it lives.** The debt amount moved out of the
+  sentence and into an editable field, which silently broke four assertions
+  matching `X pays Y 40` as text. `expectOwes` checks both halves, because
+  matching the sentence alone would pass whatever the field said — including
+  nothing.
+- **Expect the tiers to disagree.** Of the three mutations tried against the
+  part-payment field, two were caught by exactly one suite: a stale override
+  needs a real round trip to surface, and a client-side guard never reaches the
+  browser at all. A mutation surviving one tier is not evidence it is safe.
 
 ---
 
