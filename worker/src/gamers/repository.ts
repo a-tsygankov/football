@@ -10,7 +10,16 @@ export interface IGamerRepository {
   insert(gamer: StoredGamer): Promise<void>
   listByRoom(roomId: RoomIdType): Promise<ReadonlyArray<StoredGamer>>
   get(roomId: RoomIdType, gamerId: GamerId): Promise<StoredGamer | null>
+  /**
+   * Anywhere at all. Rooms and gamers share one stem namespace, so creating a
+   * room has to know whether any gamer already answers to that name.
+   */
   getByNameKey(nameKey: string): Promise<StoredGamer | null>
+  /**
+   * Inside one room, which is the only place a gamer's name has to be unique.
+   * Asking globally is what stopped two groups of friends both having an Ann.
+   */
+  getInRoomByNameKey(roomId: RoomIdType, nameKey: string): Promise<StoredGamer | null>
   update(gamer: StoredGamer): Promise<void>
 }
 
@@ -52,6 +61,14 @@ export class InMemoryGamerRepository implements IGamerRepository {
 
   async getByNameKey(nameKey: string): Promise<StoredGamer | null> {
     return [...this.rows.values()].find((gamer) => gamer.nameKey === nameKey) ?? null
+  }
+
+  async getInRoomByNameKey(roomId: RoomIdType, nameKey: string): Promise<StoredGamer | null> {
+    return (
+      [...this.rows.values()].find(
+        (gamer) => gamer.roomId === roomId && gamer.nameKey === nameKey,
+      ) ?? null
+    )
   }
 
   async update(gamer: StoredGamer): Promise<void> {
@@ -141,8 +158,16 @@ export class D1GamerRepository implements IGamerRepository {
 
   async getByNameKey(nameKey: string): Promise<StoredGamer | null> {
     const row = await this.db
-      .prepare(`SELECT * FROM gamers WHERE name_key = ?`)
+      .prepare(`SELECT * FROM gamers WHERE name_key = ? LIMIT 1`)
       .bind(nameKey)
+      .first<GamerRow>()
+    return row ? rowToGamer(row) : null
+  }
+
+  async getInRoomByNameKey(roomId: RoomIdType, nameKey: string): Promise<StoredGamer | null> {
+    const row = await this.db
+      .prepare(`SELECT * FROM gamers WHERE room_id = ? AND name_key = ?`)
+      .bind(roomId, nameKey)
       .first<GamerRow>()
     return row ? rowToGamer(row) : null
   }
