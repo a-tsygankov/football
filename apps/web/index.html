@@ -7,6 +7,22 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
     />
     <meta name="theme-color" content="#0f172a" />
+    <!--
+      Standalone launch from the Home Screen.
+
+      The manifest already says `display: standalone`, which Safari honours
+      from iOS 16.4 onward. These are what every iOS before that keys on, and
+      Apple still documents them, so without them a Home Screen shortcut opens
+      inside Safari — URL bar at the top, toolbar at the bottom, none of which
+      belongs in an installed app. `mobile-web-app-capable` is the standardised
+      spelling; `apple-mobile-web-app-capable` is the one iOS actually shipped.
+    -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- The top of the app is light, so the status bar wants dark text. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- Home Screen label. Without it iOS uses <title>, which is too long. -->
+    <meta name="apple-mobile-web-app-title" content="FC 26" />
     <link rel="icon" type="image/svg+xml" href="/football/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/football/favicon-32.png" />
     <link rel="apple-touch-icon" href="/football/apple-touch-icon.png" />
