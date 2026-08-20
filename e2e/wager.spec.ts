@@ -22,6 +22,7 @@ interface Seed {
   bob: string
   cy: string
   annName: string
+  bobName: string
   cyName: string
   nightId: string
   gameId: string
@@ -59,7 +60,7 @@ async function seedRoom(api: APIRequestContext, name: string): Promise<Seed> {
     gamerIds.push(created.gamer.id)
   }
   const [ann, bob, cy] = gamerIds as [string, string, string]
-  const [annName, , cyName] = names as [string, string, string]
+  const [annName, bobName, cyName] = names as [string, string, string]
 
   // buyIn 0: chips must be bought in the UI, which is half of what this tests.
   const night = (await post(api, `/api/rooms/${roomId}/game-nights`, {
@@ -75,7 +76,7 @@ async function seedRoom(api: APIRequestContext, name: string): Promise<Seed> {
     awayGamerIds: [bob],
   })) as { currentGame: { id: string } }
 
-  return { roomId, ann, bob, cy, annName, cyName, nightId, gameId: game.currentGame.id }
+  return { roomId, ann, bob, cy, annName, bobName, cyName, nightId, gameId: game.currentGame.id }
 }
 
 /** Opens the app already holding the seeded room, as a returning visit would. */
@@ -266,5 +267,88 @@ test.describe('wagering', () => {
     await selectBettor(page, seed.cyName)
     await expect(outcomes.getByRole('button', { name: /^away$/i })).toBeEnabled()
     await expect(outcomes.getByRole('button', { name: /^draw$/i })).toBeEnabled()
+  })
+
+  test('one button clears every debt at once, and the history says it was a round', async ({
+    page,
+  }) => {
+    const seed = await seedRoom(page.request, test.info().testId)
+    await openRoom(page, seed.roomId)
+
+    await gotoTab(page, /^wager$/i)
+    await buyChips(page, seed.annName, 100)
+    await buyChips(page, seed.bobName, 100)
+    await buyChips(page, seed.cyName, 100)
+
+    // ann plays home, bob away, cy sits out — three bettors, so the result
+    // leaves two people owing one, which is what the button is for.
+    await gotoTab(page, /^game$/i)
+    await placeBet(page, seed.annName, 'Home', 40)
+    await placeBet(page, seed.bobName, 'Away', 30)
+    await placeBet(page, seed.cyName, 'Away', 20)
+    await page.getByRole('button', { name: /^home win$/i }).click()
+
+    // Pot 90 to ann alone: she is up 50, bob down 30, cy down 20.
+    await gotoTab(page, /^wager$/i)
+    await expect(
+      page.getByText(new RegExp(`${seed.bobName} pays ${seed.annName} 30`, 'i')),
+    ).toBeVisible()
+    await expect(
+      page.getByText(new RegExp(`${seed.cyName} pays ${seed.annName} 20`, 'i')),
+    ).toBeVisible()
+
+    await page.getByRole('button', { name: /^mark all as paid$/i }).click()
+    await expect(page.getByText(/nobody owes anybody/i)).toBeVisible()
+
+    // One round, not three payments: the events record each gamer's net
+    // change, so a settle-up with two payers is reported as the round it was.
+    await showEveryone(page)
+    await page.getByRole('button', { name: /chip movements?/i }).click()
+    const round = page
+      .getByRole('list', { name: /chip movements/i })
+      .getByText(/settled up/i)
+    await expect(round).toContainText(`${seed.annName} +50`)
+    await expect(round).toContainText(`${seed.bobName} -30`)
+    await expect(round).toContainText(`${seed.cyName} -20`)
+  })
+
+  test('a part payment leaves the rest owing, and both figures are on the page', async ({
+    page,
+  }) => {
+    const seed = await seedRoom(page.request, test.info().testId)
+    await openRoom(page, seed.roomId)
+
+    await gotoTab(page, /^wager$/i)
+    await buyChips(page, seed.annName, 100)
+    await buyChips(page, seed.cyName, 100)
+
+    await gotoTab(page, /^game$/i)
+    await placeBet(page, seed.annName, 'Home', 30)
+    await placeBet(page, seed.cyName, 'Away', 40)
+    await page.getByRole('button', { name: /^home win$/i }).click()
+
+    // Paid over the API rather than clicked: the Paid button always sends the
+    // whole transfer, so a part payment is expressible in the model and in the
+    // API and nowhere in the UI. What is under test here is the client
+    // rendering a partly settled ledger, which nothing else covers.
+    await post(page.request, `/api/rooms/${seed.roomId}/chips/settlements/payment`, {
+      from: seed.cy,
+      to: seed.ann,
+      amount: 15,
+    })
+    await page.reload()
+    await gotoTab(page, /^wager$/i)
+
+    // 25 of the 40 still owed, and still pointing the same way.
+    await expect(
+      page.getByText(new RegExp(`${seed.cyName} pays ${seed.annName} 25`, 'i')),
+    ).toBeVisible()
+
+    // And the 15 that was handed over is on the record, not the 40.
+    await showEveryone(page)
+    await page.getByRole('button', { name: /chip movements?/i }).click()
+    const history = page.getByRole('list', { name: /chip movements/i })
+    await expect(history).toContainText(`${seed.cyName} paid ${seed.annName} 15`)
+    await expect(history).not.toContainText(`paid ${seed.annName} 40`)
   })
 })

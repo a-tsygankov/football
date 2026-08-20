@@ -1786,10 +1786,12 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
     in one day because nothing makes it fail when the model moves. A third time
     and it should be derived from `roomChipLedger` rather than hand-written
     twice.
-13. **End-to-end coverage still misses two flows.** Five specs now cover buy →
-    bet → settle → history, hedging, top-ups and backing eligibility. The
-    whole-room settle button and a part payment are not covered, and both are
-    easy against the harness.
+13. **A part payment cannot be made from the UI.** The model and the API both
+    take one — pay 15 of a 40 debt and 25 stays owing — but the Paid button
+    always sends the whole transfer, so the only way to do it is by hand
+    against the API. The end-to-end spec covering it seeds the payment that
+    way for exactly this reason. Either give the row an amount, or decide the
+    model is wider than the product needs to be.
 14. **The wager viewer's seeding guard is unverified.** It moved from guarding
     on `viewerId !== null` to a ref, on the reasoning that the former is a
     feedback loop — null is exactly what "Everyone" means. It was observed
