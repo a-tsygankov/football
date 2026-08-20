@@ -137,6 +137,90 @@ describe('ChipLedgerPanel', () => {
     expect(props.onSettleUp).not.toHaveBeenCalled()
   })
 
+  it('pays the whole debt when the amount is left alone', () => {
+    const props = renderPanel({
+      ledger: {
+        roomId: RoomId('room-1'),
+        entries: [entry(ann, 100, 50), entry(bob, 100, -50)],
+        transfers: [{ from: bob, to: ann, amount: 50 }],
+      } as ChipLedgerResponse,
+    })
+
+    // Pre-filled, because settling outright is the common case and nobody
+    // should have to type a number they can already read.
+    expect(screen.getByLabelText(/amount bob is paying ann/i)).toHaveValue('50')
+    fireEvent.click(screen.getByRole('button', { name: /^paid$/i }))
+
+    expect(props.onSettlePayment).toHaveBeenCalledWith(bob, ann, 50)
+  })
+
+  it('pays only what was typed, because people pay what cash they have', () => {
+    const props = renderPanel({
+      ledger: {
+        roomId: RoomId('room-1'),
+        entries: [entry(ann, 100, 50), entry(bob, 100, -50)],
+        transfers: [{ from: bob, to: ann, amount: 50 }],
+      } as ChipLedgerResponse,
+    })
+    fireEvent.change(screen.getByLabelText(/amount bob is paying ann/i), {
+      target: { value: '15' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^paid$/i }))
+
+    expect(props.onSettlePayment).toHaveBeenCalledWith(bob, ann, 15)
+  })
+
+  it('refuses to pay more than is owed, without a round trip to find out', () => {
+    const props = renderPanel({
+      ledger: {
+        roomId: RoomId('room-1'),
+        entries: [entry(ann, 100, 50), entry(bob, 100, -50)],
+        transfers: [{ from: bob, to: ann, amount: 50 }],
+      } as ChipLedgerResponse,
+    })
+    fireEvent.change(screen.getByLabelText(/amount bob is paying ann/i), {
+      target: { value: '51' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^paid$/i }))
+
+    expect(props.onSettlePayment).not.toHaveBeenCalled()
+    expect(screen.getByText(/bob only owes ann 50/i)).toBeInTheDocument()
+  })
+
+  it('refuses a nonsense amount', () => {
+    const props = renderPanel({
+      ledger: {
+        roomId: RoomId('room-1'),
+        entries: [entry(ann, 100, 50), entry(bob, 100, -50)],
+        transfers: [{ from: bob, to: ann, amount: 50 }],
+      } as ChipLedgerResponse,
+    })
+    fireEvent.change(screen.getByLabelText(/amount bob is paying ann/i), {
+      target: { value: '0' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^paid$/i }))
+
+    expect(props.onSettlePayment).not.toHaveBeenCalled()
+    expect(screen.getByText(/pay at least 1 chip/i)).toBeInTheDocument()
+  })
+
+  it('gives each debt its own amount', () => {
+    renderPanel({
+      gamers: [gamer(ann, 'Ann'), gamer(bob, 'Bob'), gamer(cy, 'Cyd')],
+      ledger: {
+        roomId: RoomId('room-1'),
+        entries: [entry(ann, 100, 50), entry(bob, 100, -20), entry(cy, 100, -30)],
+        transfers: [
+          { from: cy, to: ann, amount: 30 },
+          { from: bob, to: ann, amount: 20 },
+        ],
+      } as ChipLedgerResponse,
+    })
+
+    expect(screen.getByLabelText(/amount cyd is paying ann/i)).toHaveValue('30')
+    expect(screen.getByLabelText(/amount bob is paying ann/i)).toHaveValue('20')
+  })
+
   it('offers a Paid button per debt, not one for the lot', () => {
     renderPanel({
       gamers: [gamer(ann, 'Ann'), gamer(bob, 'Bob'), gamer(cy, 'Cyd')],

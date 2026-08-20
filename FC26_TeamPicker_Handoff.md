@@ -1786,12 +1786,9 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
     in one day because nothing makes it fail when the model moves. A third time
     and it should be derived from `roomChipLedger` rather than hand-written
     twice.
-13. **A part payment cannot be made from the UI.** The model and the API both
-    take one — pay 15 of a 40 debt and 25 stays owing — but the Paid button
-    always sends the whole transfer, so the only way to do it is by hand
-    against the API. The end-to-end spec covering it seeds the payment that
-    way for exactly this reason. Either give the row an amount, or decide the
-    model is wider than the product needs to be.
+13. ~~A part payment cannot be made from the UI.~~ **Done** — each debt now
+    carries an editable amount, pre-filled with the whole thing, so the common
+    case is still one tap and paying part of it is a number away.
 14. **The wager viewer's seeding guard is unverified.** It moved from guarding
     on `viewerId !== null` to a ref, on the reasoning that the former is a
     feedback loop — null is exactly what "Everyone" means. It was observed
@@ -1956,6 +1953,13 @@ somebody pays half now.
   accepted; paying more than is owed, paying somebody who is not owed, or
   paying between two people who are both owed is rejected as `no_such_debt`,
   since each would invent a position the games never created.
+
+  Each row in the panel carries the amount as an editable field, pre-filled
+  with the whole debt: settling outright stays one tap, and paying part of it
+  is a number away. The field is keyed by the pair and cleared once the
+  payment lands, so paying 15 of 40 leaves 25 showing rather than the 15 that
+  was typed. Over-payment is refused before the request, because a refusal
+  arriving after a round trip reads as a fault rather than a correction.
 
 Both write one `chips_settled` event per affected gamer, sharing a settlement
 id, with amounts that cancel — which is what keeps every net summing to zero

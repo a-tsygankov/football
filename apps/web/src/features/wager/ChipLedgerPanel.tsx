@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { LazyMotion, domAnimation, m, useReducedMotion } from 'motion/react'
 import {
   type ChipLedgerResponse,
+  type ChipTransfer,
   DEFAULT_BUY_IN,
   type Gamer,
   type GamerId,
@@ -54,6 +55,12 @@ export function ChipLedgerPanel({
   const [buyerId, setBuyerId] = useState<GamerId | ''>('')
   const [amount, setAmount] = useState(String(DEFAULT_BUY_IN))
   const [error, setError] = useState<string | null>(null)
+  // Part payments, keyed by the pair. Unset means "the whole debt", so the
+  // field shows what is owed until somebody types over it, and a payment
+  // clears its own override — otherwise paying 15 of 40 would leave 15 in a
+  // box that now owes 25.
+  const [partAmounts, setPartAmounts] = useState<Record<string, string>>({})
+  const [settleError, setSettleError] = useState<string | null>(null)
   const reduced = useReducedMotion()
 
   function nameOf(gamerId: string): string {
@@ -78,6 +85,33 @@ export function ChipLedgerPanel({
   // a night's pool an automatic buy-in, so the full ledger lists people who
   // never placed a bet, holding a balance nobody asked for — noise on the one
   // screen meant to say who is up and who is down.
+  const transferKey = (transfer: ChipTransfer): string => `${transfer.from}-${transfer.to}`
+  const amountFor = (transfer: ChipTransfer): string =>
+    partAmounts[transferKey(transfer)] ?? String(transfer.amount)
+
+  async function pay(transfer: ChipTransfer): Promise<void> {
+    const parsed = Number.parseInt(amountFor(transfer).trim(), 10)
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      setSettleError('Pay at least 1 chip.')
+      return
+    }
+    // The worker refuses this too, but a refusal that arrives after a round
+    // trip reads as a fault rather than as a correction.
+    if (parsed > transfer.amount) {
+      setSettleError(
+        `${nameOf(transfer.from)} only owes ${nameOf(transfer.to)} ${transfer.amount}.`,
+      )
+      return
+    }
+    setSettleError(null)
+    await onSettlePayment(transfer.from, transfer.to, parsed)
+    setPartAmounts((prev) => {
+      const next = { ...prev }
+      delete next[transferKey(transfer)]
+      return next
+    })
+  }
+
   const entries = (ledger?.entries ?? []).filter(hasChipActivity)
   const transfers = ledger?.transfers ?? []
   const rise = reduced ? 0 : 8
@@ -145,10 +179,27 @@ export function ChipLedgerPanel({
                     className="text-[13px]"
                   >
                     <span className="flex items-center gap-2">
-                      <span className="grow">
-                        {nameOf(transfer.from)} pays {nameOf(transfer.to)}{' '}
-                        <strong>{transfer.amount}</strong>
+                      <span className="min-w-0 grow truncate">
+                        {nameOf(transfer.from)} pays {nameOf(transfer.to)}
                       </span>
+                      {/* Pre-filled with the whole debt, because settling it
+                          outright is the common case and nobody should have to
+                          type a number they can already read. Editable because
+                          people pay what cash they have. */}
+                      <input
+                        value={amountFor(transfer)}
+                        onChange={(event) =>
+                          setPartAmounts((prev) => ({
+                            ...prev,
+                            [transferKey(transfer)]: event.target.value,
+                          }))
+                        }
+                        inputMode="numeric"
+                        aria-label={`Amount ${nameOf(transfer.from)} is paying ${nameOf(
+                          transfer.to,
+                        )}`}
+                        className="w-14 shrink-0 rounded-md border border-[#bbf7d0] bg-white px-2 py-1 text-right text-[13px] text-foreground"
+                      />
                       {/* Debts get cleared one at a time far more often than
                           all at once, so each row settles on its own. */}
                       <Button
@@ -156,9 +207,7 @@ export function ChipLedgerPanel({
                         variant="outline"
                         size="sm"
                         disabled={busy !== null}
-                        onClick={() =>
-                          void onSettlePayment(transfer.from, transfer.to, transfer.amount)
-                        }
+                        onClick={() => void pay(transfer)}
                       >
                         Paid
                       </Button>
@@ -167,6 +216,7 @@ export function ChipLedgerPanel({
                 ))}
               </ul>
             )}
+            {settleError ? <InlineNotice tone="warn" message={settleError} /> : null}
             {transfers.length > 0 ? (
               <>
                 {/* Records that the money changed hands. Chips are not

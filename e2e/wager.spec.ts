@@ -102,6 +102,19 @@ async function showEveryone(page: Page): Promise<void> {
   await expect(filter).toHaveValue('')
 }
 
+/**
+ * One outstanding debt, read from both halves of its row.
+ *
+ * The amount lives in the payment field rather than the sentence, so checking
+ * the text alone would pass whatever the field said — including nothing.
+ */
+async function expectOwes(page: Page, from: string, to: string, amount: number): Promise<void> {
+  await expect(page.getByText(new RegExp(`${from} pays ${to}`, 'i'))).toBeVisible()
+  await expect(
+    page.getByLabel(new RegExp(`amount ${from} is paying ${to}`, 'i')),
+  ).toHaveValue(String(amount))
+}
+
 async function gotoTab(page: Page, name: RegExp): Promise<void> {
   await page.getByRole('navigation', { name: /main navigation/i }).getByRole('button', { name }).click()
 }
@@ -154,7 +167,7 @@ test.describe('wagering', () => {
     await page.getByRole('button', { name: /^home win$/i }).click()
 
     await gotoTab(page, /^wager$/i)
-    await expect(page.getByText(new RegExp(`${seed.cyName} pays ${seed.annName} 40`, 'i'))).toBeVisible()
+    await expectOwes(page, seed.cyName, seed.annName, 40)
 
     // --- settle that one payment ---
     await page.getByRole('button', { name: /^paid$/i }).click()
@@ -220,9 +233,7 @@ test.describe('wagering', () => {
     // Paying by gamer rather than by row would credit that 30 against *both*
     // of cy's rows and invent chips — which is exactly what this catches.
     await gotoTab(page, /^wager$/i)
-    await expect(
-      page.getByText(new RegExp(`${seed.cyName} pays ${seed.annName} 20`, 'i')),
-    ).toBeVisible()
+    await expectOwes(page, seed.cyName, seed.annName, 20)
   })
 
   test('backing the same outcome again tops the position up rather than opening another', async ({
@@ -290,12 +301,8 @@ test.describe('wagering', () => {
 
     // Pot 90 to ann alone: she is up 50, bob down 30, cy down 20.
     await gotoTab(page, /^wager$/i)
-    await expect(
-      page.getByText(new RegExp(`${seed.bobName} pays ${seed.annName} 30`, 'i')),
-    ).toBeVisible()
-    await expect(
-      page.getByText(new RegExp(`${seed.cyName} pays ${seed.annName} 20`, 'i')),
-    ).toBeVisible()
+    await expectOwes(page, seed.bobName, seed.annName, 30)
+    await expectOwes(page, seed.cyName, seed.annName, 20)
 
     await page.getByRole('button', { name: /^mark all as paid$/i }).click()
     await expect(page.getByText(/nobody owes anybody/i)).toBeVisible()
@@ -327,22 +334,19 @@ test.describe('wagering', () => {
     await placeBet(page, seed.cyName, 'Away', 40)
     await page.getByRole('button', { name: /^home win$/i }).click()
 
-    // Paid over the API rather than clicked: the Paid button always sends the
-    // whole transfer, so a part payment is expressible in the model and in the
-    // API and nowhere in the UI. What is under test here is the client
-    // rendering a partly settled ledger, which nothing else covers.
-    await post(page.request, `/api/rooms/${seed.roomId}/chips/settlements/payment`, {
-      from: seed.cy,
-      to: seed.ann,
-      amount: 15,
-    })
-    await page.reload()
+    // Typed over the pre-filled 40 and paid, which is how somebody settles
+    // part of a debt with the cash they actually have on them.
     await gotoTab(page, /^wager$/i)
+    const amount = page.getByLabel(
+      new RegExp(`amount ${seed.cyName} is paying ${seed.annName}`, 'i'),
+    )
+    await expect(amount).toHaveValue('40')
+    await amount.fill('15')
+    await page.getByRole('button', { name: /^paid$/i }).click()
 
-    // 25 of the 40 still owed, and still pointing the same way.
-    await expect(
-      page.getByText(new RegExp(`${seed.cyName} pays ${seed.annName} 25`, 'i')),
-    ).toBeVisible()
+    // 25 of the 40 still owed, still pointing the same way, and the field has
+    // followed the debt down rather than keeping what was typed.
+    await expectOwes(page, seed.cyName, seed.annName, 25)
 
     // And the 15 that was handed over is on the record, not the 40.
     await showEveryone(page)
