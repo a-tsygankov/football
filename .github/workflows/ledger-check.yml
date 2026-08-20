@@ -1,17 +1,18 @@
 name: Chip ledger health check
 
-# Read-only. Answers two questions against production D1: does the ledger add
-# up, and what does everyone actually hold?
+# Read-only. Folds every room's chip ledger out of production D1 and fails if
+# one does not add up.
 #
-# Chips enter a room only when somebody buys them, and wagering only moves them
-# between gamers. So every gamer's net — winnings minus stakes across settled
-# games — must sum to exactly zero room-wide. A non-zero total means settlement
-# created or destroyed chips, which is the one arithmetic bug in here that
-# would be worth being woken up for.
+# The fold is `roomChipLedger` — the same function the app uses, called by
+# `scripts/ledger-report.ts`. That sharing is the point. This check used to
+# reimplement the fold in SQL and drifted twice in a single day: once when game
+# nights stopped granting chips, once when settlement landed. Each time it
+# reported something untrue about production while looking perfectly healthy,
+# because nothing made a second copy fail when the first one moved.
 #
-# The previous version of this workflow counted pool members who had never been
-# bought in. That question is obsolete: nights no longer buy anyone in, so the
-# answer is now "all of them" and always will be.
+# It also *fails* now rather than only printing. The previous version emitted
+# numbers into a log nobody was reading, so a broken invariant would have
+# scrolled past unnoticed — a check that cannot fail is a check in name only.
 #
 # Manual only: nothing here should run on a push, and it takes no input, so it
 # cannot be turned into an arbitrary-SQL console.
@@ -44,96 +45,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Two invariants, both 0. `wagered_total` catches settlement inventing or
-      # destroying chips. `settled_total` catches a settle-up that credited
-      # somebody without debiting anyone — the same arithmetic, one step later.
-      # `granted` should be 0 since migration 0012; anything else means a night
-      # is handing out chips nobody asked for.
-      - name: Check the ledger balances to zero
+      # Four result sets, in the order the script expects. Only the event types
+      # the ledger folds are fetched — the rest of the log is large and none of
+      # it moves a chip.
+      - name: Read the ledger
         working-directory: worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          pnpm exec wrangler d1 execute fc26 --remote --command "
-            WITH voided AS (
-              SELECT json_extract(payload, '\$.gameId') AS game_id
-              FROM game_events WHERE event_type = 'game_voided'
-            ),
-            wagers AS (
-              SELECT json_extract(w.value, '\$.payout')
-                   - json_extract(w.value, '\$.stake') AS delta
-              FROM game_events e,
-                   json_each(json_extract(e.payload, '\$.wagers')) w
-              WHERE e.event_type = 'game_recorded'
-                AND json_extract(e.payload, '\$.wagers') IS NOT NULL
-                AND json_extract(e.payload, '\$.gameId') NOT IN (SELECT game_id FROM voided)
-            )
-            SELECT
-              (SELECT COALESCE(SUM(delta), 0) FROM wagers) AS wagered_total,
-              (SELECT COALESCE(SUM(json_extract(payload, '\$.amount')), 0)
-               FROM game_events WHERE event_type = 'chips_settled') AS settled_total,
-              (SELECT COUNT(*) FROM game_events
-               WHERE event_type = 'chips_purchased'
-                 AND json_extract(payload, '\$.reason') = 'game_night_buy_in') AS granted,
-              (SELECT COUNT(*) FROM game_events
-               WHERE event_type = 'chips_purchased'
-                 AND json_extract(payload, '\$.reason') = 'manual') AS bought;
-          "
+          pnpm exec wrangler d1 execute fc26 --remote --json --command "
+            SELECT id, name FROM rooms;
+            SELECT id, room_id, event_type, payload, occurred_at FROM game_events
+             WHERE event_type IN ('chips_purchased','chips_settled','game_recorded','game_voided');
+            SELECT id, room_id, name FROM gamers;
+            SELECT room_id, gamer_id, stake FROM bets;
+          " > "$RUNNER_TEMP/ledger.json"
 
-      # The ledger as the Wager page folds it: bought + wagered − settled. The
-      # subtraction is the point — without it this reports a debt the room has
-      # already paid off, and a monitoring tool that disagrees with the app is
-      # worse than none.
-      - name: Show what everyone holds
-        working-directory: worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          pnpm exec wrangler d1 execute fc26 --remote --command "
-            WITH voided AS (
-              SELECT json_extract(payload, '\$.gameId') AS game_id
-              FROM game_events WHERE event_type = 'game_voided'
-            ),
-            bought AS (
-              SELECT json_extract(payload, '\$.gamerId') AS gamer_id,
-                     SUM(json_extract(payload, '\$.amount')) AS amount
-              FROM game_events
-              WHERE event_type = 'chips_purchased'
-              GROUP BY 1
-            ),
-            wagered AS (
-              SELECT json_extract(w.value, '\$.gamerId') AS gamer_id,
-                     SUM(json_extract(w.value, '\$.payout')
-                       - json_extract(w.value, '\$.stake')) AS amount
-              FROM game_events e,
-                   json_each(json_extract(e.payload, '\$.wagers')) w
-              WHERE e.event_type = 'game_recorded'
-                AND json_extract(e.payload, '\$.wagers') IS NOT NULL
-                AND json_extract(e.payload, '\$.gameId') NOT IN (SELECT game_id FROM voided)
-              GROUP BY 1
-            ),
-            settled AS (
-              SELECT json_extract(payload, '\$.gamerId') AS gamer_id,
-                     SUM(json_extract(payload, '\$.amount')) AS amount
-              FROM game_events
-              WHERE event_type = 'chips_settled'
-              GROUP BY 1
-            )
-            SELECT g.name,
-                   COALESCE(b.amount, 0) AS bought,
-                   COALESCE(w.amount, 0) AS wagered,
-                   COALESCE(s.amount, 0) AS settled,
-                   COALESCE(w.amount, 0) - COALESCE(s.amount, 0) AS net,
-                   COALESCE(b.amount, 0) + COALESCE(w.amount, 0)
-                     - COALESCE(s.amount, 0) AS balance
-            FROM gamers g
-            LEFT JOIN bought  b ON b.gamer_id = g.id
-            LEFT JOIN wagered w ON w.gamer_id = g.id
-            LEFT JOIN settled s ON s.gamer_id = g.id
-            WHERE COALESCE(b.amount, 0) <> 0
-               OR COALESCE(w.amount, 0) <> 0
-               OR COALESCE(s.amount, 0) <> 0
-            ORDER BY balance DESC;
-          "
+      # Exits non-zero if any room's wagering fails to cancel, a settlement
+      # credited somebody without debiting anyone, a night is still granting
+      # chips, or a ledger row names a gamer the roster does not have.
+      - name: Check it adds up
+        run: pnpm exec tsx scripts/ledger-report.ts < "$RUNNER_TEMP/ledger.json"

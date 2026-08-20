@@ -1818,10 +1818,10 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 11. **Nothing has been played for real since the reset.** Every part of
     wagering is covered by tests and none of it by a game night. Item 7 is what
     blocks it: somebody has to buy the first chips.
-12. **The health check reimplements the ledger fold in SQL**, and drifted twice
-    in one day because nothing makes it fail when the model moves. A third time
-    and it should be derived from `roomChipLedger` rather than hand-written
-    twice.
+12. ~~The health check reimplements the ledger fold in SQL.~~ **Done** — it
+    folds with `roomChipLedger` via `scripts/ledger-report.ts`, reports per
+    room, and exits non-zero when a ledger does not add up. See
+    [§27 Operational note](#operational-note).
 13. ~~A part payment cannot be made from the UI.~~ **Done** — each debt now
     carries an editable amount, pre-filled with the whole thing, so the common
     case is still one tap and paying part of it is a number away.
@@ -2057,22 +2057,36 @@ convenience, not a permission. Making it real would need per-gamer sessions.
 ### Operational note
 
 `.github/workflows/ledger-check.yml` (manual dispatch, read-only, no inputs)
-checks the **invariant** against production D1: chips only enter by purchase
-and wagering only moves them between gamers, so every gamer's net must sum to
-exactly zero room-wide. A non-zero `net_total` means settlement invented or
-destroyed chips — the one bug in this subsystem worth being woken up for. It
-also reports `granted` (should stay 0) and prints what everyone holds, folded
-the same way the Wager page folds it.
+dumps the chip events from production D1 and pipes them into
+`scripts/ledger-report.ts`, which folds them with **`roomChipLedger` — the same
+function the app uses**.
 
-Worth running after any wagering deploy. Its earlier form asked "is anyone in
-a pool without a buy-in?", which stopped having an answer once nights stopped
-buying anyone in.
+That sharing is the point. The check used to reimplement the fold in SQL and
+drifted twice in a single day: once when game nights stopped granting chips,
+once when settlement landed. Each time it reported something untrue about
+production while looking perfectly healthy, because nothing made a second copy
+fail when the first one moved.
 
-Production D1 is not reachable from a development session — no Cloudflare
-credentials, and the agent proxy refuses `api.cloudflare.com` — so this
-workflow is the only read path. Changes to its SQL should be run against a
-seeded SQLite database first; the queries are written to be extractable from
-the YAML for exactly that reason.
+It **fails** rather than only printing. Four things make it exit non-zero:
+
+- lifetime wagering that does not cancel — settlement invented or destroyed chips
+- settlements that do not cancel — a round credited somebody without debiting anyone
+- any granted chips, which no night has issued since migration 0012
+- a ledger row naming a gamer the roster does not have
+
+Reported per room, because that is what a ledger is. Folding every room into
+one total keeps the arithmetic honest but makes settle-up nonsense — it would
+tell somebody to pay a stranger. The old SQL had that flaw too and nobody
+noticed, because production has one room.
+
+`scripts/` is typechecked by `tsconfig.scripts.json`, wired into CI. It is not
+part of any workspace package, so `pnpm -r typecheck` missed it — and a script
+that imports the ledger, left unchecked, would have relocated the drift rather
+than removed it. Adding it immediately found two faults in the script.
+
+Production D1 is not reachable from a development session, so this workflow is
+the only read path. The fold is unit-tested against fixtures
+(`packages/shared/src/wager/report.test.ts`), including each failure it reports.
 
 ---
 

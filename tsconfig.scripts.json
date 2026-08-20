@@ -1,0 +1,13 @@
+{
+  // Operational scripts. They are not part of any package, so nothing was
+  // typechecking them — and `ledger-report.ts` imports the ledger, which is
+  // exactly the coupling the health check exists to keep honest. Leaving it
+  // unchecked would move the drift rather than remove it.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "lib": ["ES2022"]
+  },
+  "include": ["scripts/**/*.ts"]
+}
