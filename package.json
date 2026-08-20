@@ -2,7 +2,7 @@
   "name": "fc26-picker",
   "version": "0.1.0",
   "private": true,
-  "description": "FC 26 Team Picker — mobile-first companion for picking squads among friends",
+  "description": "FC 26 Team Picker \u2014 mobile-first companion for picking squads among friends",
   "packageManager": "pnpm@9.15.0",
   "engines": {
     "node": ">=20"
@@ -19,11 +19,13 @@
     "dev:web": "pnpm --filter @fc26/web dev",
     "dev:worker": "pnpm --filter @fc26/worker dev",
     "sync:squads": "pnpm --filter @fc26/squad-sync sync",
-    "preview:squads": "pnpm --filter @fc26/squad-sync preview"
+    "preview:squads": "pnpm --filter @fc26/squad-sync preview",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "^22.9.0",
     "typescript": "^5.6.3",
-    "vitest": "^2.1.4",
-    "@types/node": "^22.9.0"
+    "vitest": "^2.1.4"
   }
 }

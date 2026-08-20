@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
+  emptyLedgerEntry,
   type Bet,
   type BetId,
   canBack,
@@ -74,8 +75,14 @@ export function BetsPanel({
 
   // The worker recomputes this from the event log before accepting a bet;
   // showing it here is what stops the refusal being a surprise.
+  // A gamer with no ledger row holds zero, which is not the same as unknown:
+  // treating the absence as unknown skipped the affordability check entirely,
+  // so somebody who had never bought a chip got the worker's refusal instead
+  // of being told to go and buy some.
   const balance: ChipLedgerEntry | undefined =
-    bettorId === '' ? undefined : ledger.find((item) => item.gamerId === bettorId)
+    bettorId === ''
+      ? undefined
+      : (ledger.find((item) => item.gamerId === bettorId) ?? emptyLedgerEntry(bettorId))
   // Keyed by outcome as well as gamer: a hedger holds one position per
   // outcome, and a top-up must find the side actually being backed.
   const existing = betList.find(

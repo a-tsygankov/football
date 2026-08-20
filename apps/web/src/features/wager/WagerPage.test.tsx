@@ -116,7 +116,7 @@ describe('WagerPage money history', () => {
     expect(line).toHaveTextContent('Bob -20')
     expect(line).toHaveTextContent('Cyd -30')
     // Scoped to the list: the panel subtitle also says "paid".
-    expect(within(screen.getByRole('list')).queryByText(/ paid /i)).toBeNull()
+    expect(within(screen.getByRole('list', { name: /chip movements/i })).queryByText(/ paid /i)).toBeNull()
   })
 
   it('says so plainly when no chips have moved', async () => {
@@ -148,7 +148,7 @@ describe('WagerPage money history', () => {
 
     // cy bought nothing, so only the round they paid into survives the filter.
     expect(toggle).toHaveTextContent('1 chip movement')
-    const list = within(screen.getByRole('list'))
+    const list = within(screen.getByRole('list', { name: /chip movements/i }))
     expect(list.getByText(/cyd paid ann 40/i)).toBeInTheDocument()
     expect(list.queryByText(/bought/i)).toBeNull()
   })

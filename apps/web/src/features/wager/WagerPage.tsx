@@ -247,12 +247,15 @@ export function WagerPage({
   viewerId,
   onChangeViewer,
   onLoadHistory,
+  reloadToken = 0,
 }: {
   gamers: ReadonlyArray<Gamer>
   /** Whose ledger to show. Null means everything. */
   viewerId: GamerId | null
   onChangeViewer: (next: GamerId | null) => void
   onLoadHistory: () => Promise<BetHistoryResponse>
+  /** Bumped by the room whenever chips move, to pull the history again. */
+  reloadToken?: number
 }) {
   const [state, setState] = useState<
     | { status: 'loading' }
@@ -283,8 +286,9 @@ export function WagerPage({
     return () => {
       cancelled = true
     }
+    // onLoadHistory is stable via useCallback; the token is the real trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [reloadToken])
 
   const visible = useMemo(
     () => (state.status === 'ready' ? filterBetHistory(state.games, viewerId) : []),
@@ -382,7 +386,10 @@ export function WagerPage({
                   }`}
                 />
                 {moneyOpen ? (
-                  <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 4 }}>
+                  <ul
+                    aria-label="Chip movements"
+                    style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 4 }}
+                  >
                     {money.map((entry) => (
                       <MoneyLine
                         key={
