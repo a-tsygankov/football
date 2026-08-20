@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useState } from 'react'
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react'
 import {
   type AnalysePhotoResponse,
   type Bet,
@@ -144,12 +144,18 @@ export function App() {
 
   // Seed the wager viewer from the remembered bettor, falling back to the
   // first gamer so the page is never empty on a fresh device.
+  //
+  // Once per room, tracked by id. Guarding on `viewerId !== null` instead made
+  // "Everyone" unselectable: null is exactly what Everyone means, so choosing
+  // it re-ran this and put a gamer straight back.
+  const seededViewerFor = useRef<string | null>(null)
   useEffect(() => {
-    if (!bootstrap || viewerId !== null) return
+    if (!bootstrap || seededViewerFor.current === bootstrap.room.id) return
+    seededViewerFor.current = bootstrap.room.id
     const remembered = readLastBettor(bootstrap.room.id)
     const known = bootstrap.gamers.find((g) => g.id === remembered)
     setViewerId((known?.id ?? bootstrap.gamers[0]?.id) ?? null)
-  }, [bootstrap, viewerId])
+  }, [bootstrap])
 
   useEffect(() => {
     if (!bootstrap) {
@@ -234,6 +240,12 @@ export function App() {
     }
   }
 
+  // The Wager page fetches its history once on mount. Buying chips or settling
+  // a debt changes that history, and without a nudge the page keeps showing
+  // what it read before — you settle up and the payment is simply not there.
+  const [historyToken, setHistoryToken] = useState(0)
+  const refreshHistory = useCallback(() => setHistoryToken((n) => n + 1), [])
+
   /**
    * Records that everyone paid up. Sends no amounts — the worker settles for
    * whatever the ledger says, so the button cannot disagree with the figures
@@ -249,6 +261,7 @@ export function App() {
         { method: 'POST' },
       )
       startTransition(() => setLedger(next))
+      refreshHistory()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -274,6 +287,7 @@ export function App() {
         },
       )
       startTransition(() => setLedger(next))
+      refreshHistory()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -295,6 +309,7 @@ export function App() {
         },
       )
       startTransition(() => setLedger(next))
+      refreshHistory()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -1149,6 +1164,7 @@ export function App() {
             viewerId={viewerId}
             onChangeViewer={setViewerId}
             onLoadBetHistory={loadBetHistory}
+            historyToken={historyToken}
             bootstrap={bootstrap}
             busy={busy}
             worker={worker}

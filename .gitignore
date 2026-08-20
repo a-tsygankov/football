@@ -46,3 +46,7 @@ __pycache__/
 
 # Assembled by CI from apps/web/dist + site-root; never committed.
 workers/*/site/
+
+# Playwright output
+/test-results/
+/playwright-report/

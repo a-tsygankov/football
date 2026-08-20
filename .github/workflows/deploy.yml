@@ -89,9 +89,53 @@ jobs:
   # Replaces the old GitHub Pages deploy so the client sits on the same
   # platform as the API. Mirrors the sibling tarot repo's move (PR #27):
   # a Worker with an [assets] directory rather than Cloudflare Pages.
+  # Browser tests against the real stack: a Worker on Miniflare with a local
+  # SQLite D1, and Vite proxying /api to it. No Cloudflare credentials needed,
+  # and nothing here touches production.
+  #
+  # Separate from `ci` because it is the slow one — a browser download and two
+  # servers — and keeping it apart means a unit failure reports in seconds
+  # rather than waiting behind it. Deploys wait for both.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Only chromium: the app is a phone PWA and the suite runs one project.
+      - name: Install browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run end-to-end tests
+        run: pnpm exec playwright test
+
+      - name: Upload traces from failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+
   deploy-client:
     runs-on: ubuntu-latest
-    needs: ci
+    needs: [ci, e2e]
     if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
     steps:
       - name: Checkout
@@ -194,7 +238,7 @@ jobs:
   # ── Deploy worker/ to Cloudflare Workers ──
   deploy-worker:
     runs-on: ubuntu-latest
-    needs: ci
+    needs: [ci, e2e]
     # Skip when the Cloudflare token is missing (e.g. forks, first-time
     # checkout). Once the secret is configured in repo settings this
     # short-circuit becomes a no-op.

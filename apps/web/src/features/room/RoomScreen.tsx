@@ -40,6 +40,7 @@ export function RoomScreen({
   viewerId,
   onChangeViewer,
   onLoadBetHistory,
+  historyToken,
   bootstrap,
   busy,
   chips,
@@ -90,6 +91,7 @@ export function RoomScreen({
   viewerId: GamerId | null
   onChangeViewer: (next: GamerId | null) => void
   onLoadBetHistory: () => Promise<BetHistoryResponse>
+  historyToken: number
   bootstrap: RoomBootstrapResponse
   busy: BusyState
   chips: GameNightChipsResponse | null
@@ -322,6 +324,7 @@ export function RoomScreen({
             viewerId={viewerId}
             onChangeViewer={onChangeViewer}
             onLoadHistory={onLoadBetHistory}
+            reloadToken={historyToken}
           />
         </>
       ) : null}

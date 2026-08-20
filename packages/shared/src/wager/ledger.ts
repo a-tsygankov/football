@@ -74,7 +74,14 @@ export interface ChipLedgerEntry {
   available: number
 }
 
-function entry(gamerId: GamerId): ChipLedgerEntry {
+/**
+ * A standing of nothing.
+ *
+ * Exported because "this gamer has no row yet" and "this gamer holds zero" are
+ * the same fact, and callers that treat the first as *unknown* end up skipping
+ * the checks that depend on it.
+ */
+export function emptyLedgerEntry(gamerId: GamerId): ChipLedgerEntry {
   return {
     gamerId,
     purchased: 0,
@@ -112,7 +119,7 @@ export function roomChipLedger(
   const get = (gamerId: GamerId): ChipLedgerEntry => {
     let found = ledger.get(gamerId)
     if (!found) {
-      found = entry(gamerId)
+      found = emptyLedgerEntry(gamerId)
       ledger.set(gamerId, found)
     }
     return found
@@ -158,7 +165,7 @@ export function ledgerEntryFor(
   ledger: ReadonlyMap<GamerId, ChipLedgerEntry>,
   gamerId: GamerId,
 ): ChipLedgerEntry {
-  return ledger.get(gamerId) ?? entry(gamerId)
+  return ledger.get(gamerId) ?? emptyLedgerEntry(gamerId)
 }
 
 /**
