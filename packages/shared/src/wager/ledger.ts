@@ -68,9 +68,20 @@ export interface ChipLedgerEntry {
   net: number
   /** Stakes riding on games that have not resolved. */
   committed: number
-  /** purchased + net — what they hold, counting nothing still in play. */
+  /**
+   * purchased + net — what they hold, counting nothing still in play.
+   *
+   * Goes negative, and that is not an error state: chips are a tally of who
+   * is up and who is down, not a bankroll that has to be funded first. A
+   * gamer who never bought a chip and lost 20 sits at −20, which is a debt
+   * `settleUp` knows how to collect.
+   */
   balance: number
-  /** balance − committed — what may still be put at risk. */
+  /**
+   * balance − committed — what is not already at risk. May be negative, for
+   * the same reason `balance` may be: it describes a position, not a
+   * permission.
+   */
   available: number
 }
 
@@ -179,17 +190,6 @@ export function ledgerEntryFor(
  */
 export function hasChipActivity(item: ChipLedgerEntry): boolean {
   return item.bought > 0 || item.net !== 0 || item.committed > 0
-}
-
-/**
- * The largest total position a gamer may hold on one game.
- *
- * `available` already subtracts every open stake, this game's included. Adding
- * that back is what lets a position be moved or topped up: those chips are
- * being re-committed, not committed twice.
- */
-export function maxStakeOnGame(entryFor: ChipLedgerEntry, currentStakeOnGame: number): number {
-  return entryFor.available + currentStakeOnGame
 }
 
 /**

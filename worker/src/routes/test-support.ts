@@ -126,9 +126,10 @@ export interface LiveGameSeed {
  *
  * The night buys everyone in for `DEFAULT_BUY_IN` unless a test overrides it.
  * Production nights now grant nothing by default — chips enter a room only
- * when somebody buys them — but almost every test here is about wagering, and
- * a stake needs a stack behind it. Tests that care about the default itself
- * pass `buyIn` explicitly.
+ * when somebody buys them — but a seeded stack keeps the balances in most
+ * tests looking like a room somebody actually plays in. Nothing depends on it:
+ * bets are never refused for want of chips. Tests about credit, or about the
+ * default itself, pass `buyIn` explicitly.
  */
 export async function seedLiveGame(
   app: ReturnType<typeof buildTestApp>,

@@ -81,10 +81,6 @@ export function ChipLedgerPanel({
     void onBuyChips(buyerId, parsed)
   }
 
-  // Only people who actually took part. The room used to hand every gamer in
-  // a night's pool an automatic buy-in, so the full ledger lists people who
-  // never placed a bet, holding a balance nobody asked for — noise on the one
-  // screen meant to say who is up and who is down.
   const transferKey = (transfer: ChipTransfer): string => `${transfer.from}-${transfer.to}`
   const amountFor = (transfer: ChipTransfer): string =>
     partAmounts[transferKey(transfer)] ?? String(transfer.amount)
@@ -112,6 +108,11 @@ export function ChipLedgerPanel({
     })
   }
 
+  // Only people who actually took part. The room used to hand every gamer in
+  // a night's pool an automatic buy-in, so the full ledger lists people who
+  // never placed a bet, holding a balance nobody asked for — noise on the one
+  // screen meant to say who is up and who is down. Anybody in debt is on the
+  // list: a negative net counts as having taken part.
   const entries = (ledger?.entries ?? []).filter(hasChipActivity)
   const transfers = ledger?.transfers ?? []
   const rise = reduced ? 0 : 8
@@ -122,12 +123,13 @@ export function ChipLedgerPanel({
         <CardHeader>
           <CardTitle>Chips</CardTitle>
           <CardDescription>
-            Balances carry between nights. Buy more whenever you run dry.
+            Balances carry between nights. Buying in is optional — bet on credit and
+            settle up after.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           {entries.length === 0 ? (
-            <InlineNotice tone="info" message="Nobody has bought chips in this room yet." />
+            <InlineNotice tone="info" message="Nobody has bet or bought chips in this room yet." />
           ) : (
             <ul aria-label="Chip balances" className="m-0 grid list-none gap-1.5 p-0">
               {entries.map((entry, index) => (
@@ -166,7 +168,7 @@ export function ChipLedgerPanel({
             <strong className="text-sm">Settle up</strong>
             {transfers.length === 0 ? (
               <p className="m-0 text-[13px] text-muted-foreground">
-                Nobody owes anybody — everyone is level on what they bought.
+                Nobody owes anybody — everyone is square.
               </p>
             ) : (
               <ul className="m-0 grid list-none gap-1 p-0">

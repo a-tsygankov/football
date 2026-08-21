@@ -354,9 +354,12 @@ export interface ChipLedgerResponse {
   roomId: RoomId
   /**
    * Richest first, and complete: everyone the room has ever issued or moved a
-   * chip for, night grants included. Bet validation reads balances from here,
-   * so it must not be pre-filtered — `hasChipActivity` is what the Wager page
-   * uses to decide who is worth listing.
+   * chip for, night grants included. Not pre-filtered — the bet form reads a
+   * gamer's standing from here to show it, and `hasChipActivity` is what the
+   * Wager page uses to decide who is worth listing.
+   *
+   * A balance may be negative. Nothing refuses a bet for want of chips, so a
+   * gamer who never bought any and lost is simply in debt.
    */
   entries: ReadonlyArray<ChipLedgerEntry>
   /** What would close the room out, if it stopped now. */

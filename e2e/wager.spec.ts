@@ -130,6 +130,23 @@ async function buyChips(page: Page, gamerName: string, amount: number): Promise<
   ).toBeVisible()
 }
 
+/**
+ * Starts the next 1v1 of the same night and shows it, the way recording a
+ * result and lining up another game does.
+ *
+ * Seeded rather than clicked, for the reason the whole file is: the subject
+ * here is money, and the game-creation form is covered elsewhere.
+ */
+async function startAnotherGame(page: Page, seed: Seed): Promise<void> {
+  await post(page.request, `/api/rooms/${seed.roomId}/game-nights/${seed.nightId}/games`, {
+    allocationMode: 'manual',
+    homeGamerIds: [seed.ann],
+    awayGamerIds: [seed.bob],
+  })
+  await page.reload()
+  await expect(page.getByRole('navigation', { name: /main navigation/i })).toBeVisible()
+}
+
 /** Selects a bettor without placing anything, to read their standing. */
 async function selectBettor(page: Page, gamerName: string): Promise<void> {
   await page.getByLabel(/who's betting/i).selectOption({ label: gamerName })
@@ -184,17 +201,44 @@ test.describe('wagering', () => {
     await expect(history).toContainText(`${seed.cyName} bought 100 chips`)
   })
 
-  test('a gamer with no chips is told to buy some rather than shown a negative', async ({
-    page,
-  }) => {
+  test('a night nobody bought into still says who pays whom', async ({ page }) => {
     const seed = await seedRoom(page.request, test.info().testId)
     await openRoom(page, seed.roomId)
 
-    // Nobody has bought anything, so every stake is unaffordable.
+    // Not one chip bought. This is how the room actually plays: buying in is
+    // optional, and what everybody wants at the end is the debt, not a stack.
     await gotoTab(page, /^game$/i)
-    await placeBet(page, seed.cyName, 'Away', 10)
+    await placeBet(page, seed.annName, 'Home', 25)
+    await placeBet(page, seed.cyName, 'Away', 25)
 
-    await expect(page.getByText(/is out of chips/i)).toBeVisible()
+    await page.getByRole('button', { name: /^home win$/i }).click()
+
+    // Cyd is at −25 and Ann at +25, out of a room that was never funded.
+    await gotoTab(page, /^wager$/i)
+    const balances = page.getByRole('list', { name: /chip balances/i })
+    await expect(balances.getByRole('listitem').filter({ hasText: seed.cyName })).toContainText(
+      '-25',
+    )
+    await expectOwes(page, seed.cyName, seed.annName, 25)
+
+    // Being down does not stop anyone playing the next game — which is the
+    // whole reason the solvency check went away.
+    await startAnotherGame(page, seed)
+    await gotoTab(page, /^game$/i)
+    await selectBettor(page, seed.cyName)
+    // A bare "-25 chips" is true and reads like a fault; the panel says what
+    // it means.
+    await expect(page.getByText(/owes 25 chips/i)).toBeVisible()
+    await placeBet(page, seed.cyName, 'Away', 10)
+    await expect(
+      page.getByRole('listitem').filter({ hasText: `${seed.cyName} — away — 10` }),
+    ).toBeVisible()
+
+    // The debt from the first game is untouched by an unresolved bet on the
+    // second, and paying it clears it.
+    await gotoTab(page, /^wager$/i)
+    await page.getByRole('button', { name: /^paid$/i }).click()
+    await expect(page.getByText(/nobody owes anybody/i)).toBeVisible()
   })
 
   test('a hedge is two positions, costs both stakes, and settles each on its own', async ({
@@ -221,9 +265,9 @@ test.describe('wagering', () => {
     await expect(bets.filter({ hasText: /home/i })).toContainText('20')
     await expect(bets.filter({ hasText: /away/i })).toContainText('30')
 
-    // Covering both sides costs both stakes: 100 held, 50 of it committed.
+    // Covering both sides costs both stakes: 100 held, 50 of it riding.
     await selectBettor(page, seed.cyName)
-    await expect(page.getByText(/100 chips — 50 available/i)).toBeVisible()
+    await expect(page.getByText(/100 chips — 50 in play/i)).toBeVisible()
 
     await page.getByRole('button', { name: /^home win$/i }).click()
 

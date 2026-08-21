@@ -12,7 +12,6 @@ import {
   settlementAmounts,
   settlementForPayment,
   ledgerEntryFor,
-  maxStakeOnGame,
   roomChipLedger,
   settleUp,
 } from './ledger.js'
@@ -179,25 +178,26 @@ describe('roomChipLedger', () => {
   })
 })
 
-describe('maxStakeOnGame', () => {
-  it('lets an existing position be re-committed rather than double-counted', () => {
-    const ledger = roomChipLedger([granted(ann, 100)], [{ gamerId: ann, stake: 100 }])
+describe('betting past the stack', () => {
+  it('carries a negative balance rather than refusing to compute one', () => {
+    // Nothing bought and a game lost: what a room that bets on credit looks
+    // like all the time. Nothing here is a limit — `available` describes a
+    // position, and `settleUp` is what turns it into a debt somebody pays.
+    const ledger = roomChipLedger([settled('g1', [{ gamerId: ann, stake: 20, payout: 0 }])])
     const entry = ledger.get(ann)!
 
-    expect(entry.available).toBe(0)
-    expect(maxStakeOnGame(entry, 100)).toBe(100)
+    expect(entry.balance).toBe(-20)
+    expect(entry.available).toBe(-20)
   })
 
-  it('does not free up chips riding on a different game', () => {
-    const ledger = roomChipLedger(
-      [granted(ann, 100)],
-      [
-        { gamerId: ann, stake: 40 },
-        { gamerId: ann, stake: 30 },
-      ],
-    )
+  it('counts a stake as committed even with nothing behind it', () => {
+    const ledger = roomChipLedger([], [{ gamerId: ann, stake: 60 }])
+    const entry = ledger.get(ann)!
 
-    expect(maxStakeOnGame(ledger.get(ann)!, 40)).toBe(70)
+    // At risk, not lost: the balance only moves when the game resolves.
+    expect(entry.committed).toBe(60)
+    expect(entry.balance).toBe(0)
+    expect(entry.available).toBe(-60)
   })
 })
 

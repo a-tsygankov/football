@@ -15,7 +15,7 @@ port = 8787
 # - MIN_CLIENT_VERSION (semver string)
 # - GIT_SHA (build metadata)
 [vars]
-WORKER_VERSION = "0.1.18"
+WORKER_VERSION = "0.1.19"
 SCHEMA_VERSION = "14"
 MIN_CLIENT_VERSION = "0.1.0"
 
