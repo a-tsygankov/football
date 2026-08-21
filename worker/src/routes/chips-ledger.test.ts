@@ -131,16 +131,15 @@ describe('chip ledger', () => {
     const app = buildTestApp()
     const seed = await seedLiveGame(app)
 
-    // Already all-in on the stack they started with.
+    // Already riding the whole stack they started with.
     await placeBet(app, seed, seed.cy, 'draw', DEFAULT_BUY_IN)
-    expect((await placeBet(app, seed, seed.cy, 'draw', 30)).status).toBe(400)
 
-    expect((await buy(app, seed, seed.cy, 50)).status).toBe(201)
-
-    // Running dry mid-evening is exactly when someone buys in again, so this
+    // Nothing refuses a bet for want of chips, so this is not about lifting a
+    // block — it is that a purchase lands against a live night at all. Topping
+    // up mid-evening is what somebody does to stop the debt growing, and it
     // must not have to wait for the next night.
-    const topUp = await placeBet(app, seed, seed.cy, 'draw', 30)
-    expect(topUp.status).toBe(201)
+    expect((await buy(app, seed, seed.cy, 50)).status).toBe(201)
+    expect((await placeBet(app, seed, seed.cy, 'draw', 30)).status).toBe(201)
 
     const body = await ledger(app, seed.roomId, seed.cookie)
     const cy = body.entries.find((entry) => entry.gamerId === seed.cy)!

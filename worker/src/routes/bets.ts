@@ -21,8 +21,6 @@ import {
   type GameVoidedEvent,
   GamerId,
   lastSettledGameDeltas,
-  ledgerEntryFor,
-  maxStakeOnGame,
   nightChipPositions,
   type PlaceBetRequest,
   moneyHistory,
@@ -158,35 +156,17 @@ betRoutes.post(BETS_PATH, async (c) => {
     return c.json({ error: 'stake_cap_exceeded', max: MAX_STAKE, stake }, 400)
   }
 
-  // Nobody may stake chips they do not have. The ledger is room-wide: chips
-  // bought at any point, plus everything won or lost across every night, minus
-  // whatever is already riding on an unresolved game.
+  // No solvency check, deliberately. Chips are a tally of who is up and who is
+  // down, not a bankroll that has to be funded before anyone may play: this is
+  // a room of people who know each other, and the thing they want at the end
+  // of the night is "who pays whom", not a refusal at the table.
   //
-  // Enforced here and not only in the UI: the client computes the same numbers
-  // to show them, but a stale bootstrap — or a second phone betting for the
-  // same person — would otherwise let the pot exceed what the room actually
-  // bought, and settlement would pay out chips nobody paid for.
-  const events = await c.get('deps').events.listByRoom(roomId)
-  const balance = ledgerEntryFor(roomChipLedger(events, openBets), gamerId)
-
-  // Only *this* position's stake is added back, because only it is being
-  // re-committed rather than committed twice. A hedge on another outcome is
-  // genuinely new money and has to fit inside what is available — covering
-  // both sides costs both stakes, which is the whole risk of doing it.
-  const ceiling = maxStakeOnGame(balance, existing?.stake ?? 0)
-  if (stake > ceiling) {
-    return c.json(
-      {
-        error: 'insufficient_chips',
-        stake,
-        purchased: balance.purchased,
-        balance: balance.balance,
-        committed: balance.committed,
-        available: balance.available,
-      },
-      400,
-    )
-  }
+  // Wagering only moves chips between gamers, so a pot is always covered by
+  // the losers of that same pot however little anybody bought. A gamer who
+  // never bought a chip and loses 20 lands at −20, which is a debt `settleUp`
+  // collects — not an inconsistency in the ledger. `MAX_STAKE` above is the
+  // only ceiling, and it is there for integer precision rather than for
+  // credit.
 
   const now = Date.now()
   const bet: Bet = {

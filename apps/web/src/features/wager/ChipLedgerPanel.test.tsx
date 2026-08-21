@@ -120,7 +120,27 @@ describe('ChipLedgerPanel', () => {
     expect(balances.getByText('100')).toBeInTheDocument()
   })
 
+  it('lists a room that bet on credit and never bought a chip', () => {
+    renderPanel({
+      ledger: {
+        roomId: RoomId('room-1'),
+        // Nothing bought on either side: one game, one winner, one debt. This
+        // is how the room plays when nobody bothers buying in.
+        entries: [entry(ann, 0, 25), entry(bob, 0, -25)],
+        transfers: [{ from: bob, to: ann, amount: 25 }],
+      } as ChipLedgerResponse,
+    })
 
+    const balances = within(screen.getByRole('list', { name: /chip balances/i }))
+    expect(balances.getByText('Ann')).toBeInTheDocument()
+    // A negative balance is a debt, not a reason to leave somebody out —
+    // filtering on "has chips" would drop exactly the person who owes money.
+    const bobRow = balances.getAllByRole('listitem').find((row) => row.textContent?.includes('Bob'))
+    expect(bobRow).toBeDefined()
+    // Both the swing and the balance read −25, because he started from nothing.
+    expect(bobRow).toHaveTextContent('-25')
+    expect(screen.getByText(/bob pays ann/i)).toBeInTheDocument()
+  })
 
   it('settles one payment on its own, naming who paid whom and how much', () => {
     const props = renderPanel({
@@ -317,6 +337,6 @@ describe('ChipLedgerPanel', () => {
   it('renders before the ledger has loaded', () => {
     renderPanel({ ledger: null })
 
-    expect(screen.getByText(/nobody has bought chips/i)).toBeInTheDocument()
+    expect(screen.getByText(/nobody has bet or bought chips/i)).toBeInTheDocument()
   })
 })

@@ -10,7 +10,6 @@ import {
   type Gamer,
   type GamerId,
   type GameResult,
-  maxStakeOnGame,
 } from '@fc26/shared'
 import { Field } from '../../components/Field.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
@@ -73,22 +72,18 @@ export function BetsPanel({
     [gamers, poolGamerIds],
   )
 
-  // The worker recomputes this from the event log before accepting a bet;
-  // showing it here is what stops the refusal being a surprise.
+  // Shown, not enforced. Nothing here refuses a bet — a gamer may back a side
+  // with nothing in hand and land in debt, which is the whole point of a
+  // ledger — but somebody deciding how much to stake wants to know where they
+  // already stand.
+  //
   // A gamer with no ledger row holds zero, which is not the same as unknown:
-  // treating the absence as unknown skipped the affordability check entirely,
-  // so somebody who had never bought a chip got the worker's refusal instead
-  // of being told to go and buy some.
+  // treating the absence as unknown showed no standing at all to exactly the
+  // people most likely to be betting on credit.
   const balance: ChipLedgerEntry | undefined =
     bettorId === ''
       ? undefined
       : (ledger.find((item) => item.gamerId === bettorId) ?? emptyLedgerEntry(bettorId))
-  // Keyed by outcome as well as gamer: a hedger holds one position per
-  // outcome, and a top-up must find the side actually being backed.
-  const existing = betList.find(
-    (item) => item.gamerId === bettorId && item.outcome === outcome,
-  )
-
   function nameOf(gamerId: GamerId): string {
     return gamers.find((gamer) => gamer.id === gamerId)?.name ?? 'Unknown'
   }
@@ -127,22 +122,6 @@ export function BetsPanel({
     }
     if (!canBack(bettorId, currentGame, outcome)) {
       setError(describeIneligibility(bettorId, currentGame, outcome))
-      return
-    }
-    // Mirrors the worker: backing the same outcome adds to that position, so
-    // what has to fit the stack is the total, not what was just typed. A
-    // different outcome is a separate position and pays its own way.
-    const total = existing ? existing.stake + parsed : parsed
-    if (balance && total > maxStakeOnGame(balance, existing?.stake ?? 0)) {
-      setError(
-        // Chips only enter a room by purchase now, so being out of them is an
-        // ordinary state with an obvious remedy — and "has -20 chips
-        // available" is a true sentence that tells nobody what to do.
-        balance.available <= 0
-          ? `${nameOf(bettorId)} is out of chips — buy some on the Wager page.`
-          : `${nameOf(bettorId)} has ${balance.available} chips available` +
-            (existing ? ` on top of the ${existing.stake} already staked.` : '.'),
-      )
       return
     }
     setError(null)
@@ -219,8 +198,12 @@ export function BetsPanel({
 
           {balance ? (
             <div style={{ fontSize: 13, opacity: 0.8 }}>
-              {balance.balance} chips
-              {balance.committed > 0 ? ` — ${balance.available} available` : ''}
+              {/* "-20 chips" is a true sentence that reads like a fault. What
+                  it actually means is a debt, so it says so. */}
+              {balance.balance < 0
+                ? `owes ${-balance.balance} chips`
+                : `${balance.balance} chips`}
+              {balance.committed > 0 ? ` — ${balance.committed} in play` : ''}
               <span style={{ opacity: 0.7 }}> (bought {balance.bought})</span>
             </div>
           ) : null}

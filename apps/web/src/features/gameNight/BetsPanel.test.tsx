@@ -82,8 +82,8 @@ function entry(
   return {
     gamerId,
     purchased,
-    // Bought rather than granted: betting rules only ever read `available`,
-    // and a stack you paid for spends the same as one a night handed you.
+    // Bought rather than granted: only the Wager page's own list tells the
+    // two apart, and nothing about betting does.
     bought: purchased,
     granted: 0,
     wagered: net,
@@ -190,86 +190,57 @@ describe('BetsPanel', () => {
     expect(screen.getByText(/70 chips/i)).toBeInTheDocument()
   })
 
-  it('separates what is left from what is already staked', () => {
+  it('separates what is held from what is already at risk', () => {
     renderPanel({ bets: [bet('b1', cy, 'draw', 40)], ledger: [entry(cy, 100, 0, 40)] })
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
 
-    expect(screen.getByText(/100 chips — 60 available/i)).toBeInTheDocument()
+    // Not "available": nothing here limits the next stake, so a number that
+    // reads as an allowance would be a promise the panel does not keep.
+    expect(screen.getByText(/100 chips — 40 in play/i)).toBeInTheDocument()
   })
 
-  it('refuses a stake bigger than the stack without calling the handler', () => {
+  it('places a stake bigger than the stack', () => {
     const props = renderPanel({ ledger: [entry(cy, 100, -30)] })
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
     fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
-    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '71' } })
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '500' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
 
-    // The worker refuses this too; catching it here saves a round trip and
-    // says whose chips ran out.
-    expect(props.onPlaceBet).not.toHaveBeenCalled()
-    expect(screen.getByText(/cy has 70 chips available/i)).toBeInTheDocument()
+    // Chips are a tally, not a bankroll: losing this puts Cy deep in debt,
+    // which the ledger records and settle-up collects.
+    expect(props.onPlaceBet).toHaveBeenCalledWith({ gamerId: cy, outcome: 'draw', stake: 500 })
   })
 
-  it('measures a top-up against the running total', () => {
-    const props = renderPanel({
-      bets: [bet('b1', cy, 'draw', 60)],
-      ledger: [entry(cy, 100, 0, 60)],
-    })
-    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
-    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
-    // 50 is well under the buy-in, but it lands on top of 60.
-    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '50' } })
-    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
-
-    expect(props.onPlaceBet).not.toHaveBeenCalled()
-    expect(screen.getByText(/40 chips available on top of the 60/i)).toBeInTheDocument()
-  })
-
-  it('refuses a hedge the bettor cannot cover', () => {
+  it('lets a hedger cover a second outcome with nothing left', () => {
     const props = renderPanel({
       bets: [bet('b1', cy, 'draw', 100)],
       ledger: [entry(cy, 100, 0, 100)],
     })
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
     fireEvent.click(screen.getByRole('button', { name: /^home$/i }))
-    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '40' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
 
-    // Covering a second outcome costs a second stake; the first is committed,
-    // not freed. Only topping up the same position re-commits chips.
-    expect(props.onPlaceBet).not.toHaveBeenCalled()
-    expect(screen.getByText(/cy is out of chips/i)).toBeInTheDocument()
+    // Covering a second outcome still costs a second stake — it is just no
+    // longer refused for want of one.
+    expect(props.onPlaceBet).toHaveBeenCalledWith({ gamerId: cy, outcome: 'home', stake: 40 })
   })
 
-  it('points a gamer at the Wager page when their balance has gone negative', () => {
+  it('reads a negative balance out as a debt, and still takes the bet', () => {
     const props = renderPanel({
-      // What losing looks like once nights stop handing out chips: nothing
-      // bought, and a settled game taken off them.
+      // Nothing bought, and a settled game taken off them.
       ledger: [entry(cy, 0, -20)],
     })
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
+
+    // "-20 chips" is true and reads like a fault; what it means is a debt.
+    expect(screen.getByText(/owes 20 chips/i)).toBeInTheDocument()
+
     fireEvent.click(screen.getByRole('button', { name: /^home$/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '5' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
 
-    expect(props.onPlaceBet).not.toHaveBeenCalled()
-    expect(screen.getByText(/cy is out of chips — buy some on the wager page/i)).toBeInTheDocument()
-  })
-
-  it('measures a top-up against the position on that outcome only', () => {
-    const props = renderPanel({
-      // Already hedged: 30 on draw and 20 on home, 50 of the stack left.
-      bets: [bet('b1', cy, 'draw', 30), bet('b2', cy, 'home', 20)],
-      ledger: [entry(cy, 100, 0, 50)],
-    })
-    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
-    fireEvent.click(screen.getByRole('button', { name: /^home$/i }))
-    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '50' } })
-    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
-
-    // The home side becomes 70, which fits: the draw side is untouched and
-    // its 30 stays committed.
-    expect(props.onPlaceBet).toHaveBeenCalledWith({ gamerId: cy, outcome: 'home', stake: 50 })
+    expect(props.onPlaceBet).toHaveBeenCalledWith({ gamerId: cy, outcome: 'home', stake: 5 })
   })
 
   it('shows every position a hedger holds', () => {

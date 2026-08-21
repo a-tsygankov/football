@@ -2,7 +2,58 @@
 
 **Stack:** TypeScript · Vite · React · Cloudflare Workers · D1 · R2
 **Target devices:** Android and iPhone phones (mobile-first PWA)
-**Document version:** 6 (2026-08-20) — supersedes the original `.docx` handoff
+**Document version:** 7 (2026-08-21) — supersedes the original `.docx` handoff
+
+---
+
+## Recent Changes (2026-08-21)
+
+Shipped as PRs #48–#50. Versions at the end of it: `@fc26/web` → `0.1.30`,
+`@fc26/worker` → `0.1.19`, `@fc26/shared` → `0.1.16`, `WORKER_VERSION` →
+`0.1.19`. `SCHEMA_VERSION` is still `14` and `EVENT_SCHEMA_VERSION` still `1`:
+nothing about the data changed, only what the worker will accept.
+
+Three things landed. The health check stopped reimplementing the ledger fold in
+SQL and now shares `roomChipLedger` with the app (§27, *Operational note*). The
+wager viewer's seeding guard turned out to be a real fix and is now pinned by a
+unit test — "Everyone" had never been selectable since #23, and the end-to-end
+suite could not tell. And **a bet no longer has to fit inside a balance.**
+
+### Betting on credit (#50)
+
+Chips are a tally of who is up and who is down, not a bankroll that has to be
+funded before anyone may play. Buying in is optional; a gamer who never bought
+a chip and lost 20 sits at −20, which is a debt `settleUp` collects rather than
+a fault.
+
+What went:
+
+- the solvency check in `POST …/bets`, and with it a whole-room event read on
+  every bet placed
+- the same check in `BetsPanel`, and the "out of chips — buy some on the Wager
+  page" message that went with it
+- `maxStakeOnGame`, which had no other caller
+
+What stayed: `MAX_STAKE` (1,000,000), which is about integer precision in
+`settleWagers` rather than about credit, and is still enforced on the running
+total of a position. Eligibility (`canBack`) is untouched — a player still
+cannot bet against themselves.
+
+The invariant this rests on was already true: wagering only *moves* chips, so a
+pot is covered by the losers of that same pot however little anybody bought.
+Every net still sums to zero, which is what the health check verifies against
+production and what `settleUp` divides into payments.
+
+Wording followed the model. A balance below zero now reads "owes 20 chips"
+rather than "-20 chips", which is true and reads like a fault. The bet form
+shows what is *in play* rather than what is "available", because a number that
+reads as an allowance would be a promise nothing keeps.
+
+Sabotage-checked: restoring the old ceiling fails 9 of the 11 worker tests and
+the credit end-to-end spec. Two survivors were the tell that they were checking
+something else — the sums-to-zero test passes on an empty ledger, and the
+interrupted-game test on an empty book — so both now assert that somebody
+actually bet.
 
 ---
 
@@ -214,6 +265,10 @@ means the first night after this needs a purchase before a book can open. The
 refusal says so: `Cy is out of chips — buy some on the Wager page`, rather
 than the previous and useless `Cy has -20 chips available`.
 
+*(Superseded 2026-08-21: there is no refusal any more. A room holding no chips
+can open a book — everybody starts at zero and the ledger records the debts.
+See [§27 Betting on credit](#betting-on-credit).)*
+
 ### The health check was asking a dead question (#25)
 
 `ledger-check.yml` counted pool members who had never been bought in. Nobody is
@@ -338,6 +393,11 @@ can explain the refusal without a second request.
 The client computes the same numbers to show them, but the **worker enforces**
 — a stale bootstrap, or a second phone betting for the same person, would
 otherwise let the pot exceed what the room actually bought.
+
+*(Superseded 2026-08-21: both checks are gone and `insufficient_chips` is no
+longer returned. Letting the pot exceed what the room bought turned out to be
+harmless — the losers of a pot cover it, not the bank. See
+[§27 Betting on credit](#betting-on-credit).)*
 
 ### Top-up (#14)
 
@@ -1792,18 +1852,18 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 
 ### Open as of 2026-08-19
 
-7. **The room holds no chips.** Migration 0013 reset every balance to zero and
-   nobody has bought any, so no bet can be placed until somebody does. This is
-   the intended end state, not a fault — but the first night after it needs a
-   purchase before a book can open.
-8. **Offline and the update handshake are unverified on a real device.** Both
-   were exercised under `vite preview` only. Installing to the Home Screen is
-   now confirmed on iPhone — it launches standalone with no browser chrome
-   (2026-08-20) — so the manifest, scope and install path are known good. What
-   that does *not* prove is that a launch with no network renders the
-   precached shell, or that a waiting worker raises the banner on iOS. Worth
-   doing before relying on offline at a game night: turn on airplane mode and
-   open the app.
+7. ~~The room holds no chips, so no bet can be placed.~~ **Moot** — betting no
+   longer needs a balance (2026-08-21). Migration 0013's reset stands and
+   nobody has bought anything, which is fine: a room that never buys a chip
+   still records who went up and who went down. See
+   [§27 Betting on credit](#betting-on-credit).
+8. ~~Offline is unverified on a real device.~~ **Not being pursued** — the app
+   is played at home on a stable connection, so offline is not a requirement
+   (owner's call, 2026-08-21). Installing to the Home Screen is confirmed on
+   iPhone: it launches standalone with no browser chrome (2026-08-20), which
+   is what the service worker was actually wanted for. The precache still
+   exists and does no harm; nobody has checked what a launch in airplane mode
+   renders, and nobody needs to.
 9. ~~The sticky `RoomBar` on iOS Safari.~~ **Confirmed** — renders correctly
    both in Safari and in the installed app, on iPhone (2026-08-20).
 10. **The GitHub Pages actions are still on older majors** —
@@ -1816,8 +1876,9 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 ### Open as of 2026-08-20
 
 11. **Nothing has been played for real since the reset.** Every part of
-    wagering is covered by tests and none of it by a game night. Item 7 is what
-    blocks it: somebody has to buy the first chips.
+    wagering is covered by tests and none of it by a game night. Nothing blocks
+    it any more — item 7 is moot, and a night can now open a book with an empty
+    room.
 12. ~~The health check reimplements the ledger fold in SQL.~~ **Done** — it
     folds with `roomChipLedger` via `scripts/ledger-report.ts`, reports per
     room, and exits non-zero when a ledger does not add up. See
@@ -1831,6 +1892,13 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
     was a real fix and "Everyone" had never been selectable. The end-to-end
     suite could not tell: it asserted on the history list, and whichever gamer
     the seeding snapped back to had rows of their own.
+
+### Open as of 2026-08-21
+
+15. **Nobody has been told the rules changed.** A gamer who remembers being
+    refused for want of chips has no reason to try again, and the panel says
+    "bet on credit and settle up after" only where somebody buys chips. Worth a
+    sentence at the table rather than a code change.
 
 ---
 
@@ -1885,6 +1953,11 @@ balance   = purchased + net
 available = balance − committed
 ```
 
+`balance` and `available` may both be **negative**, and that is an ordinary
+state rather than an error: nothing refuses a bet for want of chips. A negative
+balance is a debt.
+
+
 `bought` and `granted` are kept apart because a balance made of grants is not
 the same claim as one somebody paid for. `hasChipActivity(entry)` — `bought >
 0 || net !== 0 || committed > 0` — is what the Wager page lists on. Buying
@@ -1919,6 +1992,25 @@ and re-adding cannot mint a second stack.
 
 This is the whole reason a balance means something: **what this person put in,
 plus what they won.** Nothing else can move it.
+
+Buying in is **optional**. A room that never buys a chip still works: everybody
+starts at zero and the ledger records who went up and who went down. Buying
+matters only in that a stack absorbs losses — the debt is the same either way.
+
+### Betting on credit
+
+**Nothing refuses a bet for want of chips.** This is a room of people who know
+each other, and what they want at the end of the night is who pays whom, not a
+refusal at the table.
+
+The invariant that makes it safe was already true: wagering only *moves* chips
+between gamers, so a pot is covered by the losers of that same pot however
+little anybody bought. Nets sum to zero whatever the balances are.
+
+`MAX_STAKE` is the only ceiling left, and it is about integer precision rather
+than credit. There is deliberately no credit limit and no warning threshold: a
+limit that nobody agreed on would refuse a real bet at a real table, which is
+the failure this removed.
 
 ### The two transient tables
 
@@ -1961,8 +2053,8 @@ One position per `(game, gamer, outcome)`:
 | Different outcome | A second position. This is a hedge |
 | Moving a position | Remove, then place — which is what it honestly costs |
 
-Only the position being topped up has its stake added back when checking
-`available` (`maxStakeOnGame`). Covering both sides costs both stakes.
+Covering both sides costs both stakes — the first is committed, not freed — and
+that is now a fact about exposure rather than a limit on what may be placed.
 
 Participants may only back their own side (`canBack`), so a player cannot take
 money against themselves and cannot hedge. Non-participants may back anything.
