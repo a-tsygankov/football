@@ -145,9 +145,14 @@ export function App() {
   // Seed the wager viewer from the remembered bettor, falling back to the
   // first gamer so the page is never empty on a fresh device.
   //
-  // Once per room, tracked by id. Guarding on `viewerId !== null` instead made
-  // "Everyone" unselectable: null is exactly what Everyone means, so choosing
-  // it re-ran this and put a gamer straight back.
+  // Once per room, tracked by id. Guarding on `viewerId !== null` instead is a
+  // feedback loop that makes "Everyone" unselectable: null is exactly what
+  // Everyone means, so choosing it re-ran this and put a gamer straight back.
+  //
+  // Pinned by a unit test rather than end to end. The browser test could not
+  // tell the two apart — it asserted on the history list, and whichever gamer
+  // the seeding snapped back to had rows of their own, so the page looked
+  // right either way.
   const seededViewerFor = useRef<string | null>(null)
   useEffect(() => {
     if (!bootstrap || seededViewerFor.current === bootstrap.room.id) return

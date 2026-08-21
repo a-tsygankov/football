@@ -1825,12 +1825,12 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 13. ~~A part payment cannot be made from the UI.~~ **Done** — each debt now
     carries an editable amount, pre-filled with the whole thing, so the common
     case is still one tap and paying part of it is a number away.
-14. **The wager viewer's seeding guard is unverified.** It moved from guarding
-    on `viewerId !== null` to a ref, on the reasoning that the former is a
-    feedback loop — null is exactly what "Everyone" means. It was observed
-    putting a gamer back into the select, but only in combination with other
-    renders: reverting it alone leaves the suite green. Either construct a case
-    that pins it or revert it; an unverified change is worse than either.
+14. ~~The wager viewer's seeding guard is unverified.~~ **Pinned** — a unit
+    test in `App.test.tsx` selects Everyone and asserts the value sticks.
+    Reverting the guard fails it with `expected 'g1' to be ''`, so the change
+    was a real fix and "Everyone" had never been selectable. The end-to-end
+    suite could not tell: it asserted on the history list, and whichever gamer
+    the seeding snapped back to had rows of their own.
 
 ---
 
@@ -2232,6 +2232,10 @@ The app is then pointed at it by writing `fc26:last-room-id` into
   the "Everyone" filter asserted on the list contents and passed with the fix
   reverted, because whichever gamer it snapped back to still had rows of their
   own. Asserting the select's value is what discriminates.
+- **Reach for the smaller tier when a browser test cannot decide.** That same
+  filter went unpinned for a day because the end-to-end run was too coarse to
+  separate the two behaviours, which left a real fix looking unjustified. A
+  unit test controlling the render directly settled it in one attempt.
 - **Sabotage it.** Break the behaviour, watch the test fail, restore. Two of
   the three fixes shipped with the suite are pinned that way; the third
   survived its own sabotage and is recorded as unverified rather than claimed.
