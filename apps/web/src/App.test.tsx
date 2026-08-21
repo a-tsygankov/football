@@ -2256,4 +2256,73 @@ describe('App shell', () => {
     expect(screen.queryByRole('button', { name: /reload to update/i })).toBeNull()
   })
 
+
+  it('lets the wager filter be set to Everyone, and keeps it there', async () => {
+    // The viewer is seeded once per room so the page is never empty. Guarding
+    // that on `viewerId !== null` instead of on the room makes a feedback
+    // loop: null is exactly what Everyone means, so choosing it re-runs the
+    // seeding and puts a gamer straight back.
+    localStorage.setItem('fc26:last-room-id', 'room-w')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input) => {
+        const url = String(input)
+        const scoreboardRoomId = roomIdFromScoreboardUrl(url)
+        if (scoreboardRoomId) return emptyScoreboardResponse(scoreboardRoomId)
+        if (url.endsWith('/api/version')) return versionResponse()
+        if (url.endsWith('/api/rooms/room-w/chips-ledger')) {
+          return new Response(JSON.stringify({ roomId: 'room-w', entries: [], transfers: [] }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        }
+        if (url.includes('/api/rooms/room-w/bet-history')) {
+          return new Response(JSON.stringify({ roomId: 'room-w', games: [], money: [] }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        }
+        if (url.endsWith('/api/rooms/room-w/bootstrap')) {
+          return new Response(
+            JSON.stringify({
+              room: {
+                id: 'room-w',
+                name: 'Wager Room',
+                avatarUrl: null,
+                hasPin: false,
+                defaultSelectionStrategy: 'uniform-random',
+                createdAt: 1000,
+                updatedAt: 1000,
+              },
+              gamers: [
+                { id: 'g1', roomId: 'room-w', name: 'Alice', rating: 3, active: true, avatarUrl: null, createdAt: 1000, updatedAt: 1000 },
+                { id: 'g2', roomId: 'room-w', name: 'Bella', rating: 3, active: true, avatarUrl: null, createdAt: 1000, updatedAt: 1000 },
+              ],
+              activeGameNight: null,
+              activeGameNightGamers: [],
+              currentGame: null,
+              session: { roomId: 'room-w', expiresAt: Date.now() + 10_000 },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      }),
+    )
+
+    startAt('wager')
+    render(<App />)
+
+    const filter = await screen.findByLabelText(/show history for/i)
+    // Seeded, so the page opens on somebody rather than empty.
+    await waitFor(() => expect((filter as HTMLSelectElement).value).not.toBe(''))
+
+    fireEvent.change(filter, { target: { value: '' } })
+
+    // And it stays. Asserting the value rather than the list below it is what
+    // discriminates: whichever gamer it would snap back to has rows of their
+    // own, so the list looks plausible either way.
+    await waitFor(() => expect((filter as HTMLSelectElement).value).toBe(''))
+    expect((filter as HTMLSelectElement).value).toBe('')
+  })
 })
