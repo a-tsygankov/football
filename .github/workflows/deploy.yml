@@ -243,17 +243,31 @@ jobs:
             exit 1
           fi
 
+      # The three Pages actions, on their current majors. configure-pages and
+      # deploy-pages declare `runs.using: node24` (checked at the tag, not
+      # inferred from the version); upload-pages-artifact is a composite that
+      # now wraps upload-artifact v7.
+      #
+      # They are bumped together deliberately. deploy-pages reads what
+      # upload-pages-artifact wrote, and the last time the artifact API changed
+      # generation it was the mismatched pair that broke, not either action on
+      # its own. If this job ever fails on a missing artifact, the fix is to
+      # pair upload-pages-artifact with the deploy-pages that shipped alongside
+      # it rather than to bump one further.
+      #
+      # Nothing here reads their outputs except `page_url` below, and no input
+      # this repo passes changed meaning.
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: build/redirect
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   # ── Deploy worker/ to Cloudflare Workers ──
   deploy-worker:

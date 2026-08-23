@@ -1897,12 +1897,14 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
    renders, and nobody needs to.
 9. ~~The sticky `RoomBar` on iOS Safari.~~ **Confirmed** — renders correctly
    both in Safari and in the installed app, on iPhone (2026-08-20).
-10. **The GitHub Pages actions are still on older majors** —
-    `actions/configure-pages@v5`, `actions/upload-pages-artifact@v3`,
-    `actions/deploy-pages@v4`. They were not named in the Node 20 deprecation
-    warning, so they are not urgent, but they are the remaining stale pins in
-    `deploy.yml`. The three that *were* named — checkout, setup-node and
-    pnpm/action-setup — now run on `node24`.
+10. ~~The GitHub Pages actions are still on older majors.~~ **Done** —
+    `configure-pages@v6`, `upload-pages-artifact@v5`, `deploy-pages@v5`
+    (2026-08-23). The two JavaScript actions were checked at the tag for
+    `runs.using: node24` rather than assumed from the version; the third is a
+    composite and now wraps `upload-artifact@v7`. All three moved together on
+    purpose: `deploy-pages` reads what `upload-pages-artifact` wrote, and the
+    last time the artifact API changed generation it was the mismatched pair
+    that broke. `deploy.yml` now has no stale action pins.
 
 ### Open as of 2026-08-20
 
