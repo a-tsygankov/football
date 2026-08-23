@@ -122,6 +122,13 @@ describe('App shell', () => {
     expect(screen.getByRole('heading', { name: /Join room/i })).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: /main navigation/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /FC26 Team Picker/i })).toBeInTheDocument()
+
+    // The way into the console is not advertised. It used to be spelled out
+    // in a line under every page, which made a hidden shortcut a documented
+    // feature — including to whoever picks the phone up. The logo's label is
+    // the app's name and says nothing about what tapping it three times does.
+    expect(screen.queryByText(/triple-tap/i)).toBeNull()
+    expect(screen.queryByText(/debug console/i)).toBeNull()
   })
 
   it('creates a room and renders the roster screen', async () => {
