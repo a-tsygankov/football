@@ -10,7 +10,7 @@
 
 Shipped as PRs #48–#53 — #48 landed late on the 20th and is recorded here
 because that day's entry was already written. Versions at the end of it:
-`@fc26/web` → `0.1.31`, `@fc26/worker` → `0.1.19`, `@fc26/shared` → `0.1.17`,
+`@fc26/web` → `0.1.32`, `@fc26/worker` → `0.1.19`, `@fc26/shared` → `0.1.17`,
 `WORKER_VERSION` → `0.1.19`. `SCHEMA_VERSION` is still `14` and `EVENT_SCHEMA_VERSION` still `1`:
 nothing about the data changed, only what the worker will accept.
 
@@ -1603,6 +1603,17 @@ async function request(path: string, opts: RequestInit) {
 
 **Gesture:** triple-tap on the app logo toggles the Console.
 
+**Undocumented on purpose.** A line under every page used to spell the gesture
+out, which made a hidden shortcut a documented feature — to whoever picks the
+phone up as much as to the owner. It is gone; the logo's accessible name is the
+app's name and says nothing about what tapping it three times does. A test in
+`App.test.tsx` asserts no page mentions "triple-tap" or "debug console", because
+a helpful line like that is exactly the kind of thing that comes back.
+
+Obscurity is not protection, and this is not pretending to be: anybody who taps
+the logo three times is in, and the Console also unlocks the Settings panel with
+its destructive controls. An admin secret is the intended guard (open item 16).
+
 **Logo placement:** in the **bottom nav bar** (not the header) so it's reliably thumb-reachable on phones and not hidden by iOS notches. Small fixed-position badge style.
 
 **Layout:**
@@ -1869,7 +1880,7 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 | **Chips** | A tally of who is up and who is down, not a bankroll — a bet is never refused for want of chips, and buying in is optional | Wagering only moves chips, so a pot is covered by its own losers; what the room wants at the end of the night is who pays whom, not a refusal at the table |
 | **Gamer selection** | Strategy pattern in `@fc26/shared/selection/`, pure + deterministic, runs client-side | User will iterate frequently; isolation is critical |
 | **Logging** | Client ring buffer + Worker logs piped via `x-fc26-logs` response header, overflow via `GET /api/logs?correlationId=...` | User requirement; simple, no SSE |
-| **Console UI** | Triple-tap on logo (in bottom nav for thumb reach) → slide-up panel | User requirement |
+| **Console UI** | Triple-tap on logo (in bottom nav for thumb reach) → slide-up panel, unadvertised in the UI | User requirement; an admin secret is to follow |
 | **Time storage** | UTC millis as `INTEGER` in D1, Worker never formats, client renders with `Intl.DateTimeFormat` | No locale leakage, cache-friendly |
 | **Versioning** | Three axes (client, worker, schema), compatibility check on boot + startup, manual migrations | Prevents deploy/migrate race footguns |
 | Squad source | xAranaktu tool → GitHub Release → daily Cron → R2 (versioned, 12 retained) | Official EA data, automated, supports Update Changes mode |
@@ -1941,6 +1952,13 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
     refused for want of chips has no reason to try again, and the panel says
     "bet on credit and settle up after" only where somebody buys chips. Worth a
     sentence at the table rather than a code change.
+### Open as of 2026-08-23
+
+16. **The Console is hidden but not protected.** Removing the on-screen hint
+    stops it being advertised; it does not stop anybody who knows
+    the gesture, and the Console also unlocks the Settings panel with its
+    destructive controls. The owner's plan is an admin secret in front of it.
+    Until then, treat "hidden" as tidiness rather than as a permission boundary.
 
 ---
 

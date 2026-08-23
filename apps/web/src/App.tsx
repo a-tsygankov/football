@@ -1230,9 +1230,6 @@ export function App() {
           />
         )}
 
-        <p style={{ marginTop: 26, fontSize: 13, opacity: 0.65 }}>
-          Triple-tap the FC26 logo in the bottom nav to open the debug console.
-        </p>
       </main>
 
       <BottomNav route={route} onNavigate={navigate} />
