@@ -8,9 +8,9 @@
 
 ## Recent Changes (2026-08-21)
 
-Shipped as PRs #48–#50 — #48 landed late on the 20th and is recorded here
+Shipped as PRs #48–#53 — #48 landed late on the 20th and is recorded here
 because that day's entry was already written. Versions at the end of it:
-`@fc26/web` → `0.1.30`, `@fc26/worker` → `0.1.19`, `@fc26/shared` → `0.1.16`,
+`@fc26/web` → `0.1.31`, `@fc26/worker` → `0.1.19`, `@fc26/shared` → `0.1.17`,
 `WORKER_VERSION` → `0.1.19`. `SCHEMA_VERSION` is still `14` and `EVENT_SCHEMA_VERSION` still `1`:
 nothing about the data changed, only what the worker will accept.
 
@@ -56,11 +56,20 @@ something else — the sums-to-zero test passes on an empty ledger, and the
 interrupted-game test on an empty book — so both now assert that somebody
 actually bet.
 
+### The stake confirmation (#53)
+
+The credit change removed the only guard against a fat-fingered stake, so the
+bet form now asks once when a stake is ten times what the game has been played
+for — see [§27 The one question the bet form asks](#the-one-question-the-bet-form-asks).
+It asks; it never refuses, and the worker is not involved.
+
 ### Tests
 
-571 unit (257 shared, 174 worker, 140 web) plus 7 end-to-end.
+581 unit (261 shared, 174 worker, 146 web) plus 7 end-to-end.
 
-`worker/src/routes/bets-balance.test.ts` became `bets-credit.test.ts`: the
+Removing the confirmation fails four of the six new component tests; the two
+that survive are the ones asserting it stays quiet, which is the other half of
+the rule. `worker/src/routes/bets-balance.test.ts` became `bets-credit.test.ts`: the
 subject changed from what gets refused to what the ledger does when there is no
 bankroll. The end-to-end suite is still seven specs — the one that checked the
 refusal now plays a night nobody bought into, from the empty room to the
@@ -2041,9 +2050,30 @@ between gamers, so a pot is covered by the losers of that same pot however
 little anybody bought. Nets sum to zero whatever the balances are.
 
 `MAX_STAKE` is the only ceiling left, and it is about integer precision rather
-than credit. There is deliberately no credit limit and no warning threshold: a
-limit that nobody agreed on would refuse a real bet at a real table, which is
-the failure this removed.
+than credit. There is deliberately no credit limit: a limit nobody agreed on
+would refuse a real bet at a real table, which is the failure this removed.
+
+### The one question the bet form asks
+
+Removing the balance ceiling also removed the only thing that ever caught a
+mistyped stake — 5000 where 500 was meant is now perfectly placeable, and a bet
+is settled money the moment the game is recorded.
+
+So `isOutsizedStake(stake, bookStakes)` decides whether a stake is worth a
+second look, and the form asks once: the notice names the number and the button
+becomes "Place 5000 chips anyway". The confirmation is keyed to gamer, outcome
+*and* amount, so it cannot carry to a different bet.
+
+The reference is the biggest stake already on this game's book, or
+`DEFAULT_BUY_IN` when nothing is on it yet, times `OUTSIZED_STAKE_FACTOR` (10 —
+the mistake being caught is an extra digit). A room playing for hundreds raises
+its own bar as soon as somebody bets, so it is never nagged for playing the way
+it plays.
+
+**Asked, never refused, and deliberately client-side.** A confirmation is
+something only a person can give; a worker that refused the second attempt
+would be the balance ceiling again under another name. Nothing server-side
+knows or cares that this rule exists.
 
 ### The two transient tables
 

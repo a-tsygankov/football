@@ -10,6 +10,7 @@ import {
   type Gamer,
   type GamerId,
   type GameResult,
+  isOutsizedStake,
 } from '@fc26/shared'
 import { Field } from '../../components/Field.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
@@ -48,6 +49,10 @@ export function BetsPanel({
   const [outcome, setOutcome] = useState<GameResult>('home')
   const [stake, setStake] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // The exact bet a confirmation was given for, as "who|outcome|stake".
+  // Keyed on all three because a confirmation is for one bet and not for a
+  // number: changing any of them is a different bet and gets asked again.
+  const [confirmed, setConfirmed] = useState<string | null>(null)
 
   const locked = currentGame.betsLockedAt !== null
 
@@ -110,6 +115,14 @@ export function BetsPanel({
       ? null
       : describeIneligibility(bettorId, currentGame, blockedOutcome.id)
 
+  /** Identifies one bet, so a confirmation cannot carry to another. */
+  function key(amount: number): string {
+    return `${bettorId}|${outcome}|${amount}`
+  }
+
+  const awaitingConfirmation =
+    confirmed !== null && confirmed === key(Number.parseInt(stake.trim(), 10))
+
   function submit(): void {
     if (bettorId === '') {
       setError('Pick who is betting.')
@@ -124,7 +137,19 @@ export function BetsPanel({
       setError(describeIneligibility(bettorId, currentGame, outcome))
       return
     }
+    // Asked, never refused. Removing the balance ceiling took with it the only
+    // thing that ever caught a mistyped 5000, and a bet is settled money the
+    // moment the game is recorded — so an extra digit is worth one question
+    // and no more.
+    if (isOutsizedStake(parsed, betList.map((item) => item.stake)) && confirmed !== key(parsed)) {
+      setConfirmed(key(parsed))
+      setError(
+        `${parsed} chips is far more than this game has been played for. Place it anyway?`,
+      )
+      return
+    }
     setError(null)
+    setConfirmed(null)
     onPlaceBet({ gamerId: bettorId, outcome, stake: parsed })
     setStake('')
   }
@@ -247,8 +272,11 @@ export function BetsPanel({
 
           {error ? <InlineNotice tone="warn" message={error} /> : null}
 
+          {/* The label changes rather than a second button appearing, so the
+              confirmation is on the control the thumb is already on — and a
+              screen reader hears the bet it is about to place. */}
           <button type="button" disabled={busy !== null} onClick={submit} style={primaryButtonStyle}>
-            Place bet
+            {awaitingConfirmation ? `Place ${stake.trim()} chips anyway` : 'Place bet'}
           </button>
           <button
             type="button"

@@ -211,6 +211,81 @@ describe('BetsPanel', () => {
     expect(props.onPlaceBet).toHaveBeenCalledWith({ gamerId: cy, outcome: 'draw', stake: 500 })
   })
 
+  it('places an ordinary stake on the first click', () => {
+    const props = renderPanel()
+    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
+    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '900' } })
+    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
+
+    // Just under ten times the buy-in. Asking here would train everyone to
+    // tap through the question, which is the failure mode of a warning.
+    expect(props.onPlaceBet).toHaveBeenCalledWith({ gamerId: cy, outcome: 'draw', stake: 900 })
+  })
+
+  it('asks before placing a stake far larger than the game has seen', () => {
+    const props = renderPanel()
+    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
+    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '5000' } })
+    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
+
+    // Nothing is refused — it is asked. The number is spelled out because the
+    // mistake being caught is a misread one.
+    expect(props.onPlaceBet).not.toHaveBeenCalled()
+    expect(screen.getByText(/5000 chips is far more than this game has been played for/i))
+      .toBeInTheDocument()
+  })
+
+  it('places it on the second click', () => {
+    const props = renderPanel()
+    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
+    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '5000' } })
+    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
+    fireEvent.click(screen.getByRole('button', { name: /place 5000 chips anyway/i }))
+
+    expect(props.onPlaceBet).toHaveBeenCalledWith({ gamerId: cy, outcome: 'draw', stake: 5000 })
+  })
+
+  it('asks again when the stake is corrected to another large one', () => {
+    const props = renderPanel()
+    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
+    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '5000' } })
+    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '50000' } })
+    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
+
+    // A confirmation is for one bet, not for a mood.
+    expect(props.onPlaceBet).not.toHaveBeenCalled()
+    expect(screen.getByText(/50000 chips is far more/i)).toBeInTheDocument()
+  })
+
+  it('asks again when the same number is aimed at another outcome', () => {
+    const props = renderPanel()
+    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
+    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '5000' } })
+    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^home$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
+
+    expect(props.onPlaceBet).not.toHaveBeenCalled()
+  })
+
+  it('does not ask in a room that plays for that much already', () => {
+    const props = renderPanel({ bets: [bet('b1', ann, 'home', 900)] })
+    fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
+    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '5000' } })
+    fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
+
+    // The book itself raises the bar: 5000 next to a 900 is a big bet, not a
+    // typo, and a room that plays this way must not be nagged for it.
+    expect(props.onPlaceBet).toHaveBeenCalledWith({ gamerId: cy, outcome: 'draw', stake: 5000 })
+  })
+
   it('lets a hedger cover a second outcome with nothing left', () => {
     const props = renderPanel({
       bets: [bet('b1', cy, 'draw', 100)],

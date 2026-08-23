@@ -8,10 +8,14 @@ import type {
 } from '../types/events.js'
 import { EventId, GameId, GameNightId, GamerId, RoomId } from '../types/ids.js'
 import {
+  DEFAULT_BUY_IN,
   hasChipActivity,
   settlementAmounts,
   settlementForPayment,
   ledgerEntryFor,
+  isOutsizedStake,
+  OUTSIZED_STAKE_FACTOR,
+  outsizedStakeThreshold,
   roomChipLedger,
   settleUp,
 } from './ledger.js'
@@ -198,6 +202,34 @@ describe('betting past the stack', () => {
     expect(entry.committed).toBe(60)
     expect(entry.balance).toBe(0)
     expect(entry.available).toBe(-60)
+  })
+})
+
+describe('outsized stakes', () => {
+  it('measures against the standard buy-in when the book is empty', () => {
+    // The first bet of a game has nothing to be compared with, and it is
+    // exactly when a mistyped stake has least to give it away.
+    expect(outsizedStakeThreshold([])).toBe(DEFAULT_BUY_IN * OUTSIZED_STAKE_FACTOR)
+    expect(isOutsizedStake(999, [])).toBe(false)
+    expect(isOutsizedStake(1000, [])).toBe(true)
+  })
+
+  it('measures against the biggest stake once there is one', () => {
+    // A room playing for 500 is not questioned for playing the way it plays.
+    expect(isOutsizedStake(4000, [500, 200])).toBe(false)
+    expect(isOutsizedStake(5000, [500, 200])).toBe(true)
+  })
+
+  it('never drops below the buy-in as a reference', () => {
+    // Two 5-chip bets must not make 50 look reckless.
+    expect(isOutsizedStake(50, [5, 5])).toBe(false)
+    expect(outsizedStakeThreshold([5, 5])).toBe(DEFAULT_BUY_IN * OUTSIZED_STAKE_FACTOR)
+  })
+
+  it('catches the extra digit, which is the whole point', () => {
+    // 100 was meant; 1000 was typed.
+    expect(isOutsizedStake(1000, [100, 100])).toBe(true)
+    expect(isOutsizedStake(100, [100, 100])).toBe(false)
   })
 })
 

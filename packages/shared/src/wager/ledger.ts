@@ -193,6 +193,44 @@ export function hasChipActivity(item: ChipLedgerEntry): boolean {
 }
 
 /**
+ * How many times the room's usual stake a bet has to be before the app asks
+ * whether it was meant.
+ *
+ * Ten, because the mistake this catches is an extra digit. Anything smaller
+ * would question ordinary swings in how boldly people bet.
+ */
+export const OUTSIZED_STAKE_FACTOR = 10
+
+/**
+ * The stake at or above which a bet is worth a second look.
+ *
+ * The reference is the biggest stake already on this game's book, or the
+ * standard buy-in when nothing is on it yet — a room that plays for hundreds
+ * raises its own bar as soon as somebody bets, so it is not nagged for playing
+ * the way it plays.
+ */
+export function outsizedStakeThreshold(bookStakes: ReadonlyArray<number>): number {
+  const largest = bookStakes.reduce((max, stake) => Math.max(max, stake), 0)
+  return Math.max(largest, DEFAULT_BUY_IN) * OUTSIZED_STAKE_FACTOR
+}
+
+/**
+ * Is this stake far larger than the room has been betting?
+ *
+ * A question, not a rule. Nothing refuses a bet for being large — the whole
+ * point of betting on credit is that the app does not decide what somebody can
+ * afford — but removing the balance ceiling also removed the only thing that
+ * ever caught a mistyped 5000. So the app asks once and places it either way.
+ *
+ * Deliberately not enforced in the worker: a confirmation is something only a
+ * person can give, and a worker that refused the second attempt would be the
+ * ceiling again under another name.
+ */
+export function isOutsizedStake(stake: number, bookStakes: ReadonlyArray<number>): boolean {
+  return stake >= outsizedStakeThreshold(bookStakes)
+}
+
+/**
  * What each gamer's `chips_settled` amount must be to close the room out.
  *
  * Exactly their outstanding position, so folding these back in leaves every
