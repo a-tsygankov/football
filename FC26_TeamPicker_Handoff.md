@@ -8,9 +8,10 @@
 
 ## Recent Changes (2026-08-21)
 
-Shipped as PRs #48–#50. Versions at the end of it: `@fc26/web` → `0.1.30`,
-`@fc26/worker` → `0.1.19`, `@fc26/shared` → `0.1.16`, `WORKER_VERSION` →
-`0.1.19`. `SCHEMA_VERSION` is still `14` and `EVENT_SCHEMA_VERSION` still `1`:
+Shipped as PRs #48–#50 — #48 landed late on the 20th and is recorded here
+because that day's entry was already written. Versions at the end of it:
+`@fc26/web` → `0.1.30`, `@fc26/worker` → `0.1.19`, `@fc26/shared` → `0.1.16`,
+`WORKER_VERSION` → `0.1.19`. `SCHEMA_VERSION` is still `14` and `EVENT_SCHEMA_VERSION` still `1`:
 nothing about the data changed, only what the worker will accept.
 
 Three things landed. The health check stopped reimplementing the ledger fold in
@@ -54,6 +55,16 @@ the credit end-to-end spec. Two survivors were the tell that they were checking
 something else — the sums-to-zero test passes on an empty ledger, and the
 interrupted-game test on an empty book — so both now assert that somebody
 actually bet.
+
+### Tests
+
+571 unit (257 shared, 174 worker, 140 web) plus 7 end-to-end.
+
+`worker/src/routes/bets-balance.test.ts` became `bets-credit.test.ts`: the
+subject changed from what gets refused to what the ledger does when there is no
+bankroll. The end-to-end suite is still seven specs — the one that checked the
+refusal now plays a night nobody bought into, from the empty room to the
+settled debt.
 
 ---
 
@@ -186,6 +197,10 @@ confirm a test fails, restore. That found the two-creditor hole above, an
 earlier settlement test that could not fail, and — pointing the other way — a
 change to the wager viewer that survived its own sabotage and is therefore
 recorded as unverified rather than claimed as a fix.
+
+*(Settled a day later: it was a real fix. A unit test in `App.test.tsx` fails
+without it, so "Everyone" had never been selectable. The browser test could not
+tell them apart — see open item 14.)*
 
 ---
 
@@ -1183,6 +1198,21 @@ interface SquadDiff {
 | `GET /api/rooms/:id/points/teams` | `gamer_team_points` projection |
 | `GET /api/logs?correlationId=...` | On-demand retrieval of Worker logs (overflow path) |
 
+Wagering, added later and documented in full in [§27](#27-wagering--the-chip-ledger).
+`NIGHT` below stands for `/api/rooms/:id/game-nights/:nid`:
+
+| Endpoint | Description |
+|---|---|
+| `POST NIGHT/games/:gid/bets` | Place or top up a position. Never refused for want of chips — see [§27 Betting on credit](#betting-on-credit) |
+| `DELETE NIGHT/games/:gid/bets/:betId` | Remove a position. Removing then placing is how a position moves |
+| `POST NIGHT/games/:gid/bets/lock` | Close the book. Idempotent |
+| `GET NIGHT/chips` | Tonight's swing per gamer, plus the last settled game's deltas |
+| `GET /api/rooms/:id/chips-ledger` | Room balances (folded, never stored) and who pays whom |
+| `POST /api/rooms/:id/chips/purchases` | Buy chips, at any time. Optional — a room that never buys still keeps a ledger |
+| `POST /api/rooms/:id/chips/settlements` | Settle the whole room. No body: the amounts are whatever the ledger says |
+| `POST /api/rooms/:id/chips/settlements/payment` | Record one payment `{ from, to, amount }`, part payments included |
+| `GET /api/rooms/:id/bet-history` | Every game's book, plus the purchases and settlements |
+
 All room-scoped endpoints require a valid session cookie if the room has a PIN.
 
 ---
@@ -1827,6 +1857,7 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 | **Projections** | `gamer_points` + `gamer_team_points`, updated inside the same D1 transaction as the event append | Atomic; projections can always be rebuilt from the log |
 | **Gamer-team key** | `gt_${sortedGamerIds.join('_')}` | Stable across side/order; natural pairing aggregation |
 | **Game size** | `2 \| 4` only, enforced at type + Zod + event payload | User requirement |
+| **Chips** | A tally of who is up and who is down, not a bankroll — a bet is never refused for want of chips, and buying in is optional | Wagering only moves chips, so a pot is covered by its own losers; what the room wants at the end of the night is who pays whom, not a refusal at the table |
 | **Gamer selection** | Strategy pattern in `@fc26/shared/selection/`, pure + deterministic, runs client-side | User will iterate frequently; isolation is critical |
 | **Logging** | Client ring buffer + Worker logs piped via `x-fc26-logs` response header, overflow via `GET /api/logs?correlationId=...` | User requirement; simple, no SSE |
 | **Console UI** | Triple-tap on logo (in bottom nav for thumb reach) → slide-up panel | User requirement |
@@ -2282,7 +2313,7 @@ Seven specs, all of the wager journey:
 | Spec | The thing it pins |
 |---|---|
 | Debt created, shown, settled | The whole loop, and that the money history refreshes when chips move |
-| Out of chips | A gamer with no ledger row is told to buy, not shown a negative |
+| A night on credit | Nobody buys a chip, the debt is real, a gamer already down keeps betting, and it settles |
 | A hedge | Two positions, both stakes committed, **each row settling on its own** |
 | Top-up | A repeat bet on one outcome merges rather than opening a second |
 | Backing eligibility | A player may back their own side and nothing else |
