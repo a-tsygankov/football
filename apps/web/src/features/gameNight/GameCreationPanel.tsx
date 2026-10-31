@@ -251,6 +251,7 @@ export function GameCreationPanel({
     const savedSetup = loadLastGameSetup(roomId)
     setManualAssignments(savedSetup ? assignmentsFromSetup(savedSetup) : {})
     if (savedSetup) {
+      setAllocationMode('manual')
       setManualHomeClubId(savedSetup.homeClubId)
       setManualAwayClubId(savedSetup.awayClubId)
       setTeamAssignmentMode(
@@ -318,6 +319,7 @@ export function GameCreationPanel({
       // Keep the in-memory reset usable when storage is unavailable.
     }
     setManualAssignments({})
+    setAllocationMode('manual')
     setTeamAssignmentMode('none')
     setManualHomeClubId(null)
     setManualAwayClubId(null)
