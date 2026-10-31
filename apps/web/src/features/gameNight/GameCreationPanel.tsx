@@ -4,6 +4,7 @@ import {
   type Club,
   type CreateCurrentGameRequest,
   type ChipLedgerEntry,
+  type CurrentGame,
   GAME_FORMATS,
   type Gamer,
   type GamerId,
@@ -61,6 +62,68 @@ function saveLastClubId(roomId: string, side: 'home' | 'away', clubId: number): 
   } catch {
     // Silently ignore quota / security errors.
   }
+}
+
+interface PersistedGameSetup {
+  homeGamerIds: string[]
+  awayGamerIds: string[]
+  homeClubId: number | null
+  awayClubId: number | null
+}
+
+function lastGameSetupKey(roomId: string): string {
+  return `fc26:room:${roomId}:last-game-setup`
+}
+
+function loadLastGameSetup(roomId: string): PersistedGameSetup | null {
+  try {
+    const raw = localStorage.getItem(lastGameSetupKey(roomId))
+    if (!raw) return null
+    const value = JSON.parse(raw) as Partial<PersistedGameSetup>
+    const validGamerIds = (ids: unknown): ids is string[] =>
+      Array.isArray(ids) && ids.every((id) => typeof id === 'string')
+    const validClubId = (id: unknown): id is number | null =>
+      id === null || (typeof id === 'number' && Number.isInteger(id) && id > 0)
+    if (
+      !validGamerIds(value.homeGamerIds) ||
+      !validGamerIds(value.awayGamerIds) ||
+      !validClubId(value.homeClubId) ||
+      !validClubId(value.awayClubId)
+    ) {
+      return null
+    }
+    return {
+      homeGamerIds: value.homeGamerIds,
+      awayGamerIds: value.awayGamerIds,
+      homeClubId: value.homeClubId,
+      awayClubId: value.awayClubId,
+    }
+  } catch {
+    return null
+  }
+}
+
+function saveLastGameSetup(roomId: string, game: CurrentGame): void {
+  try {
+    const setup: PersistedGameSetup = {
+      homeGamerIds: [...game.homeGamerIds],
+      awayGamerIds: [...game.awayGamerIds],
+      homeClubId: game.homeClubId,
+      awayClubId: game.awayClubId,
+    }
+    localStorage.setItem(lastGameSetupKey(roomId), JSON.stringify(setup))
+  } catch {
+    // Silently ignore quota / security errors.
+  }
+}
+
+function assignmentsFromSetup(
+  setup: Pick<PersistedGameSetup, 'homeGamerIds' | 'awayGamerIds'>,
+): Record<string, 'home' | 'away' | 'bench'> {
+  const assignments: Record<string, 'home' | 'away' | 'bench'> = {}
+  for (const gamerId of setup.homeGamerIds) assignments[gamerId] = 'home'
+  for (const gamerId of setup.awayGamerIds) assignments[gamerId] = 'away'
+  return assignments
 }
 
 interface PersistedBrowserState {
@@ -179,8 +242,22 @@ export function GameCreationPanel({
   }, [bootstrap.room.defaultSelectionStrategy])
 
   useEffect(() => {
-    setManualAssignments(buildManualAssignments(bootstrap.currentGame))
-  }, [bootstrap.activeGameNight?.id, bootstrap.currentGame])
+    if (bootstrap.currentGame) {
+      saveLastGameSetup(roomId, bootstrap.currentGame)
+      setManualAssignments(buildManualAssignments(bootstrap.currentGame))
+      return
+    }
+
+    const savedSetup = loadLastGameSetup(roomId)
+    setManualAssignments(savedSetup ? assignmentsFromSetup(savedSetup) : {})
+    if (savedSetup) {
+      setManualHomeClubId(savedSetup.homeClubId)
+      setManualAwayClubId(savedSetup.awayClubId)
+      setTeamAssignmentMode(
+        savedSetup.homeClubId !== null || savedSetup.awayClubId !== null ? 'pick' : 'none',
+      )
+    }
+  }, [roomId, bootstrap.activeGameNight?.id, bootstrap.currentGame])
 
   const availableRandomFormats = Object.values(GAME_FORMATS).filter(
     (format) => format.size <= activeGameNightGamers.length,
@@ -230,6 +307,21 @@ export function GameCreationPanel({
       ...current,
       [gamerId]: next,
     }))
+  }
+
+  function resetLastGameSetup(): void {
+    try {
+      localStorage.removeItem(lastGameSetupKey(roomId))
+      localStorage.removeItem(lastClubKey(roomId, 'home'))
+      localStorage.removeItem(lastClubKey(roomId, 'away'))
+    } catch {
+      // Keep the in-memory reset usable when storage is unavailable.
+    }
+    setManualAssignments({})
+    setTeamAssignmentMode('none')
+    setManualHomeClubId(null)
+    setManualAwayClubId(null)
+    setPickingSide(null)
   }
 
   function handleSelectClub(club: Club): void {
@@ -325,6 +417,19 @@ export function GameCreationPanel({
               style={allocationMode === 'random' ? primaryButtonStyle : secondaryButtonStyle}
             >
               Random
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={resetLastGameSetup}
+              aria-label="Reset player assignments and FC team selections"
+              title="Clear the remembered player assignments and FC team selections"
+              style={compactButtonStyle}
+            >
+              Reset
             </button>
           </div>
 
