@@ -4,7 +4,7 @@ The [live playground](https://football-preview.atsyg-feedme.workers.dev/) uses C
 
 ## Preview operation
 
-Game creation uses side stripes (green Home, blue Away, neutral Not playing), a labeled mini availability toggle and a sliding three-segment side selector. Availability changes are staged for two seconds. A second tap cancels the pending change before it reaches the room API. The Roster view uses the same availability control. Keep the Outline and Shadow alternatives in the player card studio for future panel-wide styling decisions.
+Game creation uses side stripes (green Home, blue Away, neutral Reserve), a labeled mini availability toggle and a sliding three-segment side selector. Availability changes are staged for two seconds. A second tap cancels the pending change before it reaches the room API. The Roster view uses the same availability control. Keep the Outline and Shadow alternatives in the player card studio for future panel-wide styling decisions.
 
 - Run `pnpm --filter @fc26/web build:clubhouse`. The output has its own entry point and does not register a service worker.
 - Deploy the API from `worker` with `pnpm exec wrangler deploy --config wrangler.clubhouse.toml`. Apply migrations with `pnpm exec wrangler d1 migrations apply fc26-preview --remote --config wrangler.clubhouse.toml`. Provision the preview-only `SESSION_SECRET` as a Worker secret.

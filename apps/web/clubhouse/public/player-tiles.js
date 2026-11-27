@@ -8,7 +8,7 @@ const url = new URL(location.href)
 const preferred = { frame: 'fade', status: 'toggle', side: 'segments' }
 const config = Object.fromEntries(parts.map(({ key, options }) => [key,
   Object.hasOwn(options, url.searchParams.get(key)) ? url.searchParams.get(key) : preferred[key]]))
-const sides = ['Home', 'Not playing', 'Away']
+const sides = ['Home', 'Reserve', 'Away']
 const players = ['Alex', 'Robin', 'Sam', 'Jules', 'Drew', 'Casey'].map((name, id) => ({
   id, name, active: id !== 5, last: ['Home', 'Away'][id] || '', side: sides[[0, 2][id] ?? 1], photo: '/card-photos/sample-' + id + '.jpg',
 }))
@@ -45,7 +45,7 @@ function commitAvailability(player) {
   const active = players.filter(item => item.active), index = active.indexOf(player)
   const before = { active: player.active, side: player.side }
   player.active = !player.active
-  player.side = 'Not playing'
+  player.side = 'Reserve'
   undo = () => {
     Object.assign(player, before); undo = null; renderPlayers(); focus('status-' + player.id); announce('Availability restored')
   }
@@ -166,7 +166,7 @@ function edit(player) {
 get('add').onclick = () => edit(null); get('cancel').onclick = () => dialog.close()
 dialog.querySelector('form').onsubmit = event => {
   event.preventDefault(); const name = get('field').value.trim(); if (!name) return
-  const player = editing || { id: players.length, active: true, last: '', side: 'Not playing' }
+  const player = editing || { id: players.length, active: true, last: '', side: 'Reserve' }
   player.name = name; if (!editing) players.push(player)
   dialog.close(); undo = null; renderPlayers(); focus('status-' + player.id); announce(name + ' saved')
 }

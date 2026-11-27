@@ -3,7 +3,7 @@ import type { Gamer, MatchHistoryResponse, RoomBootstrapResponse } from '@fc26/s
 
 const sides = ['home', 'bench', 'away'] as const
 type Side = typeof sides[number]
-const labels = { home: 'Home', bench: 'Not playing', away: 'Away' }
+const labels = { home: 'Home', bench: 'Reserve', away: 'Away' }
 type Change = { to: boolean; saving: boolean; timer: ReturnType<typeof setTimeout> }
 
 export function ProPlayerCards({ room, eligible, assignments, assign, edit, toggle, history, pendingChanged, busy, rosterOnly = false }: {
