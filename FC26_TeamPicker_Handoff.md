@@ -2,7 +2,63 @@
 
 **Stack:** TypeScript · Vite · React · Cloudflare Workers · D1 · R2
 **Target devices:** Android and iPhone phones (mobile-first PWA)
-**Document version:** 8 (2026-11-27) — supersedes the original `.docx` handoff
+**Document version:** 9 (2026-11-27) — supersedes the original `.docx` handoff
+
+---
+
+## Recent Changes (2026-11-27): share links (#56)
+
+Shipped as PR #56. Client only: `@fc26/web` `0.1.33`; `@fc26/worker`
+`0.1.19`, `@fc26/shared` `0.1.17`, `WORKER_VERSION` `0.1.19`,
+`SCHEMA_VERSION` `14` and `EVENT_SCHEMA_VERSION` `1` are unchanged.
+
+### Sharing a room, or the app
+
+Getting a friend into a room meant reading out the room ID and the PIN, and
+the installed app has no address bar to copy from. The `RoomBar` now has a
+share button (`features/share/ShareSheet`) with two choices: **Invite to this
+room** and **Share app link**. The landing screen has a **Share app** card
+next to *Pin to Desktop*. Both go through `lib/share`'s `shareLink`: the
+native share sheet where there is one, then the clipboard, then the link on
+screen to copy by hand. Closing the share sheet counts as cancelled, not as
+a failure.
+
+### The PIN rides in the link
+
+An invite is `…/football/#/join?room=<id>&pin=<pin>`; a room without a PIN
+gets the room ID alone. The PIN is in the **hash**, so it never reaches a
+server or an access log. `App` handles `#/join` at boot, before any page
+renders. It swaps the hash for `#/game` straight away, so the PIN does not
+stay in the address bar, the history or a reload, and then it joins. If the
+join fails, the room ID is left in the join form and the message says
+whether the PIN was wrong or missing.
+
+The Worker stores only a PIN hash, so the PIN in an invite comes from the
+device itself. A device that creates a room with a PIN, or joins one with
+it, keeps it in `localStorage` under `fc26:room-pin:<roomId>`, and *Leave
+room* forgets it. A device that joined before this change has never typed
+the PIN into this code path, so the share sheet asks for it once and then
+remembers it.
+
+Links do not expire. An earlier draft signed seven-day invites on the
+Worker; it was dropped as more machinery than a four-digit soft lock
+between friends needs. The trade-off is that a forwarded link keeps working,
+and for now nothing can take it back (open item 18).
+
+### Tests
+
+594 unit (261 shared, 174 worker, 159 web) plus 7 end-to-end.
+`lib/share.test.ts` covers building and parsing links, storing the PIN, and
+the share → clipboard → failed fallbacks. Three tests in `App.test.tsx`
+cover the boot path:
+- a link joins with its PIN, clears it from the hash and remembers it;
+- a wrong PIN leaves the room ID in the form;
+- leaving the room forgets the PIN.
+
+Four guarantees were each sabotaged once and caught: the hash swap, storing
+the PIN on join, pre-filling the room ID, and forgetting the PIN on leave.
+The share sheet is presentational and was checked by hand at phone size,
+not by a test. The end-to-end suite does not cover sharing.
 
 ---
 
@@ -1303,6 +1359,10 @@ not a set of scroll anchors. Everything below lives under `apps/web/src/`.
 Before a room is joined, `App` renders `features/landing/LandingScreen`
 (`CreateRoomPanel` + `JoinRoomPanel`) instead.
 
+`#/join?room=…&pin=…` is not a page. It is a room invite link, which `App`
+reads once at boot: it replaces the hash with `#/game` and joins the room.
+See Recent Changes (2026-11-27): share links (#56).
+
 ### Feature modules
 
 | Module | Components |
@@ -1314,6 +1374,7 @@ Before a room is joined, `App` renders `features/landing/LandingScreen`
 | `features/scoreboard/` | `ScoreboardPanel`, `MatchHistoryList` |
 | `features/squads/` | `TeamsPanel`, `ChangesPanel` (version diff, rendered as a tab inside Teams), `HistoricalRatingsChart`, `useSquadBrowser` |
 | `features/landing/` | `LandingScreen`, `CreateRoomPanel`, `JoinRoomPanel` |
+| `features/share/` | `ShareSheet` (the `RoomBar` share button: invite to this room, or share the app; asks once for a PIN this device does not know), `ShareIcon` |
 | `debug/` | `DebugConsole` (triple-tap target), `console-store` |
 
 ### Shared components
@@ -1333,7 +1394,7 @@ Before a room is joined, `App` renders `features/landing/LandingScreen`
 | Path | Contents |
 |---|---|
 | `hooks/` | `useHashRoute`, `useInstallPrompt`, `useOnlineStatus`, `useSwUpdate`, `useLinkedPair` |
-| `lib/` | `api` (fetch + correlation-ID middleware), `logger`, `version`, `swUpdate` + `swCacheRules` (see [§28](#28-offline--the-service-worker)), `avatars`, `image`, `utils` (the shadcn `cn` helper) |
+| `lib/` | `api` (fetch + correlation-ID middleware), `logger`, `version`, `swUpdate` + `swCacheRules` (see [§28](#28-offline--the-service-worker)), `avatars`, `image`, `share` (invite and app links, the per-room PIN memory, native share → clipboard fallback), `utils` (the shadcn `cn` helper) |
 | `utils/` | `roster`, `scoreboard`, `squads` — pure derivations kept out of components |
 | `index.css` | Tailwind v4 entry plus the design tokens as CSS custom properties with an `@theme inline` mapping |
 
@@ -1943,6 +2004,7 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 | Squad source | xAranaktu tool → GitHub Release → daily Cron → R2 (versioned, 12 retained) | Official EA data, automated, supports Update Changes mode |
 | Squad access | R2 shards (`clubs.json` + `players/{clubId}.json`) | Avoids 5–8 MB cold load on phones |
 | Auth | Room ID + optional PIN/password (PBKDF2 + throttle + signed cookie) | Zero-friction for a friend group, still protected |
+| Room invites | `#/join?room=<id>&pin=<pin>`, PIN in the hash, no expiry; the PIN is remembered on the device that typed it | The recipient types nothing, and the PIN never reaches a server. Signed expiring invites were tried and dropped as too much for a four-digit soft lock |
 | Result entry | 3 giant buttons + optional OCR pre-fill | Sub-3-tap primary path |
 | OCR | Gemini 2.5 flash-lite → flash → pro, behind `IScoreExtractor` | Cheap-first fallback; provider-swappable |
 | PWA only | No Capacitor for v1 | Install-to-home-screen covers 95% of the need |
@@ -2028,6 +2090,18 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
     users to `pnpm/setup`. v6.1.1 works and is pinned, so nothing is broken;
     moving is a separate change, and should be checked against the
     `packageManager` field and the `version` input the workflows pass.
+18. **A room invite link cannot be taken back.** The link carries the PIN
+    and does not expire, so anyone it is forwarded to can join for as long
+    as the PIN stays the same. Nothing can change a room's PIN: there is no
+    screen for it, and `PATCH /rooms/:roomId/settings` only takes
+    `squadPlatform`. So a link that reaches the wrong person can't be
+    revoked short of making a new room. Changing a room's PIN would fix
+    it, and would also be when devices need to forget a stale
+    remembered PIN.
+19. **A failed link join leaves the form out of sight.** On the landing
+    screen the error shows above *Create room*, and the join form with the
+    room ID filled in is further down. Scrolling to (or focusing) the join
+    form's PIN field after a failed link join is a small, unmade tweak.
 
 ---
 

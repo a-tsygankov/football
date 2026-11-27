@@ -458,6 +458,18 @@ Vitest's parallel mode can occasionally deadlock on Windows. Run with
 pnpm vitest run --no-isolate
 ```
 
+### Web tests fail with `Cannot read properties of undefined (reading 'clear')`
+
+Newer Node releases (seen on Node 26) turn on Node's own Web Storage by
+default. Its `localStorage` global hides jsdom's, so with no
+`--localstorage-file` set, `localStorage` is undefined in every web test that
+touches it. CI is on Node 22 and is not affected. Use Node 22, or turn Node's
+storage off for the run:
+
+```bash
+NODE_OPTIONS=--no-webstorage pnpm -r test:run
+```
+
 ### Every authenticated request returns 401 in dev
 
 The session cookie is not round-tripping. Open the app through Vite
