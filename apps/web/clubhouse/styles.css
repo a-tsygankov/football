@@ -67,3 +67,38 @@
 .quick-sides input {font-size:36px;font-weight:700;text-align:center}.quick-sides button {text-align:left;color:#23553c;font-size:13px}
 .quick-save {width:100%}.quick-save:disabled {opacity:.45}
 .quick-swap {display:block;margin:0 auto 12px;min-height:40px;color:#23553c}
+.desk-heading,.chart-heading,.result-key {display:flex;align-items:center;justify-content:space-between;gap:12px}
+.desk-heading {margin:0 0 16px}.desk-heading p,.record-chart>span {margin:0;font:700 11px/1.4 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}
+.desk-heading h2 {font:750 clamp(27px,4vw,42px)/1.12 Inter,Arial,sans-serif;letter-spacing:-.055em;margin:2px 0}
+.desk-heading .quick-action {margin:0;flex-wrap:wrap;justify-content:flex-end}
+.chart-card {background:#192d27;color:#f7faf1;border:1px solid #354c40;border-radius:16px;padding:clamp(16px,3vw,26px);margin-bottom:22px;font-variant-numeric:tabular-nums}
+.chart-heading h3 {margin:0;font-size:22px;line-height:1.2;letter-spacing:-.04em}
+.metric-switch {display:flex;border:1px solid #63796b;border-radius:20px;padding:2px}
+.metric-switch button {border:0;border-radius:18px;background:transparent;color:#edf3e9;padding:6px 12px;font:600 13px/1.4 inherit;cursor:pointer}
+.metric-switch button[aria-pressed=true] {background:#d9efa5;color:#192d27}
+.stat-grid {display:grid;grid-template-columns:3fr 2fr;gap:clamp(16px,4vw,50px);align-items:center;margin:20px 0}
+.rank-bars {list-style:none;padding:0;margin:0;display:grid;gap:10px}
+.rank-bars li {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px 8px;font-size:14px}
+.rank-bars li>span,.record-chart strong {overflow-wrap:anywhere}.rank-bars b {color:#def5ab}
+.bar-track,.result-track {border-radius:4px;overflow:hidden;background:#364b42}
+.bar-track {grid-column:1/-1;height:6px}.bar-track i {display:block;height:100%;background:#add083;transform-origin:left}
+.rank-bars li:first-child .bar-track i {background:#e3ffad}
+.record-chart {background:#243d33;border-radius:12px;padding:16px}.record-chart>span {color:#c0d2bf;font-size:10px}.record-chart strong {display:block;font-size:20px;letter-spacing:-.035em}
+.result-track {display:flex;height:10px;margin:13px 0}.result-track i {flex-basis:0;background:#bfe787}.result-track i:nth-child(2){background:#cfb88d}.result-track i:nth-child(3){background:#eb947d}
+.result-key {font-size:11px;gap:5px;color:#d3ded2}.result-key b {display:block;color:white;font-size:16px}
+.chart-card>a {display:inline-block;color:#d6f1a8;text-decoration:underline;text-underline-offset:4px;font-size:13px}
+.club[data-design=pro] {--ground:#e5eae2;--panel:#fbfcf8;--round:14px}
+[data-design=pro] .playing main {border:1px solid #d3dbd1}
+[data-design=pro] .playing nav button[aria-current=page] {background:#d9efa5!important;color:#17291e!important;border-color:transparent!important}
+@media(min-width:900px){[data-design=pro] .mast .identity h1 {font-size:clamp(32px,3.2vw,56px)}}
+@media(max-width:899px){[data-design=pro] .mast .identity {padding:10px 0}[data-design=pro] .mast .pitch {width:65px}[data-design=pro] .mast .identity h1 {font-size:30px}[data-design=pro] .mast-inner {padding-block:10px}[data-design=pro] .edition {padding-bottom:6px}[data-design=pro] .identity p {display:none}}
+@media(max-width:520px){.stat-grid {grid-template-columns:1fr;gap:14px}.record-chart {display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;align-items:center;padding:12px}.record-chart>span,.record-chart strong {grid-column:1}.record-chart strong{font-size:16px}.record-chart .result-track {grid-column:2;grid-row:1;margin:0}.record-chart .result-key{grid-column:2;grid-row:2}.result-key b{display:inline;margin-right:2px}}
+@media(prefers-reduced-motion:no-preference){
+  @keyframes chart-grow {from{transform:scaleX(0)}to{transform:scaleX(1)}}
+  @keyframes score-confirm {from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+  .bar-track i {animation:chart-grow 360ms ease-out both;transition:width 240ms ease-out}
+  .result-track i {transition:flex-grow 240ms ease-out}
+  .quick-action [role=status]:not(:empty) {animation:score-confirm 220ms ease-out}
+  .quick-launch,.quick-save,.metric-switch button {transition:transform 120ms,background-color 160ms}
+  .quick-launch:active,.quick-save:active,.metric-switch button:active {transform:scale(.97)}
+}

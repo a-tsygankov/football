@@ -45,7 +45,7 @@ function Clubhouse() {
       </div>
     </header>
     <div className="playing"><App clubhouse roomOverview={(room, board, reload) => <>
-      {design.value === 'pro' && <QuickResult key={room.room.id} roomId={room.room.id} reload={reload} />}
+      {design.value === 'pro' && <div className="desk-heading"><div><p>Game night</p><h2>Match desk</h2></div><QuickResult key={room.room.id} roomId={room.room.id} reload={reload} /></div>}
       <RoomOverview mode={design.value} room={room} board={board} />
     </>} /></div>
   </div>
@@ -61,12 +61,25 @@ function RoomOverview({ mode, room, board }: { mode: string; room: RoomBootstrap
     <strong>{room.currentGame ? 'Match in play' : 'Match setup'}</strong>
     <a href="#fc26-game-section" onClick={event => { event.preventDefault(); document.getElementById('fc26-game-section')?.scrollIntoView({ block: 'start' }) }}>Match controls ↓</a>
   </div>
-  const leader = board?.gamerRows[0]
-  return <a href="#/scoreboard" className="room-overview leaderboard">
-    <span><small>Club standings</small><strong>{leader ? leader.gamer.name : 'Scoreboard'}</strong></span>
-    <span><strong>{leader?.points ?? 0}</strong><small>points</small></span>
-    <span><strong>{leader?.stats.wins ?? 0}</strong><small>wins</small></span><b>↗</b>
-  </a>
+  return <ClubCharts board={board} />
+}
+
+function ClubCharts({ board }: { board: RoomScoreboardResponse | null }) {
+  const [metric, setMetric] = useState<'Points' | 'Goals'>('Points')
+  const value = (row: RoomScoreboardResponse['gamerRows'][number]) => metric === 'Points' ? row.points : row.stats.goalsFor
+  const rows = [...(board?.gamerRows ?? [])].filter(row => row.stats.gamesPlayed > 0).sort((first, second) => value(second) - value(first)).slice(0, 4)
+  const leader = rows[0]
+  const max = leader ? Math.max(1, value(leader)) : 1
+  return <section className="chart-card" aria-label="Room performance">
+    <div className="chart-heading"><h3>Club leaders</h3><div className="metric-switch" aria-label="Rank players by">{(['Points', 'Goals'] as const).map(option =>
+      <button key={option} type="button" aria-pressed={metric === option} onClick={() => setMetric(option)}>{option}</button>)}</div></div>
+    {leader ? <div className="stat-grid"><ol className="rank-bars">{rows.map(row => <li key={row.gamer.id}>
+      <span>{row.gamer.name}</span><b>{value(row)}</b><div className="bar-track" aria-hidden="true"><i style={{width: (100 * value(row) / max) + '%'}} /></div>
+    </li>)}</ol><div className="record-chart"><span>Leader’s record</span><strong>{leader.gamer.name}</strong><div className="result-track" aria-hidden="true">{[leader.stats.wins, leader.stats.draws, leader.stats.losses].map((amount, index) => <i key={index} style={{ flexGrow: amount }} />)}</div>
+    <div className="result-key">{['Wins','Draws','Losses'].map((label,index) => <div key={label}><b>{[leader.stats.wins,leader.stats.draws,leader.stats.losses][index]}</b>{label}</div>)}</div></div></div> :
+    <p>{board ? 'Record the first result to see the standings.' : 'Loading standings…'}</p>}
+    <a href="#/scoreboard">Full scoreboard <span aria-hidden="true">↗</span></a>
+  </section>
 }
 
 createRoot(document.getElementById('root')!).render(<MantineProvider><Clubhouse /></MantineProvider>)
