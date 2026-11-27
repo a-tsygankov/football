@@ -23,7 +23,7 @@ jobs:
     name: Verify patch bump
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history so `git show <base_ref>:path` can resolve the
           # pre-PR version of each tier's package.json.
