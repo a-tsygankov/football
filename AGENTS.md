@@ -134,8 +134,13 @@ BASE_REF=origin/main python3 scripts/check_version_bump.py
   the row it is shown on"*. Say what changes for the user or the system.
 - **Commit bodies explain why**: what was wrong, what the change does, what a
   test pins and what it deliberately does not cover. Wrap at ~72 columns.
-- **One concern per PR.** PRs merge with a merge commit titled
-  `Merge pull request #N: <short lowercase summary>`.
+- **One concern per PR.** The repository allows **squash merges only**
+  (merge commits and rebase merges are turned off), so each PR lands on
+  `main` as one commit whose subject is the PR title plus ` (#N)` and whose
+  body is the PR description. Write PR titles like commit subjects
+  (plain-English imperative, sentence case) and keep the description
+  accurate, because both become permanent history. Older history on `main`
+  still shows `Merge pull request #N: …` commits from before the change.
 - **Comments explain why, not what**, and record the history that justifies an
   odd-looking choice (see the comments in `deploy.yml` and
   `playwright.config.ts`).
@@ -220,11 +225,11 @@ Keeping it current and landing it:
 gh stack sync                  # fetch, fast-forward main, cascade rebase, push
 gh stack rebase                # on conflict: resolve, git add, then
 gh stack rebase --continue     #   (or --abort to restore every branch)
-gh stack merge 57 --merge      # merges 57 and everything below it
+gh stack merge 57 --squash     # merges 57 and everything below it
 ```
 
-Use `--merge` (a merge commit) so the history keeps the
-`Merge pull request #N: …` subjects this repo uses.
+Use `--squash`: it is the only merge method the repository allows, and
+`--merge` or `--rebase` fail with "this repository does not allow … merges".
 
 ### For agents
 
@@ -257,7 +262,7 @@ Use `--merge` (a merge commit) so the history keeps the
   and the version check ran on every layer; a layer with no runs is not
   linked.
 - **Merging stays the user's call**, exactly as for a single PR:
-  `gh stack merge <top> --merge --yes` only when they have asked.
+  `gh stack merge <top> --squash --yes` only when they have asked.
 - **If `gh stack` cannot run** (no `gh`, a `gh` older than 2.90.0, no
   authentication, or a sandbox that blocks GitHub's API for the extension's
   download), don't silently fall back to retargeting PR bases by hand. Do the
