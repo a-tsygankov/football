@@ -186,7 +186,10 @@ GitHub tracks them as one stack.
 
 ### With the `gh` CLI
 
-Install once (needs a recent `gh`: the quickstart says 2.90.0+, Git 2.20+):
+Install once. The extension needs `gh` 2.0+ and **Git 2.36+** (it checks Git
+and refuses older versions; GitHub's quickstart says 2.20, which is too low).
+`gh skill`, used below for agents, only exists from `gh` **2.90.0**, so in
+practice use 2.90.0 or later:
 
 ```sh
 gh extension install github/gh-stack
@@ -226,7 +229,7 @@ Use `--merge` (a merge commit) so the history keeps the
 ### For agents
 
 - Install the agent skill alongside the extension: `gh skill install
-  github/gh-stack`.
+  github/gh-stack` (`gh` 2.90.0+; check with `gh --version`).
 - Stay non-interactive. Use `gh stack submit --auto`, `gh stack view --json`,
   `gh stack checkout <pr> --print-path`, `gh stack sync
   --accept-base-change`, and `gh stack merge --yes` (only when the user has
