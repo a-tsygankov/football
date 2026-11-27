@@ -708,33 +708,36 @@ The entire stack runs on Cloudflare's edge network. There is no separate origin 
 ## 5. Monorepo Layout
 
 ```
-fc26-picker/
-  apps/web/                    # Vite + React SPA
+football/
+  apps/web/                    # @fc26/web — Vite + React PWA
     src/
-      game/                    # session state machine
-      features/                # one folder per screen
-      modes/                   # game | dashboard | view-teams | update-changes
-      components/              # shared UI primitives
-      stores/                  # Zustand slices
-      lib/                     # API client, utils, logger
+      features/                # one folder per screen: gameNight, gamers,
+                               #   landing, room, scoreboard, squads, wager
+      components/              # shared UI, incl. vendored shadcn under ui/
+      hooks/                   # incl. useHashRoute (hash routing, e.g. #/wager)
+      lib/                     # API client, logger, version, service worker
       debug/                   # hidden Console
-  worker/                      # Cloudflare Worker
+      styles/  types/  utils/  test/
+  worker/                      # @fc26/worker — Cloudflare Worker (Hono)
     src/
-      routes/                  # Hono route handlers
-      services/                # squad sync, score extraction, projection
-      db/
-        repositories/          # IRepository impls
-        schema.ts              # Drizzle schema
-        migrations/            # NNNN_desc.sql + optional NNNN_desc.ts
+      routes/                  # Hono route handlers + shared test fixtures
+      rooms/ gamers/ games/ game-nights/ bets/ events/ projections/ auth/ squad/
+                               # one folder per domain: its IRepository,
+                               #   D1 + in-memory implementations, services
+      db/migrations/           # NNNN_description.sql, applied by wrangler
       middleware/              # repos, auth, logging, correlation
-  tools/
-    squad-sync/                # Node.js one-shot scraper (local use)
-  packages/
-    shared/                    # DTOs, types, selection strategies, time utils
-      src/
-        selection/             # IGamerSelectionStrategy + strategies
-        time/                  # UTC <-> local helpers
-        types/                 # domain types, DTOs, events
+      config/                  # squad sync, AI prompts
+      dependencies.ts          # composition root (in-memory fallbacks)
+  workers/football-app/        # serves the client, proxies /api to the worker
+  packages/shared/             # @fc26/shared
+    src/
+      selection/               # IGamerSelectionStrategy + strategies
+      wager/                   # chip ledger fold (roomChipLedger), settlement
+      time/  types/  logger/  names/  squad/  version/
+  tools/squad-sync/            # Node.js one-shot squad sync (local use)
+  e2e/                         # Playwright specs (§29)
+  scripts/                     # version bump + gate, ledger health check
+  redirect-page/               # GitHub Pages redirect from the old origin
   package.json                 # pnpm workspaces root
 ```
 
@@ -760,8 +763,12 @@ The game session is a multi-step wizard where each step reads and writes shared 
 ### TanStack Router
 Route parameters (`/rooms/:roomId/game/:step`) feed directly into typed API calls. TanStack Router is type-safe from the ground up; React Router v6 bolts types on after the fact.
 
+*Not adopted.* The app has a handful of screens and routes them by URL hash (`useHashRoute`, e.g. `#/wager`), which also means no server fallback is needed for deep links.
+
 ### Drizzle ORM
 D1 is SQLite. Raw D1 queries return `unknown[]`; you cast manually everywhere. Drizzle defines the schema in TypeScript, generates migrations from it, and makes query results fully typed. **The schema IS the source of truth** for both the DB and TypeScript types.
+
+*Not adopted.* Each domain's D1 repository holds hand-written SQL and maps rows to types itself, and migrations are hand-written `.sql` files. The migration files, not a TypeScript schema, are the source of truth.
 
 ### Why D1 and not R2 JSON files for mutable data
 R2 is object storage, not a database. It has no query capability. D1 runs aggregations in under 5 ms on the edge.
@@ -778,6 +785,8 @@ R2 is still used for its strengths: versioned squad JSON and club logo images �
 
 ### Recharts
 Already in the stack for the Dashboard. Radar charts cover the "View Teams" per-player attribute diagrams with no new dependency.
+
+*Not adopted.* No charting library is installed.
 
 ---
 
@@ -855,7 +864,7 @@ Route handlers receive typed repos via `c.get('repos')` and never reference D1 b
 | `gamer_team_points` | Projection: per-gamer-team (ad-hoc pairing) counters. |
 | `squad_versions` | Registry of historical squad versions stored in R2. |
 | `pin_attempts` | Throttle table for room PIN retries. |
-| `schema_migrations` | Tracks applied Drizzle migrations. |
+| `schema_migrations` | Records applied migrations — each `.sql` file inserts its own row. (Wrangler also keeps its own `d1_migrations` table.) |
 
 ### DDL
 
@@ -952,7 +961,7 @@ CREATE TABLE schema_migrations (
 ### Constraints and conventions
 
 - **Every `*_at` column is `INTEGER NOT NULL` UTC milliseconds.** Never TEXT ISO strings.
-- **Every mutable table has `created_at` and `updated_at`.** Drizzle `timestamps()` helper.
+- **Every mutable table has `created_at` and `updated_at`.** Repositories set both explicitly.
 - **`game_events` is append-only.** The repository interface does not expose update or delete. Corrections are expressed as new events (`game_voided` + a new `game_recorded`).
 - **Game size constraint:** `GameSize = 2 | 4` enforced at the type layer, Zod boundary, and event payload validation. No `CHECK(size IN (2, 4))` column because size lives inside the event payload.
 - **`bets` is unique on `(game_id, gamer_id, outcome)`.** One position per outcome, so a repeat bet on the same outcome merges into a top-up while a different outcome opens a hedge. It was `(game_id, gamer_id)` until migration 0010; anything keying settlement by gamer rather than by row depends on the *old* shape and is now wrong.
@@ -1729,8 +1738,8 @@ Worker validates with Zod. On parse failure, retry next model in the chain.
 
 - **Every `*_at` column stores `INTEGER NOT NULL` as UTC milliseconds since epoch.** No TEXT ISO strings.
 - **Every mutable entity has `created_at` and `updated_at`.** Immutable events have `occurred_at` + `recorded_at`.
-- **Drizzle `timestamps()` helper** returns a reusable column spec.
-- **Update triggers** auto-bump `updated_at` on every row update:
+- **Repositories write `updated_at` themselves** on every update; there is no ORM helper.
+- **Update triggers** were planned to auto-bump `updated_at` on every row update. *(None exist in the migrations; repositories set `updated_at` themselves, per the bullet above.)* The planned shape:
   ```sql
   CREATE TRIGGER gamers_updated_at AFTER UPDATE ON gamers
   BEGIN
@@ -1775,16 +1784,14 @@ Three independent version axes, all visible in the Console System tab.
 
 ### Schema version
 
-- Drizzle migrations numbered `NNNN_description.sql` + optional `NNNN_description.ts` for data transforms.
-- The TS file exports `async function up(db: D1Database)` — runs after the SQL file.
-- `schema_migrations` table tracks applied migrations.
-- **Manual application only:** `pnpm wrangler d1 migrations apply`. Never auto-run on request.
-- CI pipeline applies migrations **before** the new Worker goes live.
+- Hand-written migrations `worker/src/db/migrations/NNNN_description.sql`, applied by `wrangler d1 migrations apply`. Data moves are SQL in the same file (e.g. `0008_chip_purchases_backfill.sql`); no `.ts` migration runner exists.
+- Each file ends by inserting its row into `schema_migrations`; `SCHEMA_VERSION` in `wrangler.toml` must equal the highest number (the version gate checks).
+- **Never auto-run on request.** The `deploy-worker` CI job applies pending migrations with `--remote` **before** the new Worker goes live, on every deploy from `main`. So migrations must be additive: the old Worker briefly runs against the new schema.
 
 ### Compatibility enforcement
 
 - **Client on startup** calls `GET /api/version`. If `clientVersion < minClientVersion`, show a full-screen "Please refresh — a new version is available" banner. **Don't auto-reload** — the user might be mid-game.
-- **Worker on boot** checks `schemaVersion === expectedSchemaVersion`. Refuses requests (HTTP 503 with a clear message) if mismatched. Prevents the classic "worker deployed, migrations not applied" footgun.
+- **Worker on boot** checks `schemaVersion === expectedSchemaVersion`. Refuses requests (HTTP 503 with a clear message) if mismatched. Prevents the classic "worker deployed, migrations not applied" footgun. *(Not implemented: `SCHEMA_VERSION` is only reported by `/api/version`. CI applying migrations before every deploy is what currently prevents the footgun.)*
 
 ### Event schema versioning
 
@@ -1793,6 +1800,8 @@ Three independent version axes, all visible in the Console System tab.
 - Because the log is append-only, no retroactive rewrites are needed — that's the point of event sourcing.
 
 ### Upgrade script template
+
+*Not wired up — nothing runs `.ts` migrations, so write data moves in SQL. Kept as the shape to use if a runner is ever added.*
 
 ```ts
 // worker/src/db/migrations/0005_add_team_name.ts
@@ -1867,8 +1876,8 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 |---|---|---|
 | Framework | Vanilla React + Vite (no Next.js) | No SSR needed; Pages handles static hosting |
 | State | Zustand | Minimal, slice-based, no Provider boilerplate |
-| Router | TanStack Router | Type-safe route params feed API calls |
-| Worker ORM | Drizzle + D1 | Schema = TypeScript types; migrations generated |
+| Router | Hash routes (`useHashRoute`) | A few screens; TanStack Router was planned and not adopted |
+| Worker data access | Hand-written SQL in D1 repositories | Drizzle was planned and not adopted; migrations are hand-written |
 | Worker framework | Hono | Lightest JS router with full TS support on Workers |
 | Relational DB | D1 (SQLite) | Queries, aggregations, transactions; R2 cannot do this |
 | Blob storage | R2 | Squad JSON (versioned, sharded) and logo images; never queried |
@@ -1882,7 +1891,7 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 | **Logging** | Client ring buffer + Worker logs piped via `x-fc26-logs` response header, overflow via `GET /api/logs?correlationId=...` | User requirement; simple, no SSE |
 | **Console UI** | Triple-tap on logo (in bottom nav for thumb reach) → slide-up panel, unadvertised in the UI | User requirement; an admin secret is to follow |
 | **Time storage** | UTC millis as `INTEGER` in D1, Worker never formats, client renders with `Intl.DateTimeFormat` | No locale leakage, cache-friendly |
-| **Versioning** | Three axes (client, worker, schema), compatibility check on boot + startup, manual migrations | Prevents deploy/migrate race footguns |
+| **Versioning** | Three axes (client, worker, schema), client update banner, migrations applied by CI before each Worker deploy | Prevents deploy/migrate race footguns |
 | Squad source | xAranaktu tool → GitHub Release → daily Cron → R2 (versioned, 12 retained) | Official EA data, automated, supports Update Changes mode |
 | Squad access | R2 shards (`clubs.json` + `players/{clubId}.json`) | Avoids 5–8 MB cold load on phones |
 | Auth | Room ID + optional PIN/password (PBKDF2 + throttle + signed cookie) | Zero-friction for a friend group, still protected |
@@ -1967,17 +1976,11 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 | Package | Used In |
 |---|---|
 | `hono` | worker — HTTP routing |
-| `drizzle-orm` | worker — type-safe D1 queries |
 | `zod` | both — boundary validation |
 | `nanoid` | both — short unique IDs for rooms/games/events/logs |
 | `zustand` | web — game session state |
-| `@tanstack/react-router` | web — file-based typed routing |
-| `recharts` | web — stats dashboard charts and player attribute radars |
 | `tailwindcss` (v4) | web — utility CSS via Vite plugin |
 | `vitest` | both — unit tests |
-| `jose` | worker — JWT signing for session cookies |
-| `@google/genai` | worker — Gemini OCR (optional, Phase 10) |
-| `@anthropic-ai/sdk` | worker — Claude OCR fallback (optional, Phase 10) |
 | `motion` (v13) | web — the small amount of animation that earns its place |
 | `@radix-ui/*` | web — unstyled primitives under the vendored shadcn components |
 | `class-variance-authority`, `clsx`, `tailwind-merge` | web — shadcn's variant and class plumbing |
@@ -1985,6 +1988,11 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 | `vite-plugin-pwa` | web — precache manifest and service worker generation |
 | `workbox-window` | web — the client half of the update handshake |
 | `@playwright/test` | root — browser tests against the real stack (see [§29](#29-end-to-end-tests)) |
+
+Planned in §6 and never installed: `drizzle-orm`, `@tanstack/react-router`,
+`recharts`, `jose` (sessions are HMAC-signed with Web Crypto), `@google/genai`
+(Gemini is called over `fetch`) and `@anthropic-ai/sdk`. They are left out of
+the table above so it lists only what is actually in a `package.json`.
 
 shadcn/ui is **not** in this table on purpose: it is not a dependency. Its
 components are vendored as source under `apps/web/src/components/ui/` and are

@@ -2,7 +2,9 @@
 
 Practical guide for running, testing, and deploying the project locally. For
 the full architecture and design rationale see
-[`FC26_TeamPicker_Handoff.md`](./FC26_TeamPicker_Handoff.md).
+[`FC26_TeamPicker_Handoff.md`](./FC26_TeamPicker_Handoff.md); for the dev
+environment in more depth (LAN access from a phone, smoke tests) see
+[`deployment.local.md`](./deployment.local.md).
 
 ---
 
@@ -14,7 +16,7 @@ the full architecture and design rationale see
 4. [Running the App Locally](#4-running-the-app-locally)
 5. [Running Tests](#5-running-tests)
 6. [Type Checking](#6-type-checking)
-7. [Building for Production](#7-building-for-production)
+7. [Building and Deploying](#7-building-and-deploying)
 8. [Cloudflare Resources (D1, R2)](#8-cloudflare-resources-d1-r2)
 9. [Database Migrations](#9-database-migrations)
 10. [Environment Variables & Secrets](#10-environment-variables--secrets)
@@ -29,19 +31,22 @@ the full architecture and design rationale see
 
 | Tool | Version | Notes |
 |---|---|---|
-| Node.js | ≥ 20 (tested on 23.7) | <https://nodejs.org/> |
-| pnpm | 9.15.0 | `npm install -g pnpm@9.15.0` |
+| Node.js | ≥ 20 (CI uses 22) | <https://nodejs.org/> |
+| pnpm | 9.15.0 | Pinned by `packageManager` in the root `package.json`. `npm install -g pnpm@9.15.0` |
+| Python | 3.x | Runs the version-bump hook and CI gate in `scripts/` |
 | Git | any recent | |
-| Cloudflare account | free tier is enough | Only needed for Phase 1+ (D1, R2, Workers deploy) |
-| Wrangler CLI | bundled via `@cloudflare/wrangler` in the worker package | `pnpm --filter @fc26/worker exec wrangler --version` |
+| Cloudflare account | free tier is enough | Only for deploying; local dev and tests need none |
+| Wrangler | `wrangler` devDependency of the worker | `pnpm --filter @fc26/worker exec wrangler --version` |
 
 Optional but recommended:
-- Modern Chrome / Firefox / Safari with mobile-emulation devtools.
-- A GitHub account if you want to push the repo and run CI.
+- Modern Chrome / Firefox / Safari with mobile-emulation devtools — the app
+  is a phone PWA.
+- Docker, to reproduce CI in a container of the runner's OS (see
+  [`AGENTS.md`](./AGENTS.md), *Testing locally*).
 
 > **Windows users:** the project uses Bash-style scripts. Use Git Bash or
 > WSL — PowerShell will work for `pnpm` commands but not for the example
-> shell snippets in this doc.
+> shell snippets in this doc. `scripts/setup-secrets.ps1` is the exception.
 
 ---
 
@@ -52,16 +57,21 @@ Optional but recommended:
 git clone <repo-url> football
 cd football
 
-# 2. Install everything (uses pnpm workspaces — installs all packages at once)
+# 2. Install everything (pnpm workspaces — one install for all packages).
+#    Its `prepare` script also points git at .githooks/, which enables the
+#    pre-commit version bump.
 pnpm install
 
-# 3. Verify the scaffold works end-to-end (90 tests should pass)
-pnpm -r test:run
+# 3. Local Worker secrets (gitignored)
+cp worker/.dev.vars.example worker/.dev.vars
+
+# 4. Verify
 pnpm -r typecheck
+pnpm -r test:run
 ```
 
-If the test suite passes you have a working environment. There is no extra
-configuration needed for Phase 0 — D1 and R2 are not used yet.
+If both pass you have a working environment. No Cloudflare resources are
+needed locally: `wrangler dev` emulates D1 with a local SQLite file (§8).
 
 ---
 
@@ -69,129 +79,110 @@ configuration needed for Phase 0 — D1 and R2 are not used yet.
 
 ```
 football/
-├── apps/web/            @fc26/web — Vite + React SPA (the UI)
-├── worker/              @fc26/worker — Cloudflare Worker (Hono API)
-├── packages/shared/     @fc26/shared — types, time utils, logger, selection strategies
-├── tools/               (Phase 1) one-shot Node scripts (squad-sync)
-├── package.json         workspace root + top-level scripts
+├── apps/web/               @fc26/web — Vite + React PWA (the UI)
+├── worker/                 @fc26/worker — Cloudflare Worker (Hono API), D1 + R2
+│   └── src/db/migrations/  numbered D1 migrations (the schema tier)
+├── packages/shared/        @fc26/shared — types, selection strategies, wager
+│                           ledger, time utils, logger
+├── workers/football-app/   @fc26/football-app — static-assets Worker that
+│                           serves the client and proxies /api to the API Worker
+├── tools/squad-sync/       @fc26/squad-sync — one-shot squad sync and preview
+├── redirect-page/          GitHub Pages redirect from the old origin
+├── e2e/                    Playwright specs against the real stack
+├── scripts/                version bump + check, ledger health check, secrets
+├── docs/                   feature specs, plans, hand-offs, walkthroughs
+├── .githooks/              pre-commit version bump
+├── playwright.config.ts
+├── package.json            workspace root + top-level scripts
 ├── pnpm-workspace.yaml
-└── tsconfig.base.json   strict TypeScript settings shared by all packages
+└── tsconfig.base.json      strict TypeScript settings shared by all packages
 ```
 
-Each workspace package has its own:
-- `package.json` with scripts
-- `tsconfig.json` extending the base
-- `vitest.config.ts`
-- `src/` directory with colocated `*.test.ts` files
+Each workspace package has its own `package.json` with scripts and a
+`tsconfig.json` extending the base; the tested ones also have a
+`vitest.config.ts` and colocated `*.test.ts(x)` files under `src/`.
 
 ---
 
 ## 4. Running the App Locally
 
-### Web app only (Phase 0 default — works without a running Worker)
+The client is served under **`/football/`** (vite `base`), and Vite proxies
+`/api` to the local Worker, so the session cookie stays same-origin. Run both:
 
 ```bash
+# Terminal 1 — Worker (wrangler dev, http://localhost:8787)
+pnpm dev:worker
+
+# Terminal 2 — Web (vite, http://localhost:5173/football/)
 pnpm dev:web
 ```
 
-Opens Vite dev server at <http://localhost:5173>. Hot reload is enabled.
-
-The app will try to fetch `/api/version` from the Worker. If the Worker is
-not running, the UI shows `Worker: unreachable — …` and continues to render
-— this is intentional so you can iterate on the front end without booting
-the Worker.
-
-### Worker only
-
-```bash
-pnpm dev:worker
-```
-
-Starts `wrangler dev` on <http://localhost:8787>. Try:
+Without the Worker the client still renders, but every `/api` call fails —
+including joining a room. Try the Worker directly:
 
 ```bash
 curl http://localhost:8787/api/version
 curl http://localhost:8787/api/health
 ```
 
-Both should return JSON. Every response carries a Base64-encoded
-`x-fc26-logs` header containing the Worker's per-request log entries.
+Every response carries a Base64-encoded `x-fc26-logs` header with the Worker's
+per-request log entries.
 
-> **Note:** Until you create a D1 database (Phase 1) the Worker will boot
-> with `DB` undefined. The Phase 0 routes (`/api/version`, `/api/health`)
-> don't use the database, so this is fine.
+The proxy target is `http://127.0.0.1:8787` unless `VITE_WORKER_TARGET` says
+otherwise (the e2e suite uses that to run its own pair on 8788 and 5174).
+`VITE_API_BASE` is **not** needed — production is same-origin too, via the
+`football-app` Worker. It remains readable as an escape hatch for pointing a
+local build at a deployed API.
 
-### Both at once (recommended once you start integrating)
-
-Open two terminals:
-
-```bash
-# Terminal 1
-pnpm dev:worker
-
-# Terminal 2
-pnpm dev:web
-```
-
-Then point the web app at the Worker by creating `apps/web/.env.local`:
-
-```
-VITE_API_BASE=http://localhost:8787
-```
-
-Restart `pnpm dev:web` after changing env files.
+Both servers bind every interface, so a phone on the same Wi-Fi can reach
+`http://<LAN-IP>:5173/football/`; see `deployment.local.md`. AI agents can use
+the preview-harness definitions in `.claude/launch.json` (`web`, `worker`,
+`web-preview`).
 
 ---
 
 ## 5. Running Tests
 
-The project uses **Vitest** in every package. Tests live next to the source
-file they cover (`foo.ts` ↔ `foo.test.ts`).
+### Unit tests (Vitest)
 
-### Run everything once (CI mode)
+Tests live next to the source file they cover (`foo.ts` ↔ `foo.test.ts`).
 
 ```bash
-pnpm -r test:run
+pnpm -r test:run          # everything once (CI mode)
+pnpm -r test              # watch mode, all packages
+pnpm --filter @fc26/shared test   # watch one package (@fc26/worker, @fc26/web)
 ```
 
-Expected output (Phase 0): **90 passing tests across 3 packages.**
+At the time of writing that is 581 tests: 261 shared, 174 worker, 146 web
+(`tools/squad-sync`'s `test:run` is a typecheck).
 
-### Watch mode (during development)
-
-```bash
-# All packages, parallel watchers
-pnpm -r test
-
-# A single package
-pnpm --filter @fc26/shared test
-pnpm --filter @fc26/worker test
-pnpm --filter @fc26/web test
-```
-
-### Run a single test file
+Run a single file or filter by name from inside the package directory:
 
 ```bash
-# From the package directory
 cd packages/shared
 pnpm vitest run src/selection/strategies/strategies.test.ts
-```
-
-### Run tests matching a name
-
-```bash
 pnpm vitest run -t "balanced-rating"
 ```
 
-### Coverage (optional)
+### End-to-end tests (Playwright)
 
 ```bash
-pnpm --filter @fc26/shared exec vitest run --coverage
+pnpm exec playwright install chromium   # once per Playwright version
+pnpm test:e2e                           # = playwright test
 ```
 
-Coverage targets per `FC26_TeamPicker_Handoff.md` §22:
-- `worker/src/services/` — 80% lines
-- `apps/web/src/game/` — 80% lines
-- `packages/shared/src/selection/` — **100% lines**
+The suite starts its own Worker (`wrangler dev --local`, fresh local D1, port
+8788) and Vite (port 5174), so nothing else needs to be running and no
+Cloudflare credentials are needed. See handoff §29 for what it covers and how
+to write one.
+
+### Coverage
+
+Targets from `FC26_TeamPicker_Handoff.md` §22: 80% lines for worker services
+and client game logic, **100%** for `packages/shared/src/selection/`.
+Presentational components are not tracked. No coverage provider is installed;
+add `@vitest/coverage-v8` to the package before running
+`pnpm vitest run --coverage`.
 
 ---
 
@@ -201,151 +192,118 @@ Strict TypeScript with `noUncheckedIndexedAccess`, `noUnusedLocals`, and
 `noImplicitReturns`.
 
 ```bash
-# All packages
-pnpm -r typecheck
-
-# A single package
+pnpm -r typecheck                # all packages
 pnpm --filter @fc26/web typecheck
+pnpm run typecheck:scripts       # scripts/ (e.g. ledger-report.ts), which
+                                 # belong to no package
 ```
 
-Type checking is part of the production build for the web app — `pnpm build`
-will fail if `tsc` finds errors.
+Type checking is part of the web build — `pnpm --filter @fc26/web build` fails
+if `tsc` finds errors.
 
 ---
 
-## 7. Building for Production
+## 7. Building and Deploying
 
-### Web app
+**Deploys are done by CI**, from `main`, by `.github/workflows/deploy.yml`.
+Both deploy jobs wait for the `ci` (typecheck + unit tests) and `e2e` jobs;
+on a pull request the workflow runs those two and skips the deploys. (The
+version check is a separate workflow and runs on every PR.)
 
-```bash
-pnpm --filter @fc26/web build
-```
+| Job | What it ships |
+|---|---|
+| `deploy-worker` | Applies pending D1 migrations (`--remote`), **then** deploys `worker/` |
+| `deploy-client` | Builds `apps/web`, stages it under `site/football/`, deploys `workers/football-app` (static assets + `/api` service binding to the API Worker) |
+| `deploy-redirect` | Publishes `redirect-page/` to the old GitHub Pages origin, mapping URLs 1:1 to the new one |
 
-Output: `apps/web/dist/` (deployable to Cloudflare Pages, Netlify, or any
-static host). Currently ~150 kB raw / ~49 kB gzipped.
+They need the `CLOUDFLARE_API_TOKEN` (with D1 Edit) and
+`CLOUDFLARE_ACCOUNT_ID` repository secrets.
 
-### Worker
-
-```bash
-pnpm --filter @fc26/worker build
-```
-
-This runs `tsc --noEmit` to catch type errors. The actual Worker bundle is
-produced by Wrangler at deploy time:
+To build locally:
 
 ```bash
-pnpm --filter @fc26/worker deploy
-```
-
-### Build everything
-
-```bash
-pnpm -r build
+pnpm --filter @fc26/web build      # → apps/web/dist/
+pnpm --filter @fc26/worker build   # tsc --noEmit; wrangler bundles at deploy
+pnpm -r build                      # everything
 ```
 
 ---
 
 ## 8. Cloudflare Resources (D1, R2)
 
-Skip this section until Phase 1. The Phase 0 scaffold runs without any
-Cloudflare resources provisioned.
-
-### Create resources
+The bindings in `worker/wrangler.toml` are live: D1 `DB` (database `fc26`)
+and R2 `SQUADS` (bucket `fc26`). Locally, `wrangler dev` uses an emulated
+SQLite D1 under `worker/.wrangler/state`, so you need no account. If a binding
+is missing, the Worker falls back to in-memory stores (`src/dependencies.ts`)
+and stays runnable; the squad routes then answer 503 `no_squad_data`.
 
 ```bash
 cd worker
 
-# 1. Create the D1 database
-pnpm exec wrangler d1 create fc26
-# Copy the printed `database_id` into wrangler.toml under [[d1_databases]]
-
-# 2. Create the R2 bucket for squad data
-pnpm exec wrangler r2 bucket create fc26-squads
-```
-
-### Uncomment the bindings in `worker/wrangler.toml`
-
-```toml
-[[d1_databases]]
-binding = "DB"
-database_name = "fc26"
-database_id = "PASTE-THE-ID-HERE"
-
-[[r2_buckets]]
-binding = "SQUADS"
-bucket_name = "fc26-squads"
-
-[triggers]
-crons = ["0 6 * * *"]   # daily squad sync at 06:00 UTC
-```
-
-### Create local-only test resources
-
-For local development you can use Wrangler's local SQLite emulation — no
-network calls, no Cloudflare account needed:
-
-```bash
-# Apply migrations to a local sqlite copy
+# Apply migrations to the local SQLite copy
 pnpm exec wrangler d1 migrations apply fc26 --local
 
-# Run a query against the local DB
+# Query it
 pnpm exec wrangler d1 execute fc26 --local --command "SELECT * FROM rooms;"
 ```
 
-`wrangler dev` will use the local DB by default.
+Provisioning from scratch (only for a new Cloudflare account):
+
+```bash
+pnpm exec wrangler d1 create fc26          # paste database_id into wrangler.toml
+pnpm exec wrangler r2 bucket create fc26
+```
+
+A daily squad-sync cron is implemented (`scheduled` in `worker/src/index.ts`)
+but its `[triggers]` block in `wrangler.toml` is commented out, so it does not
+run.
 
 ---
 
 ## 9. Database Migrations
 
-Migrations live in `worker/src/db/migrations/` and follow the Drizzle
-convention `NNNN_description.sql`. Each migration may also have an optional
-`NNNN_description.ts` for data transforms (run after the SQL).
+Migrations live in `worker/src/db/migrations/` as `NNNN_description.sql` and
+are applied by `wrangler d1 migrations apply` (`migrations_dir` in
+`wrangler.toml`). There is no ORM; queries are plain SQL in the repositories.
 
-### Apply migrations locally
-
-```bash
-cd worker
-pnpm exec wrangler d1 migrations apply fc26 --local
-```
-
-### Apply migrations to production
-
-```bash
-pnpm exec wrangler d1 migrations apply fc26 --remote
-```
-
-Always apply migrations **before** deploying a new Worker version. The
-Worker boots with a `SCHEMA_VERSION` env var and refuses to serve requests
-if it doesn't match the latest applied migration (Phase 5).
+- **Additive only.** CI applies migrations to production *before* the new
+  Worker deploys, so the old Worker briefly runs against the new schema.
+- **Data moves are SQL too**, in the same file — see
+  `0008_chip_purchases_backfill.sql`. Nothing runs a `.ts` migration.
+- **Bump `SCHEMA_VERSION`** in `wrangler.toml` to the new number; the version
+  gate fails if it differs from the highest migration.
 
 ### Create a new migration
 
 ```bash
-# Create the next numbered file
-touch src/db/migrations/0002_add_something.sql
+touch worker/src/db/migrations/0015_add_something.sql
 ```
 
-Edit the file with your `CREATE TABLE` / `ALTER TABLE` statements, then
-finish with:
+Open it with a comment saying *why*, then the statements, and finish with:
 
 ```sql
 INSERT INTO schema_migrations (version, applied_at, description)
-VALUES (2, (strftime('%s','now') * 1000), 'add something');
+VALUES (15, (strftime('%s','now') * 1000), 'add something');
 ```
 
-If you also need to move data, add `0002_add_something.ts` exporting an
-`async function up(db: D1Database)`.
+Apply locally with `pnpm exec wrangler d1 migrations apply fc26 --local`.
+Production is CI's job (§7); by hand it is the same command with `--remote`.
+
+`SCHEMA_VERSION` is reported by `/api/version`. The Worker does **not** yet
+refuse requests when it disagrees with the database (handoff §21 describes
+that as intended).
 
 ---
 
 ## 10. Environment Variables & Secrets
 
-### Web app (`apps/web/.env.local`)
+### Web app
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `VITE_API_BASE` | empty (same-origin) | Base URL for the Worker API |
+| `VITE_WORKER_TARGET` | `http://127.0.0.1:8787` | Where the dev server proxies `/api` |
+| `VITE_API_BASE` | empty (same-origin) | Escape hatch only — production does not set it |
+| `PORT` | `5173` | Dev server port, for launchers that assign one |
 
 Build-time defines (set by `vite.config.ts`, do not edit):
 - `__APP_VERSION__` — from `apps/web/package.json`
@@ -354,20 +312,22 @@ Build-time defines (set by `vite.config.ts`, do not edit):
 
 ### Worker (`worker/wrangler.toml` `[vars]` block)
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `WORKER_VERSION` | `0.1.0` | Reported via `/api/version` |
-| `SCHEMA_VERSION` | `1` | Latest applied migration |
-| `MIN_CLIENT_VERSION` | `0.1.0` | Web app refuses to continue below this |
-| `GIT_SHA` | unset | Build metadata |
+| Variable | Purpose |
+|---|---|
+| `WORKER_VERSION` | Reported via `/api/version`; must equal `worker/package.json` |
+| `SCHEMA_VERSION` | Highest migration number; must equal the latest file |
+| `MIN_CLIENT_VERSION` | Clients below this are shown an update banner |
+| `GIT_SHA` | Passed at deploy (`--var GIT_SHA:…`) |
 
-### Worker secrets (Phase 1+)
+Don't hand-edit the versions — the pre-commit hook bumps them (§14).
+
+### Worker secrets
 
 ```bash
 cd worker
-pnpm exec wrangler secret put SESSION_SECRET      # room session signing (required)
-pnpm exec wrangler secret put GEMINI_API_KEY      # OCR (Phase 10, optional)
-pnpm exec wrangler secret put SQUAD_SYNC_ADMIN_SECRET  # guards /internal/squads/sync
+pnpm exec wrangler secret put SESSION_SECRET           # room session signing (required)
+pnpm exec wrangler secret put GEMINI_API_KEY           # TV-photo score analysis (optional)
+pnpm exec wrangler secret put SQUAD_SYNC_ADMIN_SECRET  # guards /internal/squads/sync (optional)
 ```
 
 Secrets are encrypted and never appear in logs.
@@ -389,8 +349,8 @@ For local development, put values in `worker/.dev.vars` (gitignored) rather
 than `wrangler.toml`; copy `worker/.dev.vars.example` to get started.
 `scripts/setup-secrets.ps1 -All` automates the production side.
 
-> **Never commit `.env*` files or secrets.** The repo's `.gitignore` covers
-> the common patterns; double-check before pushing.
+> **Never commit `.env*`, `.dev.vars` or secrets.** The repo's `.gitignore`
+> covers the common patterns; double-check before pushing.
 
 ---
 
@@ -402,23 +362,17 @@ entries into the client log buffer.
 
 ### Open the Console
 
-**Triple-tap the FC26 logo in the bottom navigation bar.** The logo is the
-round button in the centre of the bottom nav — placed there so it's
-thumb-reachable on phones and never hidden behind iOS notches.
+**Triple-tap the FC26 logo in the bottom navigation bar** (the round button in
+the centre). The app deliberately no longer hints at this on screen (#54), and
+"hidden" is not a permission boundary: the Console also unlocks the Settings
+panel and its destructive controls (handoff §25, open item 16).
 
 ### Tabs
 
 - **Live** — newest log entries from both client and Worker, auto-follow.
 - **System** — app version, git SHA, build time, time zone, user agent.
 
-### What gets logged automatically (Phase 0)
-
-- App boot
-- Every API request (out and in)
-- Worker version fetch
-- Console open/close
-
-You can call the logger directly anywhere in client code:
+### Logging from code
 
 ```ts
 import { logger } from './lib/logger.js'
@@ -436,6 +390,8 @@ app.get('/api/something', (c) => {
 })
 ```
 
+The handoff's §17 lists the log points that are mandatory.
+
 ---
 
 ## 12. Common Workflows
@@ -443,39 +399,41 @@ app.get('/api/something', (c) => {
 ### Add a new selection strategy
 
 1. Create `packages/shared/src/selection/strategies/my-strategy.ts`
-2. Create `packages/shared/src/selection/strategies/my-strategy.test.ts`
-3. Register it in `packages/shared/src/selection/registry.ts`
+2. Add behaviour-specific tests, e.g. `my-strategy.test.ts` next to it
+3. Register it in `packages/shared/src/selection/registry.ts` (registration
+   order is the display order)
 4. Re-export it in `packages/shared/src/selection/index.ts`
-5. `pnpm --filter @fc26/shared test:run` — your strategy will be picked up by the
-   parameterised contract tests automatically (every strategy must satisfy
-   the same set of invariants)
+5. Add it to the `STRATEGIES` list in
+   `packages/shared/src/selection/strategies/strategies.test.ts` so it runs
+   the parameterised contract tests — they do **not** discover strategies on
+   their own
+6. `pnpm --filter @fc26/shared test:run`
 
-That's it — no schema change, no Worker deploy, no DB migration. Once
-deployed, room admins can switch to your strategy via the `Room Settings`
-dropdown (Phase 2 UI).
+No schema change, no migration. Once deployed it is offered wherever a game's
+selection strategy is chosen.
 
 ### Add a new Worker route
 
 1. Create `worker/src/routes/my-feature.ts` — export a `Hono` sub-app
 2. Mount it in `worker/src/app.ts` with `app.route('/api', myFeatureRoutes)`
 3. Add `worker/src/routes/my-feature.test.ts` — instantiate `buildApp()` and
-   call `app.fetch(new Request(...))` directly. No `wrangler dev` required.
+   call `app.fetch(new Request(...))` directly; `routes/test-support.ts` has
+   the shared fixtures. No `wrangler dev` required.
 
 ### Add a new database table
 
-1. Create `worker/src/db/migrations/NNNN_description.sql`
-2. (Optional) Create the matching `.ts` for data transforms
-3. Apply locally: `pnpm exec wrangler d1 migrations apply fc26 --local`
-4. Bump `SCHEMA_VERSION` in `wrangler.toml`
-5. Add the Drizzle schema entry in `worker/src/db/schema.ts` (Phase 1+)
-6. Add a repository class implementing the relevant `IRepository<…>`
-7. Add an in-memory implementation for tests
+1. Create `worker/src/db/migrations/NNNN_description.sql` (§9)
+2. Apply locally: `pnpm exec wrangler d1 migrations apply fc26 --local`
+3. Bump `SCHEMA_VERSION` in `wrangler.toml`
+4. Add a repository interface, a D1 implementation and an in-memory one for
+   tests, and wire both into `worker/src/dependencies.ts`
 
 ### Update the handoff doc
 
 The full architecture spec is `FC26_TeamPicker_Handoff.md`. Update it
-whenever a structural decision changes; small implementation details belong
-in code comments instead.
+whenever a structural decision changes, add a **Recent Changes** entry for
+shipped work, and record anything left unresolved under **§25 Open Items**.
+Small implementation details belong in code comments instead.
 
 ---
 
@@ -500,18 +458,21 @@ Vitest's parallel mode can occasionally deadlock on Windows. Run with
 pnpm vitest run --no-isolate
 ```
 
-### `wrangler dev` fails with "no D1 binding"
+### Every authenticated request returns 401 in dev
 
-You haven't uncommented `[[d1_databases]]` in `wrangler.toml`. Either do
-that and create the database, or comment out the route(s) that read from
-`c.env.DB`. The Phase 0 routes don't touch the DB, so a fresh checkout
-should boot fine.
+The session cookie is not round-tripping. Open the app through Vite
+(`http://localhost:5173/football/`), not the Worker's port, so `/api` is
+proxied same-origin; and don't set `VITE_API_BASE` to the Worker's URL.
 
-### Web app shows "Worker: unreachable"
+### Creating a room fails with 500 locally
 
-The Worker isn't running or is on a different origin. Either:
-- Start it with `pnpm dev:worker`, or
-- Set `VITE_API_BASE` in `apps/web/.env.local` to wherever it lives
+`SESSION_SECRET` is unset, so the Worker cannot sign a session. Copy
+`worker/.dev.vars.example` to `worker/.dev.vars` and restart `pnpm dev:worker`.
+
+### `playwright install` says the OS is not supported
+
+The installed `@playwright/test` predates your OS (or the CI runner's). Upgrade
+it in the root `package.json`; see handoff §29.
 
 ### TypeScript errors after pulling new code
 
@@ -520,7 +481,7 @@ pnpm install                  # in case dependencies changed
 pnpm -r typecheck             # surface all errors at once
 ```
 
-### `iOS Safari` shows the bottom nav under the home indicator
+### iOS Safari shows the bottom nav under the home indicator
 
 The nav already accounts for `env(safe-area-inset-bottom)`. Make sure your
 test page uses `<meta name="viewport" content="… viewport-fit=cover">`
@@ -531,6 +492,7 @@ test page uses `<meta name="viewport" content="… viewport-fit=cover">`
 ## 14. Project Conventions
 
 These are non-negotiable. Pull requests that violate them will be sent back.
+`AGENTS.md` collects them with the rest of the project's rules for agents.
 
 ### Code
 
@@ -548,7 +510,8 @@ These are non-negotiable. Pull requests that violate them will be sent back.
 - Every new module ships with tests in the same PR — never "tests later."
 - Selection strategies must pass the parameterised contract tests AND
   add their own behaviour-specific tests.
-- Logic dirs (`worker/src/services/`, `apps/web/src/game/`,
+- Sabotage every new guarantee: break it, confirm a test fails, restore it.
+- Logic dirs (`worker/src/services/`, client game logic,
   `packages/shared/src/selection/`) target high coverage. React
   presentational components are not tracked for coverage.
 
@@ -574,9 +537,12 @@ These are non-negotiable. Pull requests that violate them will be sent back.
 ### Versioning
 
 - Three independent axes: client, worker, schema.
-- `GET /api/version` returns all three. Web app refuses to continue if its
-  version is below `minClientVersion`.
-- Migrations are applied manually before deploying a new Worker.
+- `GET /api/version` returns all three. The web app shows an update banner
+  when its version is below `minClientVersion`.
+- Every PR that touches a tier bumps it. `.githooks/pre-commit` does this
+  automatically (`pnpm version:bump` by hand); CI's version check is the
+  backstop: `BASE_REF=origin/main python3 scripts/check_version_bump.py`.
+- Migrations are applied by CI before the Worker deploys (§7).
 
 ---
 
