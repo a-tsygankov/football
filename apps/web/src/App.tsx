@@ -47,6 +47,15 @@ import {
   readLastBettor,
 } from './lib/api.js'
 import { logger } from './lib/logger.js'
+import {
+  buildAppUrl,
+  forgetRoomPin,
+  parseJoinLink,
+  rememberRoomPin,
+  shareLink,
+  type ShareOutcome,
+} from './lib/share.js'
+import { ShareIcon } from './features/share/ShareSheet.jsx'
 import { swUpdateStore } from './lib/swUpdate.js'
 import { APP_VERSION, type WorkerVersionInfo } from './lib/version.js'
 import { LandingScreen } from './features/landing/LandingScreen.jsx'
@@ -73,6 +82,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const install = useInstallPrompt()
   const [iosHint, setIosHint] = useState(false)
+  const [appShareOutcome, setAppShareOutcome] = useState<ShareOutcome | null>(null)
 
   const onPinClick = useCallback(() => {
     if (install.status === 'ready') install.prompt()
@@ -138,6 +148,20 @@ export function App() {
   }, [bootstrap])
 
   useEffect(() => {
+    // A shared room link (`#/join?room=…&pin=…`) wins over the remembered
+    // room. The hash is swapped for the default tab straight away, so the
+    // PIN does not linger in the address bar, history, or a reload.
+    const link = typeof window === 'undefined' ? null : parseJoinLink(window.location.hash)
+    if (link) {
+      const { pathname, search } = window.location
+      window.history.replaceState(window.history.state, '', `${pathname}${search}#/game`)
+      logger.info('system', 'opened room join link', {
+        roomId: link.roomId,
+        withPin: link.pin !== null,
+      })
+      void joinRoomWith(link.roomId, { pin: link.pin, fromLink: true })
+      return
+    }
     if (!joinRoomId) return
     void refreshRoom(joinRoomId, { silentUnauthorized: true })
   }, [])
@@ -644,6 +668,7 @@ export function App() {
           pin: createPin.trim() || null,
         }),
       })
+      if (createPin.trim() && next.room.hasPin) rememberRoomPin(next.room.id, createPin.trim())
       applyBootstrap(next)
       setCreateName('')
       setCreatePin('')
@@ -656,27 +681,62 @@ export function App() {
 
   async function joinRoom(): Promise<void> {
     if (!joinRoomId.trim()) return
+    await joinRoomWith(joinRoomId.trim(), { pin: joinPin.trim() || null })
+  }
+
+  async function joinRoomWith(
+    identifier: string,
+    options: { pin?: string | null; fromLink?: boolean },
+  ): Promise<void> {
     setBusy('joining-room')
     setError(null)
     try {
       const next = await apiJson<RoomBootstrapResponse>(
-        `/api/rooms/${joinRoomId.trim()}/sessions`,
+        `/api/rooms/${encodeURIComponent(identifier)}/sessions`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            identifier: joinRoomId.trim(),
-            pin: joinPin.trim() || null,
+            identifier,
+            pin: options.pin ?? null,
           }),
         },
       )
+      // Kept so this device can put the PIN in its own invite links.
+      if (options.pin && next.room.hasPin) rememberRoomPin(next.room.id, options.pin)
       applyBootstrap(next)
       setJoinPin('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      if (options.fromLink) {
+        // Leave the room ID in the join form so the PIN is all that is left
+        // to type.
+        setJoinRoomId(identifier)
+        const code = (err as { code?: string }).code
+        setError(
+          code === 'invalid_pin'
+            ? options.pin
+              ? 'The PIN in this link is wrong — the room PIN may have changed. Enter it below, or ask for a new link.'
+              : 'This room needs a PIN. Enter it below, or ask for a new link.'
+            : err instanceof Error
+              ? err.message
+              : String(err),
+        )
+      } else {
+        setError(err instanceof Error ? err.message : String(err))
+      }
     } finally {
       setBusy(null)
     }
+  }
+
+  async function shareApp(): Promise<void> {
+    setAppShareOutcome(
+      await shareLink({
+        title: 'FC 26 Companion',
+        text: "Room control for tonight's football session",
+        url: buildAppUrl(),
+      }),
+    )
   }
 
   async function createGamer(): Promise<void> {
@@ -970,6 +1030,7 @@ export function App() {
   }
 
   function leaveRoom(): void {
+    if (bootstrap) forgetRoomPin(bootstrap.room.id)
     clearPersistedRoomSession()
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(LAST_ROOM_ID_KEY)
@@ -1111,6 +1172,37 @@ export function App() {
               </div>
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => void shareApp()}
+            style={{
+              padding: '14px 16px',
+              borderRadius: 20,
+              background: 'rgba(255,255,255,0.78)',
+              border: '1px solid rgba(5,46,22,0.08)',
+              cursor: 'pointer',
+              textAlign: 'left',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              color: 'inherit',
+              font: 'inherit',
+            }}
+          >
+            <ShareIcon className="shrink-0 text-[#166534]" />
+            <div>
+              <p style={{ margin: 0, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.14em', opacity: 0.6 }}>
+                Share app
+              </p>
+              <p aria-live="polite" style={{ margin: '6px 0 0', fontSize: 13, opacity: 0.7 }}>
+                {appShareOutcome === 'copied'
+                  ? 'Link copied'
+                  : appShareOutcome === 'failed'
+                    ? buildAppUrl()
+                    : 'Send the link to a friend'}
+              </p>
+            </div>
+          </button>
         </section>
         {iosHint && (
           <div
