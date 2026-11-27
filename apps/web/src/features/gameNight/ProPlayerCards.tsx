@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Gamer, MatchHistoryResponse, RoomBootstrapResponse } from '@fc26/shared'
+import { gamerFallbackAvatar } from '../../lib/avatars.js'
 
 const sides = ['home', 'bench', 'away'] as const
 type Side = typeof sides[number]
@@ -82,9 +83,8 @@ export function ProPlayerCards({ room, eligible, assignments, assign, edit, togg
     const side = assignments[gamer.id] ?? 'bench'
     const selectable = gamer.active && eligible.has(gamer.id) && !change && !busy
     const blocked = (next: Side) => !selectable || (next !== 'bench' && side !== next && room.gamers.filter(item => eligible.has(item.id) && assignments[item.id] === next).length >= 2)
-    const photo = Array.from(gamer.id).reduce((sum, char) => sum + char.charCodeAt(0), 0) % 6
     return <article className="pro-player" key={gamer.id} data-side={side} data-active={active} aria-label={gamer.name}>
-      <img alt="" src={gamer.avatarUrl || '/card-photos/sample-' + photo + '.jpg'} />
+      <img alt="" src={gamer.avatarUrl || gamerFallbackAvatar(gamer.name)} />
       <div className="pro-name"><strong>{gamer.name}</strong>{last[gamer.id] && <small>Last game · {last[gamer.id]}</small>}</div>
       <button type="button" className="pro-toggle" role="switch" aria-checked={active} aria-label={gamer.name + ' availability'} data-availability={gamer.id}
         onFocus={() => { focused.current = gamer.id }} disabled={change?.saving || (busy && !change)} onClick={() => schedule(gamer)}>

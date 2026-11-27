@@ -239,6 +239,7 @@ export function BetsPanel({
           <div
             role="group"
             aria-label="Outcome to back"
+            className="seg"
             style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}
           >
             {OUTCOMES.map((item) => {
@@ -249,6 +250,7 @@ export function BetsPanel({
                   type="button"
                   disabled={!allowed || busy !== null}
                   aria-pressed={outcome === item.id}
+                  data-side={item.id}
                   onClick={() => setOutcome(item.id)}
                   style={outcome === item.id ? primaryButtonStyle : secondaryButtonStyle}
                 >

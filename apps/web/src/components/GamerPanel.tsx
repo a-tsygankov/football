@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { Gamer } from '@fc26/shared'
-import { defaultAvatar } from '../lib/avatars.js'
+import { gamerFallbackAvatar } from '../lib/avatars.js'
 import { AvatarImage, IdentityLayout } from './entity-shared.jsx'
 
 export function GamerAvatar({
@@ -13,7 +13,7 @@ export function GamerAvatar({
   return (
     <AvatarImage
       src={gamer.avatarUrl}
-      fallbackSrc={defaultAvatar('gamer')}
+      fallbackSrc={gamerFallbackAvatar(gamer.name)}
       alt={`${gamer.name} avatar`}
       size={size}
       shape="circle"

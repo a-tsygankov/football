@@ -19,6 +19,31 @@ import {
 } from '../../utils/scoreboard.js'
 import { MatchHistoryList } from './MatchHistoryList.jsx'
 
+/**
+ * The same figures as the one-line summary, as a labelled grid. Hidden unless
+ * a host stylesheet (the Clubhouse preview) opts in and hides the line instead.
+ */
+function ScoreStats({ row }: {
+  row: { stats: { wins: number; draws: number; losses: number; gamesPlayed: number }; winRate: number; goalDiff: number }
+}) {
+  const items = [
+    ['W-D-L', row.stats.wins + '-' + row.stats.draws + '-' + row.stats.losses],
+    ['Games', String(row.stats.gamesPlayed)],
+    ['Win rate', formatPercent(row.winRate)],
+    ['Goal diff', formatSignedNumber(row.goalDiff)],
+  ] as const
+  return (
+    <dl className="score-stats" style={{ display: 'none' }}>
+      {items.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 export function ScoreboardPanel({
   scoreboard,
   onLoadMatchHistory,
@@ -140,7 +165,8 @@ export function ScoreboardPanel({
                             <strong style={{ fontSize: 18 }}>{row.points}</strong>
                           </div>
                         </div>
-                        <div style={{ fontSize: 14, opacity: 0.76 }}>
+                        <ScoreStats row={row} />
+                        <div className="score-line" style={{ fontSize: 14, opacity: 0.76 }}>
                           {row.points} pts • {row.stats.wins}-{row.stats.draws}-{row.stats.losses} •{' '}
                           {row.stats.gamesPlayed} games • Win rate {formatPercent(row.winRate)} • GD{' '}
                           {formatSignedNumber(row.goalDiff)}
@@ -225,7 +251,8 @@ export function ScoreboardPanel({
                         <strong style={{ fontSize: 18 }}>{row.points}</strong>
                       </div>
                     </div>
-                    <div style={{ fontSize: 14, opacity: 0.76 }}>
+                    <ScoreStats row={row} />
+                    <div className="score-line" style={{ fontSize: 14, opacity: 0.76 }}>
                       {row.stats.wins}-{row.stats.draws}-{row.stats.losses} • {row.stats.gamesPlayed}{' '}
                       games • Win rate {formatPercent(row.winRate)} • GD {formatSignedNumber(row.goalDiff)}
                     </div>

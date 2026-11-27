@@ -4,9 +4,13 @@ import type { RoomScoreboardResponse } from '@fc26/shared'
 import { App } from '../src/App'
 import { QuickResult } from './QuickResult'
 import { HistoryTable } from './HistoryTable'
+import { setGamerAvatarFallback } from '../src/lib/avatars'
 import '../src/index.css'
 import './styles.css'
 import './public/side-colors.css'
+
+// The preview has no uploaded photos, so each gamer gets a stable sample one.
+setGamerAvatarFallback(name => '/card-photos/sample-' + Array.from(name).reduce((sum, char) => sum + char.charCodeAt(0), 0) % 6 + '.jpg')
 
 function Clubhouse() {
   return <div className="club" data-design="pro">

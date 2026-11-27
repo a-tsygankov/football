@@ -130,3 +130,27 @@
 .pro-segments{grid-column:2/-1;position:relative;width:min(100%,248px);display:grid;grid-template-columns:repeat(3,1fr);background:#eef2ec;border-radius:9px;padding:0 3px;touch-action:pan-y}.pro-segments i{position:absolute;left:3px;top:3px;bottom:3px;width:calc((100% - 6px)/3);border-radius:7px;background:#d4e7d3;box-shadow:0 1px 3px #253f3029}.pro-player[data-side=away] .pro-segments i{background:#d8e5f7}.pro-segments button{position:relative;min-height:38px;padding:0 2px;font-size:12px;white-space:nowrap;cursor:pointer}.pro-segments button[aria-pressed=true]{font-weight:750}.pro-segments button:disabled{opacity:.5}.pro-pending{grid-column:2/-1;color:#536553;font-size:12px}
 @media(max-width:540px){.pro-players{margin-inline:-14px}.pro-name small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pro-segments{grid-column:1/-1;width:100%;margin-top:4px}.pro-segments button{min-height:42px;font-size:13px}}
 @media(prefers-reduced-motion:no-preference){.pro-segments i{transition:transform 330ms cubic-bezier(.2,.85,.25,1),background-color 240ms}.pro-toggle i:before{transition:transform 160ms}.pro-player img{transition:filter 200ms,opacity 200ms}}
+/* One segment style for every either/or switch in Pro. */
+.club .seg{display:grid!important;grid-auto-flow:column;grid-auto-columns:1fr;grid-template-columns:none!important;gap:0!important;padding:3px;background:#eef2ec;border-radius:9px}
+.club .seg button{min-height:42px;padding:0 8px!important;border:1px solid transparent!important;border-radius:7px!important;background:transparent!important;color:#22352b!important;font:500 13px/1.2 Inter,Arial,sans-serif!important;white-space:nowrap}
+.club .seg button[aria-pressed=true]{background:#d4e7d3!important;border-color:#a0c6ac!important;font-weight:750!important;box-shadow:0 1px 3px #253f3029}
+.club .seg button[data-side=away][aria-pressed=true]{background:#d8e5f7!important;border-color:#a7bedc!important}
+.club .seg button[data-side=draw][aria-pressed=true]{background:#e7ebe7!important;border-color:#c4d2c7!important}
+.club .seg button:disabled{opacity:.5}
+.club [role=tablist]{background:#eef2ec!important;border-radius:9px!important;padding:3px!important;gap:0!important}
+.club [role=tab]{min-height:42px;padding:0 8px!important;border:1px solid transparent;border-radius:7px!important;color:#22352b!important;font-size:13px!important}
+.club [role=tab][data-state=active]{background:#d4e7d3!important;border-color:#a0c6ac;font-weight:750;box-shadow:0 1px 3px #253f3029!important}
+.metric-switch{border-radius:9px;padding:3px}.metric-switch button{border-radius:7px;min-height:40px}
+/* Live game: side colours on the team tiles and result buttons, result entry before bets. */
+.club .live-side{border:1px solid var(--side-outline)!important;border-left:8px solid var(--side-stripe)!important;border-radius:12px!important;background:linear-gradient(90deg,var(--side-edge),white 60%)!important}
+.club .live-side>strong{color:var(--side-stripe)}
+.club .live-game>.live-finish{order:1}.club .live-game>.live-bets{order:2}.club .live-game>.live-interrupt{order:3}
+.club [data-result]{border-radius:12px!important;font-weight:700}
+.club [data-result=home]{background:#287349!important;border-color:#287349!important;color:#fff!important}
+.club [data-result=away]{background:#3869a8!important;border-color:#3869a8!important;color:#fff!important}
+.club [data-result=draw]{background:#e7ebe7!important;border-color:#c4d2c7!important;color:#22352b!important}
+/* Scoreboard tiles: a labelled stat grid instead of the one-line summary. */
+.club .score-line{display:none}
+.club .score-stats{display:grid!important;grid-template-columns:repeat(4,1fr);gap:6px;margin:0}
+.club .score-stats div{background:#f1f5ef;border-radius:8px;padding:6px 2px;text-align:center}
+.club .score-stats dt{font-size:12px;color:#506657;white-space:nowrap}.club .score-stats dd{margin:0;font-weight:750;font-size:15px;font-variant-numeric:tabular-nums}

@@ -144,7 +144,7 @@ export function CurrentGameCard({
   }
 
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
+    <div className="live-game" style={{ display: 'grid', gap: 12 }}>
       <div
         style={{
           padding: '10px 12px',
@@ -183,18 +183,21 @@ export function CurrentGameCard({
           gamers={gamers}
         />
       </div>
-      <BetsPanel
-        busy={busy}
-        currentGame={currentGame}
-        gamers={gamers}
-        poolGamerIds={poolGamerIds}
-        bets={bets}
-        ledger={ledger}
-        onPlaceBet={onPlaceBet}
-        onRemoveBet={onRemoveBet}
-        onLockBets={onLockBets}
-      />
+      <div className="live-bets">
+        <BetsPanel
+          busy={busy}
+          currentGame={currentGame}
+          gamers={gamers}
+          poolGamerIds={poolGamerIds}
+          bets={bets}
+          ledger={ledger}
+          onPlaceBet={onPlaceBet}
+          onRemoveBet={onRemoveBet}
+          onLockBets={onLockBets}
+        />
+      </div>
       <div
+        className="live-finish"
         style={{
           padding: 12,
           borderRadius: 18,
@@ -245,6 +248,7 @@ export function CurrentGameCard({
         />
       </div>
       <div
+        className="live-interrupt"
         style={{
           padding: 12,
           borderRadius: 18,
@@ -316,6 +320,7 @@ function ResultButtons({
         <button
           type="button"
           disabled={busy !== null}
+          data-result={derived}
           onClick={() => onSubmit(derived)}
           style={{ ...primaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
         >
@@ -338,6 +343,7 @@ function ResultButtons({
         <button
           type="button"
           disabled={allDisabled}
+          data-result="home"
           onClick={() => onSubmit('home')}
           style={{ ...primaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
         >
@@ -346,6 +352,7 @@ function ResultButtons({
         <button
           type="button"
           disabled={allDisabled}
+          data-result="draw"
           onClick={() => onSubmit('draw')}
           style={{ ...secondaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
         >
@@ -354,6 +361,7 @@ function ResultButtons({
         <button
           type="button"
           disabled={allDisabled}
+          data-result="away"
           onClick={() => onSubmit('away')}
           style={{ ...primaryButtonStyle, padding: '12px 8px', fontSize: 14 }}
         >

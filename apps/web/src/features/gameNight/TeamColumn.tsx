@@ -20,6 +20,8 @@ export function TeamColumn({
 
   return (
     <div
+      className="live-side"
+      data-side={title.toLowerCase()}
       style={{
         borderRadius: 18,
         padding: 10,

@@ -313,6 +313,9 @@ export function GameCreationPanel({
       ) : (
         <>
           <div
+            className="seg"
+            role="group"
+            aria-label="Allocation mode"
             style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',
@@ -323,6 +326,7 @@ export function GameCreationPanel({
             <button
               type="button"
               disabled={busy !== null}
+              aria-pressed={allocationMode === 'manual'}
               onClick={() => setAllocationMode('manual')}
               style={allocationMode === 'manual' ? primaryButtonStyle : secondaryButtonStyle}
             >
@@ -331,6 +335,7 @@ export function GameCreationPanel({
             <button
               type="button"
               disabled={busy !== null}
+              aria-pressed={allocationMode === 'random'}
               onClick={() => setAllocationMode('random')}
               style={allocationMode === 'random' ? primaryButtonStyle : secondaryButtonStyle}
             >
@@ -598,9 +603,10 @@ function TeamAssignmentSection({
           Assign club or international teams to the matchup. This uses the latest retrieved squad data.
         </span>
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className="seg" role="group" aria-label="FC teams" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button
           type="button"
+          aria-pressed={teamAssignmentMode === 'none'}
           onClick={() => onChangeTeamAssignmentMode('none')}
           style={teamAssignmentMode === 'none' ? primaryButtonStyle : compactButtonStyle}
         >
@@ -608,6 +614,7 @@ function TeamAssignmentSection({
         </button>
         <button
           type="button"
+          aria-pressed={teamAssignmentMode === 'pick'}
           onClick={() => onChangeTeamAssignmentMode('pick')}
           style={teamAssignmentMode === 'pick' ? primaryButtonStyle : compactButtonStyle}
         >
