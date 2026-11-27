@@ -6,6 +6,7 @@ import { QuickResult } from './QuickResult'
 import { HistoryTable } from './HistoryTable'
 import '../src/index.css'
 import './styles.css'
+import './public/side-colors.css'
 
 function Clubhouse() {
   return <div className="club" data-design="pro">

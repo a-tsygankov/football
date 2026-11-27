@@ -5,7 +5,7 @@ const parts = [
   { key: 'side', label: 'Side selector', options: { segments: 'Segments', cycle: 'Cycle button', select: 'Dropdown' } },
 ]
 const url = new URL(location.href)
-const preferred = { frame: 'rail', status: 'toggle', side: 'segments' }
+const preferred = { frame: 'fade', status: 'toggle', side: 'segments' }
 const config = Object.fromEntries(parts.map(({ key, options }) => [key,
   Object.hasOwn(options, url.searchParams.get(key)) ? url.searchParams.get(key) : preferred[key]]))
 const sides = ['Home', 'Not playing', 'Away']
