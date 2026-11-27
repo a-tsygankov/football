@@ -75,6 +75,17 @@ function startAt(route: string): void {
   window.location.hash = `#/${route}`
 }
 
+/**
+ * Opens a page that has no tab of its own (Roster, while its tab is switched
+ * off) the way a link to it would.
+ */
+function openRoute(route: string): void {
+  act(() => {
+    window.location.hash = `#/${route}`
+    window.dispatchEvent(new HashChangeEvent('hashchange'))
+  })
+}
+
 describe('App shell', () => {
   beforeEach(async () => {
     vi.restoreAllMocks()
@@ -1588,7 +1599,7 @@ describe('App shell', () => {
     // Add Gamer is hidden behind a toggle inside the Roster now: expand it
     // first, then fill the form, then click the actual Add-gamer submit.
     // Adding lives on Roster now; the pool it feeds is back on Game.
-    fireEvent.click(screen.getByRole('button', { name: 'Roster' }))
+    openRoute('roster')
     fireEvent.click(screen.getByRole('button', { name: /\+ Add gamer/i }))
     fireEvent.change(screen.getByPlaceholderText(/Alice/i), { target: { value: 'Cara' } })
     fireEvent.click(screen.getByRole('button', { name: /^Add gamer$/i }))
@@ -1731,7 +1742,7 @@ describe('App shell', () => {
 
     // Cara sits in the Roster as inactive; the reactivate button is labelled
     // "Reactivate". Clicking it triggers a PATCH with active: true.
-    fireEvent.click(screen.getByRole('button', { name: 'Roster' }))
+    openRoute('roster')
     fireEvent.click(screen.getByRole('button', { name: /Reactivate/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Game' }))
 

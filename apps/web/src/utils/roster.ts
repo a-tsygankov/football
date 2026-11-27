@@ -10,6 +10,41 @@ export function buildManualAssignments(
   return next
 }
 
+export interface GameSides {
+  home: string[]
+  away: string[]
+}
+
+/**
+ * The sides of the last finished game, offered as the starting point for the
+ * next one — most nights the same people simply play again.
+ *
+ * Only when every one of them can still play: a line-up with a hole in it is
+ * worse than a blank one, because it looks ready and is not.
+ */
+export function lastGameSides(
+  lastMatch:
+    | { home: { gamerIds: ReadonlyArray<string> }; away: { gamerIds: ReadonlyArray<string> } }
+    | undefined,
+  availableGamerIds: ReadonlySet<string>,
+): GameSides | null {
+  if (!lastMatch) return null
+  const home = [...lastMatch.home.gamerIds]
+  const away = [...lastMatch.away.gamerIds]
+  if (home.length === 0 || away.length === 0) return null
+  if (![...home, ...away].every((gamerId) => availableGamerIds.has(gamerId))) return null
+  return { home, away }
+}
+
+export function assignmentsFromSides(
+  sides: GameSides,
+): Record<string, 'home' | 'away' | 'bench'> {
+  const next: Record<string, 'home' | 'away' | 'bench'> = {}
+  for (const gamerId of sides.home) next[gamerId] = 'home'
+  for (const gamerId of sides.away) next[gamerId] = 'away'
+  return next
+}
+
 export interface RosterStatusDot {
   ariaLabel: string
   background: string

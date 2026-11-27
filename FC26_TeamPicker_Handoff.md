@@ -6,6 +6,27 @@
 
 ---
 
+## Recent Changes (2026-11-27): last sides, and Roster off the bar
+
+Client only: `@fc26/web` `0.1.43`.
+
+- **Game creation starts from the last game.** Between games the side
+  switches are pre-set to the sides of the last finished game, the same
+  default the quick result uses; both go through `lastGameSides` in
+  `utils/roster.ts`. It applies only if everyone from that game is still in
+  the pool, and never over a side somebody has already picked.
+- **Roster has no tab.** `SHOW_ROSTER_TAB` in `BottomNav.tsx` is `false`.
+  The page, its route (`#/roster`), `RosterPanel` and the styles are
+  untouched; set the constant to `true` to bring the tab back. Adding and
+  editing gamers stays available from the Players panel on the Game page,
+  which is not shown while a game is live. With three tabs the FC26 logo sits
+  at the end of the bar rather than in the middle.
+
+Sabotaged and caught: dropping the still-in-the-pool check
+(`roster.test.ts`) and switching the tab back on (`BottomNav.test.tsx`).
+
+---
+
 ## Recent Changes (2026-11-27): the Pro look (#55)
 
 Shipped as PR #55. `@fc26/web` `0.1.42`, `@fc26/worker` and `WORKER_VERSION`
@@ -1444,7 +1465,7 @@ See Recent Changes (2026-11-27): share links (#56).
 |---|---|
 | `components/ui/*` | **Vendored shadcn/ui** — `button`, `card`, `badge`, `sheet`, `tabs`. Source, not a dependency; edit in place |
 | `Panel`, `Field`, `InlineNotice`, `MiniStat` | The pre-shadcn primitives, still used widely |
-| `BottomNav` | Game / Scoreboard / **FC26** / Wager / Roster; the centre logo routes to `teams` and is the Console trigger |
+| `BottomNav` | Game / Scoreboard / Wager / **FC26**; Roster is switched off by `SHOW_ROSTER_TAB` and still routes at `#/roster`; the logo is the Console trigger |
 | `UpdateBanner`, `SwUpdateBanner`, `OfflineNotice`, `StatusCard` | The strips above the app. See [§28 Precedence](#precedence) for which banner wins |
 | `EntityIdentity` (`FcPlayerAvatar`, `FcPlayerIdentity`), `GamerPanel`, `GamerTeamPanel`, `FcClubPanel`, `entity-shared` | Avatar and identity rendering for the four entity kinds |
 | `EaTeamCard`, `EmptyTeamCard`, `EaPremierLeagueLivePanel`, `LeaguePills` | Club cards and league filtering |

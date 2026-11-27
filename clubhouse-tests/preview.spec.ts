@@ -25,7 +25,9 @@ test('opens legacy design links in Pro and joins a shared room from two devices'
     const result = await page.request.post('/api/rooms/' + roomId + '/gamers', { data: { name: 'Riley' } })
     expect(result.ok()).toBeTruthy()
     await guest.reload()
-    await guest.getByRole('button', { name: 'Roster', exact: true }).click()
+    // Roster has no tab for now, but its page is still there.
+    await expect(guest.getByRole('button', { name: 'Roster', exact: true })).toHaveCount(0)
+    await guest.evaluate(() => { location.hash = '#/roster' })
     await expect(guest.getByText('Riley', { exact: true }).first()).toBeVisible()
     await mkdir('docs/clubhouse-images', { recursive: true })
     for (const [size, device] of [['desktop', guest], ['mobile', page]] as const) {
