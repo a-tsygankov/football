@@ -7,7 +7,7 @@ import pkg from './package.json'
 const local = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 export default defineConfig({
   root: local('./clubhouse'),
-  publicDir: false,
+  publicDir: local('./clubhouse/public'),
   plugins: [react(), tailwind()],
   resolve: { alias: { '@': local('./src') } },
   define: {

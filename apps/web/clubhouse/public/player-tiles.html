@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Player tiles · Clubhouse Pro</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#e9eee8;font:16px/1.45 system-ui,sans-serif;color:#192d24}main{max-width:650px;margin:auto;padding:20px 16px}header{background:#182e24;color:#e4fac0;padding:22px;border-radius:18px}h1{font-size:30px;letter-spacing:-.05em;margin:4px 0}h2,h3,p{margin:0}small{font-size:13px}nav,.panel{margin-top:14px}nav{display:flex;gap:5px}button,input{font:inherit}button{min-height:44px;cursor:pointer;border:1px solid #c6d2c9;border-radius:10px;background:white;color:inherit;padding:6px 11px}nav button{flex:1;font-weight:650}nav button[aria-pressed=true],.primary{background:#244632;color:white}.panel{border:1px solid #cad6cc;border-radius:16px;background:#fff;padding:16px}.heading,.row,.foot,.actions{display:flex;align-items:center;gap:8px}.heading,.foot{justify-content:space-between}.row{padding:7px 0;border-bottom:1px solid #e3ebe4}.name{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:700}.name small{display:block;color:#526959;font-weight:500}.toggle{background:#eff7ed;border:0;white-space:nowrap}.toggle:before{content:"";display:inline-block;width:9px;height:9px;background:#27884e;border-radius:50%;margin-right:6px}.off{background:#f0f2f0}.off:before{background:#77817c}.more{font-weight:800}.group{margin:15px 0 3px;font-size:13px;color:#526959}.drawer{margin:10px 0 0}.foot{min-height:44px;font-size:14px}dialog{width:min(92vw,390px);border:1px solid #bfccc2;border-radius:18px;padding:24px;color:inherit}dialog::backdrop{background:#15271dc0}input{width:100%;padding:10px;border-radius:8px;border:1px solid #9bab9e}.actions{flex-wrap:wrap;margin-top:18px}.chips{display:flex;flex-wrap:wrap;gap:8px;padding:12px 0}.chip{font-weight:650}.chip small{display:block;color:#4f6457}a{color:#234832}button:focus-visible,a:focus-visible{outline:3px solid #3066a2;outline-offset:2px}[hidden]{display:none!important}
+</style></head><body><main><header><small>Clubhouse Pro · Sample room</small><h1>Game creation</h1><p>Compare player controls</p></header>
+<nav aria-label="Player layout"></nav><section class="panel"><div class="heading"><h2>Players</h2><button id="add" class="primary">+ Add gamer</button></div><div id="list"></div><button class="drawer" id="drawer"></button><div id="inactive"></div><div class="foot"><span id="notice" role="status"></span><button id="undo" hidden>Undo</button></div></section><p style="margin-top:16px"><a href="/">Open Clubhouse Pro</a></p></main>
+<dialog><form><h2 id="title"></h2><label>Player name<input id="field" required maxlength="40"></label><div class="actions"><button class="primary">Save</button><button id="availability" type="button"></button><button id="cancel" type="button">Close</button></div></form></dialog>
+<script>
+const get=id=>document.getElementById(id), dialog=document.querySelector('dialog')
+const players=['Alex','Robin','Sam','Jules','Drew','Casey'].map((name,id)=>({id,name,active:id!==5,last:['Home','Away'][id]||''}))
+let mode=0,open=false,editing=null,undo=null
+function button(label,action,cls){const node=document.createElement('button');node.textContent=label;node.className=cls||'';node.onclick=action;return node}
+function tell(text){get('notice').textContent=text;get('undo').hidden=!undo}
+function focusPlayer(id){(get('player-'+id)||get('drawer')).focus({preventScroll:true})}
+function toggle(player){
+ const oldOpen=open, active=players.filter(item=>item.active), index=active.indexOf(player)
+ player.active=!player.active
+ const next=active[index+1]||active[index-1]
+ undo=()=>{player.active=!player.active;open=oldOpen;undo=null;render();focusPlayer(player.id);tell('Change undone')}
+ render();focusPlayer(player.active?player.id:next?.id);tell(player.name+(player.active?' is active':' moved to Inactive'))
+}
+function edit(player){editing=player;get('title').textContent=player?'Player profile':'Add gamer';get('field').value=player?.name||'';get('availability').hidden=!player;get('availability').textContent=player?.active?'Make inactive':'Make active';dialog.showModal();get('field').focus()}
+function row(player,target){
+ const node=document.createElement('div');node.className='row'
+ const name=document.createElement('div');name.className='name';name.textContent=player.name
+ if(player.last && (mode!==1||!player.active)){const tag=document.createElement('small');tag.textContent='Last game · '+player.last;name.append(tag)}
+ const status=button(player.active?'Active':'Inactive',()=>toggle(player),'toggle'+(player.active?'':' off'));status.setAttribute('aria-label',player.name+' · '+status.textContent+' · toggle availability')
+ const menu=button('⋯',()=>edit(player),'more');menu.setAttribute('aria-label','Manage '+player.name);status.id='player-'+player.id
+ node.append(name,status,menu);target.append(node)
+}
+function render(){
+ document.querySelectorAll('nav button').forEach((b,i)=>b.setAttribute('aria-pressed',String(i===mode)))
+ const list=get('list'),inactive=get('inactive');list.replaceChildren();inactive.replaceChildren()
+ const active=players.filter(p=>p.active),hidden=players.filter(p=>!p.active)
+ const group=(title,items)=>{if(!items.length)return;const h=document.createElement('h3');h.className='group';h.textContent=title;list.append(h);items.forEach(p=>row(p,list))}
+ if(mode===1){group('Last game · Home',active.filter(p=>p.last==='Home'));group('Last game · Away',active.filter(p=>p.last==='Away'));group('Other active gamers',active.filter(p=>!p.last))}
+ else if(mode===2){const chips=document.createElement('div');chips.className='chips';for(const p of active){const chip=button(p.name,()=>edit(p),'chip');chip.id='player-'+p.id;if(p.last){const tag=document.createElement('small');tag.textContent='Last game · '+p.last;chip.append(tag)}chips.append(chip)}list.append(chips)}
+ else active.forEach(p=>row(p,list))
+ const drawer=get('drawer');drawer.textContent=(open?'▾':'▸')+' Inactive ('+hidden.length+')';drawer.setAttribute('aria-expanded',String(open));drawer.setAttribute('aria-controls','inactive')
+ if(open)hidden.forEach(p=>row(p,inactive))
+}
+;['Compact rows','Last lineup','Name chips'].forEach((name,i)=>document.querySelector('nav').append(button(name,()=>{mode=i;render()})))
+get('drawer').onclick=()=>{open=!open;render()};get('add').onclick=()=>edit(null);get('undo').onclick=()=>undo?.()
+get('cancel').onclick=()=>dialog.close();get('availability').onclick=()=>{dialog.close();toggle(editing)}
+dialog.querySelector('form').onsubmit=event=>{event.preventDefault();const name=get('field').value.trim();if(!name)return;const player=editing||{id:players.length,active:true,last:''};player.name=name;if(!editing)players.push(player);dialog.close();undo=null;render();focusPlayer(player.id);tell(name+' saved')}
+render()
+</script></body></html>

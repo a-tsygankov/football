@@ -1,6 +1,6 @@
 # Clubhouse preview playground
 
-The [live playground](https://football-preview.atsyg-feedme.workers.dev/) hosts three switchable designs. Use the room name and fresh PIN supplied privately. Clubhouse Pro shows the standings leader, Social Club opens on the roster, and Matchday links directly to match controls. The game, roster, scoreboard and Wager pages share the existing app controller. The selector preserves the current route and form state and updates the shareable URL.
+The [live playground](https://football-preview.atsyg-feedme.workers.dev/) uses Clubhouse Pro. Use the room name and fresh PIN supplied privately. Previously shared design links open Pro. The [player tile comparison](https://football-preview.atsyg-feedme.workers.dev/player-tiles) uses fictional local data to explore three roster patterns.
 
 ## Preview operation
 
