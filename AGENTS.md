@@ -232,7 +232,17 @@ Use `--merge` (a merge commit) so the history keeps the
   syncing and restacking a stack is the agent's job, not a hand-off: when a
   change should be stacked, the agent builds the branches, runs `gh stack
   init`/`add`/`submit` (or `gh stack link <bottom> <top>` for PRs that
-  already exist), and checks the result with `gh stack view --json`.
+  already exist), and checks the result.
+- **Check a linked stack through the API.** `gh stack link` creates the
+  stack on GitHub but writes no local tracking, so `gh stack view` then says
+  the branch "is not part of a stack". Read the stack number from `link`'s
+  output and confirm with `gh api repos/<owner>/<repo>/stacks/<n>` and
+  `gh pr view <pr> --json baseRefName`; `gh stack view --json` works for
+  stacks built locally with `init`/`add`.
+- **Name the repo when `origin` is a fork.** In a clone where `origin` is a
+  fork and `upstream` is `a-tsygankov/football`, pass full PR URLs (or `-R
+  a-tsygankov/football` to plain `gh` commands) so nothing resolves against
+  the fork, and track the PR branches from `upstream`.
 - **Set it up first.** Check `gh --version` (2.90.0+), `git --version`
   (2.36+) and `gh auth status`, then `gh extension install github/gh-stack`
   and `gh skill install github/gh-stack`. Install the extension from GitHub;
