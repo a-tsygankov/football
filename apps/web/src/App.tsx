@@ -61,7 +61,7 @@ const LAST_ROOM_ID_KEY = 'fc26:last-room-id'
 
 export function App({ clubhouse = false, roomOverview }: {
   clubhouse?: boolean
-  roomOverview?: (room: RoomBootstrapResponse, board: RoomScoreboardResponse | null) => React.ReactNode
+  roomOverview?: (room: RoomBootstrapResponse, board: RoomScoreboardResponse | null, reload: () => Promise<void>) => React.ReactNode
 } = {}) {
   const [worker, setWorker] = useState<WorkerVersionInfo | null>(null)
   const [workerError, setWorkerError] = useState<string | null>(null)
@@ -1165,7 +1165,11 @@ export function App({ clubhouse = false, roomOverview }: {
           </div>
         ) : null}
 
-        {bootstrap && roomOverview && route === 'game' && roomOverview(bootstrap, scoreboard)}
+        {bootstrap && roomOverview && route === 'game' && roomOverview(bootstrap, scoreboard, async () => {
+          await refreshRoom(bootstrap.room.id)
+          await loadLedger(bootstrap.room.id)
+          setHistoryToken(token => token + 1)
+        })}
         {bootstrap ? (
           <RoomScreen
             route={route}

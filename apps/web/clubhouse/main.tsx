@@ -6,6 +6,7 @@ import { ToggleGroup } from '@base-ui/react/toggle-group'
 import { Toggle } from '@base-ui/react/toggle'
 import { Tabs, TabsList, TabsTrigger } from '../src/components/ui/tabs'
 import { App } from '../src/App'
+import { QuickResult } from './QuickResult'
 import '@mantine/core/styles.css'
 import '../src/index.css'
 import './styles.css'
@@ -43,7 +44,10 @@ function Clubhouse() {
         </div>
       </div>
     </header>
-    <div className="playing"><App clubhouse roomOverview={(room, board) => <RoomOverview mode={design.value} room={room} board={board} />} /></div>
+    <div className="playing"><App clubhouse roomOverview={(room, board, reload) => <>
+      {design.value === 'pro' && <QuickResult key={room.room.id} roomId={room.room.id} reload={reload} />}
+      <RoomOverview mode={design.value} room={room} board={board} />
+    </>} /></div>
   </div>
 }
 

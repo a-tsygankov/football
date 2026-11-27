@@ -57,3 +57,13 @@
   [data-design=pro] .playing { padding-inline:20px }
 }
 @media(max-width:540px) { .playing main { margin-block:0!important; border-radius:0 } }
+.quick-action {display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.quick-launch,.quick-save {border:0;background:#274736;color:#fff;border-radius:12px;font-weight:750;padding:13px 20px;cursor:pointer}
+.quick-launch span {margin-left:14px;color:#d8fa82}
+.quick-sheet {max-width:540px;margin:auto;padding:6px 20px max(24px,env(safe-area-inset-bottom));font-family:Inter,Arial,sans-serif;max-height:92dvh;overflow:auto}
+.quick-sheet h2 {margin:18px 0 4px}.quick-sides {display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0}
+.quick-sides fieldset {min-width:0;display:grid;align-content:start;gap:8px}
+.quick-sides legend {font-weight:750;margin-bottom:8px}.quick-sides select,.quick-sides input {width:100%;padding:10px;border:1px solid #aebeb2;border-radius:8px}
+.quick-sides input {font-size:36px;font-weight:700;text-align:center}.quick-sides button {text-align:left;color:#23553c;font-size:13px}
+.quick-save {width:100%}.quick-save:disabled {opacity:.45}
+.quick-swap {display:block;margin:0 auto 12px;min-height:40px;color:#23553c}
