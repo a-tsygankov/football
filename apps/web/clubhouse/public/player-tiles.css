@@ -7,3 +7,22 @@ button,input,select{font:inherit;color:inherit}button,select{cursor:pointer}butt
 .name{min-width:0}.name strong{display:block;overflow-wrap:anywhere}.name small{display:block;color:#56675a;font-size:12px}.more{width:32px;min-height:44px;font-weight:800}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#308651}.off .dot{background:#858e88}.status,.photo-label{font-size:12px;font-weight:650}.status{min-height:44px;padding:0 3px}.status span.wrap,.photo-label{display:inline-flex;align-items:center;gap:5px;border-radius:14px;background:#e9f4e9;padding:3px 8px}.off .wrap,.photo-label.off{background:#eef0ee}.track{width:22px;height:13px;border-radius:10px;background:#377a4e;display:flex;align-items:center;justify-content:flex-end;padding:2px}.track:before{content:"";width:9px;height:9px;background:white;border-radius:50%}.off .track{background:#7b877d;justify-content:flex-start}
 .side-control{grid-column:2/-1;justify-self:start;display:flex;max-width:100%;align-items:center;touch-action:pan-y}.side-control button,.side-control select{min-height:40px;padding:0 3px;font-size:12px;font-weight:650}.side-control button span,.side-control select{display:inline-flex;align-items:center;min-height:26px;background:#f1f3ef;border-radius:6px;padding:3px 8px}.side-control button[aria-pressed=true] span,.side-control .cycle span{color:#183c29;background:#d7ebd6}.side-control button[aria-pressed=true][data-side=Away] span{background:#dde8fb;color:#263f73}.side-control select{height:36px;border:1px solid #becabd}.heading p{color:#506358}
 #drawer,#undo,#cancel{min-height:44px;text-decoration:underline}.feedback{min-height:42px;font-size:13px}.actions{margin-top:18px}.actions button{min-height:42px}.controls input,dialog input{width:100%;padding:8px;border:1px solid #a6b9aa;border-radius:8px}dialog{width:min(92vw,380px);border:1px solid #bccabd;border-radius:16px;padding:22px}dialog::backdrop{background:#14271ac9}dialog label{display:block;margin-top:14px}[hidden]{display:none!important}
+.card:is([data-frame=fade],[data-frame=tint]) {
+  --stripe: #97a59b;
+  --edge: #e9edea;
+  --wash: #f7f9f7;
+  border: 1px solid #becdc0;
+  border-left: 8px solid var(--stripe);
+}
+.card:is([data-frame=fade],[data-frame=tint])[data-side=Home] {
+  --stripe: #287349;
+  --edge: #c0e3cc;
+  --wash: #eaf5ed;
+}
+.card:is([data-frame=fade],[data-frame=tint])[data-side=Away] {
+  --stripe: #3869a8;
+  --edge: #c4daf3;
+  --wash: #ecf3fc;
+}
+.card[data-frame=fade] { background: linear-gradient(90deg,var(--edge),white 50%); }
+.card[data-frame=tint] { background: var(--wash); }

@@ -1,6 +1,6 @@
 const get = id => document.getElementById(id)
 const parts = [
-  { key: 'frame', label: 'Card', options: { border: 'Outline', lifted: 'Shadow', rail: 'Side stripe' } },
+  { key: 'frame', label: 'Card', options: { fade: 'Stripe gradient', tint: 'Card tint', rail: 'Side stripe', border: 'Outline', lifted: 'Shadow' } },
   { key: 'status', label: 'Availability', options: { photo: 'Tap photo', pill: 'Status pill', toggle: 'Mini toggle' } },
   { key: 'side', label: 'Side selector', options: { segments: 'Segments', cycle: 'Cycle button', select: 'Dropdown' } },
 ]
