@@ -146,6 +146,98 @@ BASE_REF=origin/main python3 scripts/check_version_bump.py
 - **Never commit secrets** or `.env*` / `.dev.vars` files. Local Worker
   secrets go in `worker/.dev.vars` (copy `worker/.dev.vars.example`).
 
+## Stacked pull requests
+
+When a change depends on another that is still in review, **stack** it rather
+than folding both into one PR or waiting. GitHub supports stacks natively
+([about](https://docs.github.com/en/pull-requests/get-started/about-stacked-prs),
+[quickstart](https://docs.github.com/en/pull-requests/get-started/stacked-prs-quickstart),
+[CLI reference](https://docs.github.com/en/pull-requests/reference/stacked-prs-cli-commands)):
+the bottom PR targets `main`, each PR above targets the branch below it, and
+GitHub tracks them as one stack.
+
+### Rules
+
+- **Each layer is one concern and stands on its own.** It must pass CI, the
+  version gate and review by itself; "fixed in the next PR" is not allowed.
+  Put the foundation at the bottom (for example docs, refactors or schema)
+  and the code that depends on it above.
+- **Merge bottom-up.** Merging a PR also merges everything below it, and the
+  PRs above retarget automatically. Branch protection and required checks
+  apply to every layer and cannot be bypassed.
+- **Link the stack natively** (`gh stack init`/`submit`, or `gh stack link`
+  for PRs that already exist). A PR whose base was simply edited to another
+  branch is not a stack to GitHub. The workflows here trigger on
+  `pull_request` to `main` only, and GitHub runs those checks for every layer
+  of a *native* stack. A hand-retargeted PR gets no `ci`/`e2e`/version runs,
+  so link it, and confirm the checks appear on every layer.
+- **Version bumps are per layer.** The version gate diffs each PR against its
+  own base (`github.base_ref`), so each layer bumps the tiers it touches
+  relative to the layer below; the pre-commit hook does this. If a restack
+  conflicts in a `package.json` version or `wrangler.toml`, keep the higher
+  version and rerun the hook or `pnpm version:bump`.
+- **Restack with the tool, not by hand.** `gh stack rebase` and `sync` rebase
+  every layer in order and push with `--force-with-lease`. Never `git push
+  --force`, and never rewrite a branch someone else owns. If force-pushing is
+  not allowed in your environment, merge the lower branch into the upper one
+  instead (a merge commit is acceptable on a stack branch).
+- **Say where a PR sits** in its description, e.g. "Stacked on #58 — review
+  that first," and keep that line accurate as the stack changes.
+
+### With the `gh` CLI
+
+Install once (needs a recent `gh`: the quickstart says 2.90.0+, Git 2.20+):
+
+```sh
+gh extension install github/gh-stack
+gh extension upgrade stack           # later updates
+```
+
+Starting a new stack:
+
+```sh
+gh stack init -b main docs-foo           # bottom branch (creates or adopts)
+# ...commit...
+gh stack add ci-bar                      # next layer, checked out on top
+# ...commit...
+gh stack submit --auto                   # push all, open/update linked PRs
+gh stack view                            # status of every layer
+```
+
+Turning PRs that already exist into a stack, bottom first (bases are corrected
+to form the chain):
+
+```sh
+gh stack link 58 57
+```
+
+Keeping it current and landing it:
+
+```sh
+gh stack sync                  # fetch, fast-forward main, cascade rebase, push
+gh stack rebase                # on conflict: resolve, git add, then
+gh stack rebase --continue     #   (or --abort to restore every branch)
+gh stack merge 57 --merge      # merges 57 and everything below it
+```
+
+Use `--merge` (a merge commit) so the history keeps the
+`Merge pull request #N: …` subjects this repo uses.
+
+### For agents
+
+- Install the agent skill alongside the extension: `gh skill install
+  github/gh-stack`.
+- Stay non-interactive. Use `gh stack submit --auto`, `gh stack view --json`,
+  `gh stack checkout <pr> --print-path`, `gh stack sync
+  --accept-base-change`, and `gh stack merge --yes` (only when the user has
+  asked for the merge). `gh stack switch` and `modify` need a TTY; avoid them.
+- `rebase` and `sync` only touch clean worktrees, so commit or stash first.
+  Stop on a conflict and resolve it, or `--abort`; never paper over it.
+- Merging stays the user's call, exactly as for a single PR.
+- Where `gh` is unavailable (some sandboxes only expose GitHub's API tools),
+  build the branches with git and give the user the one-line `gh stack link
+  <bottom> <top>` to run.
+
 ## GitHub Actions
 
 - Pin every action to a full 40-character commit SHA with the version as a
