@@ -157,12 +157,8 @@
 .pro-thumb{display:block;width:12px;height:12px;border-radius:50%;background:#fff}
 .pro-toggle[data-state=checked] .pro-track{background:#397c4b}.pro-toggle[data-state=checked] .pro-thumb{transform:translateX(12px)}
 .pro-more{width:40px;display:grid;place-items:center;border:0;background:transparent;color:inherit}
-/* Quick result drawer (vaul) and its picture reader. */
+/* Quick result sheet and its picture reader. */
 .quick-launch{display:inline-flex;align-items:center;gap:12px}.quick-launch svg{color:#d8fa82}
-.quick-overlay{position:fixed;inset:0;z-index:50;background:#0a1f1680}
-.quick-sheet{position:fixed;inset-inline:0;bottom:0;z-index:51;background:#fff;color:#152b24;border-radius:18px 18px 0 0;box-shadow:0 -24px 60px #05200f47;outline:none}
-.quick-handle{margin:8px auto 0}
-.quick-close{position:absolute;top:14px;right:14px;width:40px;height:40px;display:grid;place-items:center;border:1px solid #c4d2c7;border-radius:10px;background:#fff;cursor:pointer}
 .quick-sides fieldset[data-side=home] legend{color:#287349}.quick-sides fieldset[data-side=away] legend{color:#3869a8}
 .quick-sides button{min-height:40px}
 .quick-photo{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px}

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Image as ImageIcon, Plus, X } from 'lucide-react'
+import { Camera, Image as ImageIcon, Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import { Drawer } from 'vaul'
+import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '../components/ui/sheet'
 import type {
   AnalysePhotoResponse, CurrentGame, CurrentGameResponse, GameNightResponse, MatchHistoryResponse, RoomBootstrapResponse,
 } from '@fc26/shared'
@@ -129,15 +129,11 @@ export function QuickResult({ roomId, reload }: { roomId: string; reload: () => 
   const valid = sidesValid && scores.every(score => /^\d{1,3}$/.test(score))
   const busy = saving || reading
   const sidesFixed = live !== null
-  return <div className="quick-action"><Drawer.Root open={open} onOpenChange={next => { if (!locked.current) setOpen(next) }}>
-    <Drawer.Trigger className="quick-launch">Log result <Plus aria-hidden="true" size={16} /></Drawer.Trigger>
-    <Drawer.Portal>
-      <Drawer.Overlay className="quick-overlay" />
-      <Drawer.Content className="quick-sheet">
-        <Drawer.Handle className="quick-handle" />
-        <Drawer.Close className="quick-close" aria-label="Close"><X aria-hidden="true" size={18} /></Drawer.Close>
-        <Drawer.Title>Log result</Drawer.Title>
-        <Drawer.Description>{room?.currentGame ? 'Finish the live match and settle its wagers.' : 'Check the sides and enter the final score.'}</Drawer.Description>
+  return <div className="quick-action"><Sheet open={open} onOpenChange={next => { if (!locked.current) setOpen(next) }}>
+    <SheetTrigger className="quick-launch">Log result <Plus aria-hidden="true" size={16} /></SheetTrigger>
+      <SheetContent className="quick-sheet">
+        <SheetTitle>Log result</SheetTitle>
+        <SheetDescription>{room?.currentGame ? 'Finish the live match and settle its wagers.' : 'Check the sides and enter the final score.'}</SheetDescription>
         {room ? <form onSubmit={event => { event.preventDefault(); if (valid) void save() }}>
           <div className="quick-sides">{sides.map((players, side) => {
             const label = side === 0 ? 'Home' : 'Away'
@@ -164,7 +160,6 @@ export function QuickResult({ roomId, reload }: { roomId: string; reload: () => 
           <p className="quick-note" role="status">{reading ? 'Reading the score from the picture…' : photoNote || (sidesFixed && !room.currentGame ? 'The match is live now, so the sides are fixed.' : '')}</p>
           <button className="quick-save" disabled={!valid || busy}>{saving ? 'Saving…' : 'Save result'}</button>
         </form> : <p role="status">{error || 'Loading sides…'}</p>}
-      </Drawer.Content>
-    </Drawer.Portal>
-  </Drawer.Root></div>
+      </SheetContent>
+  </Sheet></div>
 }

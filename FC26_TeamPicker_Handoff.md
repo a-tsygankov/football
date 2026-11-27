@@ -43,12 +43,12 @@ one PR, and the reason a panel can look different in a test screenshot.
 
 ### Quick result and picture reading
 
-`QuickResult` is a vaul drawer. It logs a finished match in one step by
+`QuickResult` is a bottom sheet (the shared Radix `Sheet`). It logs a finished match in one step by
 creating the night and game if needed and recording the result. It can also
 read the score from a picture, new (`capture="environment"`) or existing.
-The analyse-photo route only works against a live match, so the drawer starts
+The analyse-photo route only works against a live match, so the sheet starts
 one from the chosen sides first and fixes the sides from then on. A failed
-read therefore leaves a live match behind; the drawer says so. A score read
+read therefore leaves a live match behind; the sheet says so. A score read
 from a picture is recorded with `entryMethod: 'ocr'` only if it is saved
 unchanged.
 
