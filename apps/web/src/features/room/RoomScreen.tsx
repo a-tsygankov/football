@@ -35,6 +35,7 @@ import type { BusyState } from '../../types/busyState.js'
 import type { WorkerVersionInfo } from '../../lib/version.js'
 
 export function RoomScreen({
+  overview,
   route,
   onNavigate,
   viewerId,
@@ -85,6 +86,7 @@ export function RoomScreen({
   onToggleGamer,
   onUpdateGamerDetails,
 }: {
+  overview?: React.ReactNode
   route: Route
   onNavigate: (route: Route) => void
   /** Whose wagers the Wager page shows; null means everyone. */
@@ -224,6 +226,7 @@ export function RoomScreen({
         onOpenSettings={settingsUnlocked ? () => onNavigate('settings') : undefined}
         onRefresh={onRefresh}
       />
+      {overview}
 
       {showSquadReminder ? (
         <div

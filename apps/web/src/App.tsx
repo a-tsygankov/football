@@ -55,13 +55,13 @@ import type { BusyState } from './types/busyState.js'
 import { useInstallPrompt } from './hooks/useInstallPrompt.js'
 import { useOnlineStatus } from './hooks/useOnlineStatus.js'
 import { useSwUpdate } from './hooks/useSwUpdate.js'
-import { useHashRoute } from './hooks/useHashRoute.js'
+import { useHashRoute, type Route } from './hooks/useHashRoute.js'
 
 const LAST_ROOM_ID_KEY = 'fc26:last-room-id'
 
 export function App({ clubhouse = false, roomOverview }: {
   clubhouse?: boolean
-  roomOverview?: (room: RoomBootstrapResponse, board: RoomScoreboardResponse | null, reload: () => Promise<void>) => React.ReactNode
+  roomOverview?: (room: RoomBootstrapResponse, board: RoomScoreboardResponse | null, reload: () => Promise<void>, route: Route, revision: number) => React.ReactNode
 } = {}) {
   const [worker, setWorker] = useState<WorkerVersionInfo | null>(null)
   const [workerError, setWorkerError] = useState<string | null>(null)
@@ -1165,13 +1165,13 @@ export function App({ clubhouse = false, roomOverview }: {
           </div>
         ) : null}
 
-        {bootstrap && roomOverview && route === 'game' && roomOverview(bootstrap, scoreboard, async () => {
-          await refreshRoom(bootstrap.room.id)
-          await loadLedger(bootstrap.room.id)
-          setHistoryToken(token => token + 1)
-        })}
         {bootstrap ? (
           <RoomScreen
+            overview={roomOverview?.(bootstrap, scoreboard, async () => {
+              await refreshRoom(bootstrap.room.id)
+              await loadLedger(bootstrap.room.id)
+              setHistoryToken(token => token + 1)
+            }, route, historyToken)}
             route={route}
             onNavigate={navigate}
             viewerId={viewerId}

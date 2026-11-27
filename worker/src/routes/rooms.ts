@@ -1503,7 +1503,7 @@ async function buildMatchHistory(
   const recent = matchesScoped
     .slice()
     .sort((a, b) => b.payload.occurredAt - a.payload.occurredAt)
-    .slice(0, MATCH_HISTORY_LIMIT)
+    .slice(0, scope.type === 'all' && c.env.CLUBHOUSE_TABLES === '1' && c.req.query('view') === 'table' ? undefined : MATCH_HISTORY_LIMIT)
 
   const clubNamesById = await loadClubNameMap(c)
 

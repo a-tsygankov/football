@@ -7,6 +7,7 @@ import { Toggle } from '@base-ui/react/toggle'
 import { Tabs, TabsList, TabsTrigger } from '../src/components/ui/tabs'
 import { App } from '../src/App'
 import { QuickResult } from './QuickResult'
+import { HistoryTable } from './HistoryTable'
 import '@mantine/core/styles.css'
 import '../src/index.css'
 import './styles.css'
@@ -44,10 +45,11 @@ function Clubhouse() {
         </div>
       </div>
     </header>
-    <div className="playing"><App clubhouse roomOverview={(room, board, reload) => <>
+    <div className="playing"><App clubhouse roomOverview={(room, board, reload, route, revision) => route === 'scoreboard' || route === 'wager' ?
+      <HistoryTable key={room.room.id + route} mode={route} room={room} revision={revision} /> : route === 'game' ? <>
       {design.value === 'pro' && <div className="desk-heading"><div><p>Game night</p><h2>Match desk</h2></div><QuickResult key={room.room.id} roomId={room.room.id} reload={reload} /></div>}
       <RoomOverview mode={design.value} room={room} board={board} />
-    </>} /></div>
+    </> : null} /></div>
   </div>
 }
 
@@ -74,7 +76,7 @@ function ClubCharts({ board }: { board: RoomScoreboardResponse | null }) {
     <div className="chart-heading"><h3>Club leaders</h3><div className="metric-switch" aria-label="Rank players by">{(['Points', 'Goals'] as const).map(option =>
       <button key={option} type="button" aria-pressed={metric === option} onClick={() => setMetric(option)}>{option}</button>)}</div></div>
     {leader ? <div className="stat-grid"><ol className="rank-bars">{rows.map(row => <li key={row.gamer.id}>
-      <span>{row.gamer.name}</span><b>{value(row)}</b><div className="bar-track" aria-hidden="true"><i style={{width: (100 * value(row) / max) + '%'}} /></div>
+      <span>{row.gamer.name}</span><b>{value(row)}</b><div className="bar-track" aria-hidden="true"><i key={metric} style={{width: (100 * value(row) / max) + '%'}} /></div>
     </li>)}</ol><div className="record-chart"><span>Leader’s record</span><strong>{leader.gamer.name}</strong><div className="result-track" aria-hidden="true">{[leader.stats.wins, leader.stats.draws, leader.stats.losses].map((amount, index) => <i key={index} style={{ flexGrow: amount }} />)}</div>
     <div className="result-key">{['Wins','Draws','Losses'].map((label,index) => <div key={label}><b>{[leader.stats.wins,leader.stats.draws,leader.stats.losses][index]}</b>{label}</div>)}</div></div></div> :
     <p>{board ? 'Record the first result to see the standings.' : 'Loading standings…'}</p>}
