@@ -228,18 +228,33 @@ Use `--merge` (a merge commit) so the history keeps the
 
 ### For agents
 
-- Install the agent skill alongside the extension: `gh skill install
-  github/gh-stack` (`gh` 2.90.0+; check with `gh --version`).
-- Stay non-interactive. Use `gh stack submit --auto`, `gh stack view --json`,
-  `gh stack checkout <pr> --print-path`, `gh stack sync
-  --accept-base-change`, and `gh stack merge --yes` (only when the user has
-  asked for the merge). `gh stack switch` and `modify` need a TTY; avoid them.
+- **Run the `gh stack` commands yourself.** Creating, linking, submitting,
+  syncing and restacking a stack is the agent's job, not a hand-off: when a
+  change should be stacked, the agent builds the branches, runs `gh stack
+  init`/`add`/`submit` (or `gh stack link <bottom> <top>` for PRs that
+  already exist), and checks the result with `gh stack view --json`.
+- **Set it up first.** Check `gh --version` (2.90.0+), `git --version`
+  (2.36+) and `gh auth status`, then `gh extension install github/gh-stack`
+  and `gh skill install github/gh-stack`. Install the extension from GitHub;
+  don't build it from source to get around a blocked download.
+- **Stay non-interactive.** Use `gh stack submit --auto`, `gh stack view
+  --json`, `gh stack checkout <pr> --print-path` and `gh stack sync
+  --accept-base-change`. `gh stack switch` and `modify` need a TTY; avoid
+  them.
 - `rebase` and `sync` only touch clean worktrees, so commit or stash first.
   Stop on a conflict and resolve it, or `--abort`; never paper over it.
-- Merging stays the user's call, exactly as for a single PR.
-- Where `gh` is unavailable (some sandboxes only expose GitHub's API tools),
-  build the branches with git and give the user the one-line `gh stack link
-  <bottom> <top>` to run.
+- **Confirm the checks.** After linking or submitting, make sure `ci`, `e2e`
+  and the version check ran on every layer; a layer with no runs is not
+  linked.
+- **Merging stays the user's call**, exactly as for a single PR:
+  `gh stack merge <top> --merge --yes` only when they have asked.
+- **If `gh stack` cannot run** (no `gh`, a `gh` older than 2.90.0, no
+  authentication, or a sandbox that blocks GitHub's API for the extension's
+  download), don't silently fall back to retargeting PR bases by hand. Do the
+  git-level part (branches, commits, the base of each PR), then stop and tell
+  the user exactly which step failed and what would unblock it: an attached
+  machine with `gh`, a permission rule, or running the one `gh stack link`
+  command themselves.
 
 ## GitHub Actions
 
