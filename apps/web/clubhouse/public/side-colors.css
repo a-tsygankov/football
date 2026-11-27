@@ -2,7 +2,7 @@
   --side-stripe: #97a59b;
   --side-edge: #e9edea;
   --side-wash: #f7f9f7;
-  --side-outline: transparent;
+  --side-outline: #c4d2c7;
 }
 :where(.pro-player, .card)[data-side="home" i] {
   --side-stripe: #287349;
