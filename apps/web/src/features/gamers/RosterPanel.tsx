@@ -30,6 +30,7 @@ import { getRosterStatusDot } from '../../utils/roster.js'
 import { AddGamerPanel } from './AddGamerPanel.jsx'
 
 export function RosterPanel({
+  playerCards,
   bootstrap,
   busy,
   activeGameNightGamerIds,
@@ -46,6 +47,7 @@ export function RosterPanel({
   onChangeGamerAvatar,
   onCreateGamer,
 }: {
+  playerCards?: (edit: (gamer: Gamer) => void) => React.ReactNode
   bootstrap: RoomBootstrapResponse
   busy: BusyState
   activeGameNightGamerIds: ReadonlySet<string>
@@ -155,10 +157,9 @@ export function RosterPanel({
         <Card>
           <CardHeader className="flex-row items-start justify-between gap-3">
             <div className="grid gap-2">
-              <CardTitle>Roster</CardTitle>
+              <CardTitle>{playerCards ? 'Players' : 'Roster'}</CardTitle>
               <CardDescription>
-                {bootstrap.gamers.length} gamer{bootstrap.gamers.length === 1 ? '' : 's'} · dots
-                show who is playing now, who is sitting out, and who is inactive.
+                Availability and profiles for this room.
               </CardDescription>
             </div>
             {/* The add form used to expand inline and shove the whole list
@@ -196,7 +197,7 @@ export function RosterPanel({
           </CardHeader>
 
           <CardContent>
-            {bootstrap.gamers.length === 0 ? (
+            {playerCards ? playerCards(startEditingGamer) : bootstrap.gamers.length === 0 ? (
               <div className="rounded-lg border border-dashed border-[#86efac] bg-secondary p-4 text-sm">
                 No gamers yet. Add the first one with the button above.
               </div>

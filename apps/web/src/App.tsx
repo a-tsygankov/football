@@ -1167,6 +1167,7 @@ export function App({ clubhouse = false, roomOverview }: {
 
         {bootstrap ? (
           <RoomScreen
+            clubhouse={clubhouse}
             overview={roomOverview?.(bootstrap, scoreboard, async () => {
               await refreshRoom(bootstrap.room.id)
               await loadLedger(bootstrap.room.id)

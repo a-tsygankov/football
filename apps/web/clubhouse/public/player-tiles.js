@@ -5,13 +5,15 @@ const parts = [
   { key: 'side', label: 'Side selector', options: { segments: 'Segments', cycle: 'Cycle button', select: 'Dropdown' } },
 ]
 const url = new URL(location.href)
+const preferred = { frame: 'rail', status: 'toggle', side: 'segments' }
 const config = Object.fromEntries(parts.map(({ key, options }) => [key,
-  Object.hasOwn(options, url.searchParams.get(key)) ? url.searchParams.get(key) : Object.keys(options)[0]]))
+  Object.hasOwn(options, url.searchParams.get(key)) ? url.searchParams.get(key) : preferred[key]]))
 const sides = ['Home', 'Not playing', 'Away']
 const players = ['Alex', 'Robin', 'Sam', 'Jules', 'Drew', 'Casey'].map((name, id) => ({
   id, name, active: id !== 5, last: ['Home', 'Away'][id] || '', side: sides[[0, 2][id] ?? 1], photo: '/card-photos/sample-' + id + '.jpg',
 }))
 let tab = 0, expanded = false, editing = null, undo = null
+const pending = new Map()
 function element(tag, text, cls) {
   const node = document.createElement(tag)
   if (text) node.textContent = text
@@ -27,6 +29,19 @@ function button(text, action, cls) {
 function announce(text) { get('notice').textContent = text; get('undo').hidden = !undo }
 function focus(id) { (get(id) || get('drawer')).focus({ preventScroll: true }) }
 function availability(player) {
+  if (pending.has(player.id)) {
+    clearTimeout(pending.get(player.id)); pending.delete(player.id)
+    renderPlayers(); focus('status-' + player.id); announce(player.name + ' stays ' + (player.active ? 'active' : 'inactive')); return
+  }
+  undo = null
+  pending.set(player.id, setTimeout(() => {
+    pending.delete(player.id); commitAvailability(player)
+  }, 2000))
+  renderPlayers(); focus('status-' + player.id); announce('Moving ' + player.name + ' in two seconds. Tap again to cancel.')
+}
+function commitAvailability(player) {
+  const hadFocus = document.activeElement?.id === 'status-' + player.id
+  const focusId = document.activeElement?.id
   const active = players.filter(item => item.active), index = active.indexOf(player)
   const before = { active: player.active, side: player.side }
   player.active = !player.active
@@ -35,11 +50,19 @@ function availability(player) {
     Object.assign(player, before); undo = null; renderPlayers(); focus('status-' + player.id); announce('Availability restored')
   }
   renderPlayers()
-  focus('status-' + (player.active ? player.id : (active[index + 1] || active[index - 1])?.id))
+  if (hadFocus) focus('status-' + (player.active ? player.id : (active[index + 1] || active[index - 1])?.id))
+  else if (focusId) get(focusId)?.focus({ preventScroll: true })
   announce(player.name + (player.active ? ' is active' : ' moved to Inactive'))
 }
 function setSide(player, side) {
+  if (pending.has(player.id)) return
+  const previous = player.side
   player.side = side; undo = null; renderPlayers(); focus('side-' + player.id); announce(player.name + ' · ' + side)
+  if (config.side === 'segments' && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const pill = get('side-' + player.id).firstElementChild
+    const distance = (sides.indexOf(previous) - sides.indexOf(side)) * pill.parentElement.offsetWidth
+    pill.animate([{ transform: 'translateX(' + distance + 'px)' }, { transform: 'translateX(0)' }], { duration: 300, easing: 'ease-out' })
+  }
 }
 function sideControl(player) {
   const group = element('div', '', 'side-control')
@@ -73,7 +96,8 @@ function sideControl(player) {
   return group
 }
 function card(player) {
-  const node = element('article', '', 'card'), state = player.active ? 'Active' : 'Inactive', off = player.active ? '' : ' off'
+  const active = pending.has(player.id) ? !player.active : player.active
+  const node = element('article', '', 'card'), state = active ? 'Active' : 'Inactive', off = active ? '' : ' off'
   node.dataset.frame = config.frame; node.dataset.side = player.side
   const photoMode = config.status === 'photo'
   const portrait = photoMode ? button('', () => availability(player), 'portrait' + off) : element('div', '', 'portrait' + off)
@@ -88,9 +112,11 @@ function card(player) {
   }
   const toggle = photoMode ? portrait : status
   toggle.id = 'status-' + player.id; toggle.setAttribute('aria-label', player.name + ' · ' + state + ' · toggle availability')
-  toggle.setAttribute('aria-pressed', String(player.active)); toggle.title = 'Make ' + player.name + (player.active ? ' inactive' : ' active')
+  toggle.setAttribute('aria-pressed', String(active)); toggle.title = 'Make ' + player.name + (active ? ' inactive' : ' active')
   const more = button('⋯', () => edit(player), 'more'); more.setAttribute('aria-label', 'Edit ' + player.name)
-  node.append(portrait, name, status, more); if (player.active) node.append(sideControl(player))
+  node.append(portrait, name, status, more)
+  if (pending.has(player.id)) name.append(element('small', 'Moving… Tap again to cancel'))
+  if (player.active) node.append(sideControl(player))
   return node
 }
 function renderPlayers() {
