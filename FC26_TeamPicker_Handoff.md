@@ -2,7 +2,172 @@
 
 **Stack:** TypeScript · Vite · React · Cloudflare Workers · D1 · R2
 **Target devices:** Android and iPhone phones (mobile-first PWA)
-**Document version:** 7 (2026-08-21) — supersedes the original `.docx` handoff
+**Document version:** 9 (2026-11-27) — supersedes the original `.docx` handoff
+
+---
+
+## Recent Changes (2026-11-27): the Pro look (#55)
+
+Shipped as PR #55. `@fc26/web` `0.1.42`, `@fc26/worker` and `WORKER_VERSION`
+`0.1.21`; `@fc26/shared` `0.1.17`, `SCHEMA_VERSION` `14` and
+`EVENT_SCHEMA_VERSION` `1` are unchanged.
+
+### One shell, two entry points
+
+The look that was tried out in the Clubhouse preview is now the real app's.
+`apps/web/src/pro` holds it: `ProShell` (masthead, match desk, Club leaders),
+`QuickResult`, `HistoryTable`, `Segmented` and `pro.css`. `src/main.tsx`
+renders `ProShell` for the real app and `clubhouse/main.tsx` renders it for
+the preview with `preview` set, which makes a room PIN compulsory, hides the
+navigation outside a room and registers sample photos through
+`setGamerAvatarFallback`. The real app keeps the silhouette placeholder.
+
+`App` still renders without the shell, which is how the unit suites mount it.
+`pro.css` restyles the older inline-styled panels from outside, mostly with
+`!important`; that is deliberate debt, cheaper than rewriting every panel in
+one PR, and the reason a panel can look different in a test screenshot.
+
+### Controls
+
+- **`Segmented`** (Radix ToggleGroup) is the only either/or switch: side
+  (Home / Reserve / Away), Manual / Random, FC teams, bet outcome and
+  Points / Goals. It is a `radiogroup` of `radio` items, not a row of
+  buttons, so tests query those roles. Pressing the chosen option again does
+  not clear it.
+- **Availability** is a Radix Switch. A change is staged for two seconds and
+  a second tap cancels it; a gamer made inactive goes back to Reserve.
+- **"Not playing" is "Reserve"** in the interface. The assignment key in code
+  is still `bench`.
+- **Player cards** animate between the active and inactive lists with Motion;
+  `MotionConfig reducedMotion="user"` in `ProShell` honours the system setting.
+
+### Quick result and picture reading
+
+`QuickResult` is a vaul drawer. It logs a finished match in one step by
+creating the night and game if needed and recording the result. It can also
+read the score from a picture, new (`capture="environment"`) or existing.
+The analyse-photo route only works against a live match, so the drawer starts
+one from the chosen sides first and fixes the sides from then on. A failed
+read therefore leaves a live match behind; the drawer says so. A score read
+from a picture is recorded with `entryMethod: 'ocr'` only if it is saved
+unchanged.
+
+### Known compromises
+
+- In the live game, Finish game is lifted above Bets with CSS `order`, so
+  keyboard and screen-reader order still reaches Bets first.
+- The preview Worker has no `GEMINI_API_KEY`, so picture reading was verified
+  there only as far as the server's `gemini_not_configured` reply.
+
+### Tests
+
+`Segmented.test.tsx` and `QuickResult.test.tsx` are new. Sabotaged and caught:
+removing the guard that keeps one option chosen, crediting a hand-corrected
+score to the picture, and dropping `capture` from the camera input.
+
+---
+
+## Recent Changes (2026-11-27): share links (#56)
+
+Shipped as PR #56. Client only: `@fc26/web` `0.1.33`; `@fc26/worker`
+`0.1.19`, `@fc26/shared` `0.1.17`, `WORKER_VERSION` `0.1.19`,
+`SCHEMA_VERSION` `14` and `EVENT_SCHEMA_VERSION` `1` are unchanged.
+
+### Sharing a room, or the app
+
+Getting a friend into a room meant reading out the room ID and the PIN, and
+the installed app has no address bar to copy from. The `RoomBar` now has a
+share button (`features/share/ShareSheet`) with two choices: **Invite to this
+room** and **Share app link**. The landing screen has a **Share app** card
+next to *Pin to Desktop*. Both go through `lib/share`'s `shareLink`: the
+native share sheet where there is one, then the clipboard, then the link on
+screen to copy by hand. Closing the share sheet counts as cancelled, not as
+a failure.
+
+### The PIN rides in the link
+
+An invite is `…/football/#/join?room=<id>&pin=<pin>`; a room without a PIN
+gets the room ID alone. The PIN is in the **hash**, so it never reaches a
+server or an access log. `App` handles `#/join` at boot, before any page
+renders. It swaps the hash for `#/game` straight away, so the PIN does not
+stay in the address bar, the history or a reload, and then it joins. If the
+join fails, the room ID is left in the join form and the message says
+whether the PIN was wrong or missing.
+
+The Worker stores only a PIN hash, so the PIN in an invite comes from the
+device itself. A device that creates a room with a PIN, or joins one with
+it, keeps it in `localStorage` under `fc26:room-pin:<roomId>`, and *Leave
+room* forgets it. A device that joined before this change has never typed
+the PIN into this code path, so the share sheet asks for it once and then
+remembers it.
+
+Links do not expire. An earlier draft signed seven-day invites on the
+Worker; it was dropped as more machinery than a four-digit soft lock
+between friends needs. The trade-off is that a forwarded link keeps working,
+and for now nothing can take it back (open item 18).
+
+### Tests
+
+594 unit (261 shared, 174 worker, 159 web) plus 7 end-to-end.
+`lib/share.test.ts` covers building and parsing links, storing the PIN, and
+the share → clipboard → failed fallbacks. Three tests in `App.test.tsx`
+cover the boot path:
+- a link joins with its PIN, clears it from the hash and remembers it;
+- a wrong PIN leaves the room ID in the form;
+- leaving the room forgets the PIN.
+
+Four guarantees were each sabotaged once and caught: the hash swap, storing
+the PIN on join, pre-filling the room ID, and forgetting the PIN on leave.
+The share sheet is presentational and was checked by hand at phone size,
+not by a test. The end-to-end suite does not cover sharing.
+
+---
+
+## Recent Changes (2026-11-27)
+
+Shipped as PR #57. CI and docs only — nothing about the app, the API or the
+data changed, so every version stands: `@fc26/web` `0.1.32`, `@fc26/worker`
+`0.1.19`, `@fc26/shared` `0.1.17`, `WORKER_VERSION` `0.1.19`, `SCHEMA_VERSION`
+`14`, `EVENT_SCHEMA_VERSION` `1`.
+
+### The end-to-end job broke without anything in the repo changing
+
+GitHub moved `ubuntu-latest` to Ubuntu 26.04, and `@playwright/test` 1.56.1
+has no Chromium build for it. Every PR from #55 on failed in *Install browser*
+with `Playwright does not support chromium on ubuntu26.04-x64`, before a single
+spec ran — the last green run was on `main` in August, on the older image.
+
+The fix is **Playwright 1.65.1**, which ships `ubuntu26.04-x64` builds (support
+first appears in 1.62). Pinning the job back to `ubuntu-24.04` would also have
+worked and was the fallback; upgrading was preferred because a pinned image
+only postpones the same break. Both halves were reproduced in an Ubuntu 26.04
+container before pushing — 1.56.1 fails with the CI error, 1.65.1 installs the
+browser and passes all seven specs — and then on the real runner. See
+[§29 The runner can move under the suite](#the-runner-can-move-under-the-suite).
+
+### Every action is pinned by commit SHA
+
+All seven actions are on their latest release and pinned by full 40-character
+commit SHA with the version as a trailing comment, in all three workflows. A
+moved or re-pointed tag can no longer change what CI runs; the price is that
+updates are now deliberate (open item 10). Only `upload-artifact` crossed a
+major — v4 → v7.0.2, which runs on Node 24 and clears the Node 20 deprecation
+warning; the inputs `deploy.yml` passes it mean the same in both. The other six
+were already on their latest major, so for them this is pin-only.
+
+### Rules for agents
+
+`AGENTS.md` gathers the project's conventions — from this document,
+`DEVELOPMENT.md` §14, the version scripts and the commit history — and points
+back at each source, which stays authoritative. `CLAUDE.md` imports it so
+Claude Code loads it automatically. Among the new rules: pull container images
+from the AWS ECR Public Gallery (`public.ecr.aws`) wherever they exist, since
+Docker Hub's anonymous rate limit blocked the reproduction above.
+
+### Tests
+
+581 unit (261 shared, 174 worker, 146 web) plus 7 end-to-end, unchanged; the
+point of this batch was getting the seven to run again.
 
 ---
 
@@ -708,33 +873,36 @@ The entire stack runs on Cloudflare's edge network. There is no separate origin 
 ## 5. Monorepo Layout
 
 ```
-fc26-picker/
-  apps/web/                    # Vite + React SPA
+football/
+  apps/web/                    # @fc26/web — Vite + React PWA
     src/
-      game/                    # session state machine
-      features/                # one folder per screen
-      modes/                   # game | dashboard | view-teams | update-changes
-      components/              # shared UI primitives
-      stores/                  # Zustand slices
-      lib/                     # API client, utils, logger
+      features/                # one folder per screen: gameNight, gamers,
+                               #   landing, room, scoreboard, squads, wager
+      components/              # shared UI, incl. vendored shadcn under ui/
+      hooks/                   # incl. useHashRoute (hash routing, e.g. #/wager)
+      lib/                     # API client, logger, version, service worker
       debug/                   # hidden Console
-  worker/                      # Cloudflare Worker
+      styles/  types/  utils/  test/
+  worker/                      # @fc26/worker — Cloudflare Worker (Hono)
     src/
-      routes/                  # Hono route handlers
-      services/                # squad sync, score extraction, projection
-      db/
-        repositories/          # IRepository impls
-        schema.ts              # Drizzle schema
-        migrations/            # NNNN_desc.sql + optional NNNN_desc.ts
+      routes/                  # Hono route handlers + shared test fixtures
+      rooms/ gamers/ games/ game-nights/ bets/ events/ projections/ auth/ squad/
+                               # one folder per domain: its IRepository,
+                               #   D1 + in-memory implementations, services
+      db/migrations/           # NNNN_description.sql, applied by wrangler
       middleware/              # repos, auth, logging, correlation
-  tools/
-    squad-sync/                # Node.js one-shot scraper (local use)
-  packages/
-    shared/                    # DTOs, types, selection strategies, time utils
-      src/
-        selection/             # IGamerSelectionStrategy + strategies
-        time/                  # UTC <-> local helpers
-        types/                 # domain types, DTOs, events
+      config/                  # squad sync, AI prompts
+      dependencies.ts          # composition root (in-memory fallbacks)
+  workers/football-app/        # serves the client, proxies /api to the worker
+  packages/shared/             # @fc26/shared
+    src/
+      selection/               # IGamerSelectionStrategy + strategies
+      wager/                   # chip ledger fold (roomChipLedger), settlement
+      time/  types/  logger/  names/  squad/  version/
+  tools/squad-sync/            # Node.js one-shot squad sync (local use)
+  e2e/                         # Playwright specs (§29)
+  scripts/                     # version bump + gate, ledger health check
+  redirect-page/               # GitHub Pages redirect from the old origin
   package.json                 # pnpm workspaces root
 ```
 
@@ -760,8 +928,12 @@ The game session is a multi-step wizard where each step reads and writes shared 
 ### TanStack Router
 Route parameters (`/rooms/:roomId/game/:step`) feed directly into typed API calls. TanStack Router is type-safe from the ground up; React Router v6 bolts types on after the fact.
 
+*Not adopted.* The app has a handful of screens and routes them by URL hash (`useHashRoute`, e.g. `#/wager`), which also means no server fallback is needed for deep links.
+
 ### Drizzle ORM
 D1 is SQLite. Raw D1 queries return `unknown[]`; you cast manually everywhere. Drizzle defines the schema in TypeScript, generates migrations from it, and makes query results fully typed. **The schema IS the source of truth** for both the DB and TypeScript types.
+
+*Not adopted.* Each domain's D1 repository holds hand-written SQL and maps rows to types itself, and migrations are hand-written `.sql` files. The migration files, not a TypeScript schema, are the source of truth.
 
 ### Why D1 and not R2 JSON files for mutable data
 R2 is object storage, not a database. It has no query capability. D1 runs aggregations in under 5 ms on the edge.
@@ -778,6 +950,8 @@ R2 is still used for its strengths: versioned squad JSON and club logo images �
 
 ### Recharts
 Already in the stack for the Dashboard. Radar charts cover the "View Teams" per-player attribute diagrams with no new dependency.
+
+*Not adopted.* No charting library is installed.
 
 ---
 
@@ -855,7 +1029,7 @@ Route handlers receive typed repos via `c.get('repos')` and never reference D1 b
 | `gamer_team_points` | Projection: per-gamer-team (ad-hoc pairing) counters. |
 | `squad_versions` | Registry of historical squad versions stored in R2. |
 | `pin_attempts` | Throttle table for room PIN retries. |
-| `schema_migrations` | Tracks applied Drizzle migrations. |
+| `schema_migrations` | Records applied migrations — each `.sql` file inserts its own row. (Wrangler also keeps its own `d1_migrations` table.) |
 
 ### DDL
 
@@ -952,7 +1126,7 @@ CREATE TABLE schema_migrations (
 ### Constraints and conventions
 
 - **Every `*_at` column is `INTEGER NOT NULL` UTC milliseconds.** Never TEXT ISO strings.
-- **Every mutable table has `created_at` and `updated_at`.** Drizzle `timestamps()` helper.
+- **Every mutable table has `created_at` and `updated_at`.** Repositories set both explicitly.
 - **`game_events` is append-only.** The repository interface does not expose update or delete. Corrections are expressed as new events (`game_voided` + a new `game_recorded`).
 - **Game size constraint:** `GameSize = 2 | 4` enforced at the type layer, Zod boundary, and event payload validation. No `CHECK(size IN (2, 4))` column because size lives inside the event payload.
 - **`bets` is unique on `(game_id, gamer_id, outcome)`.** One position per outcome, so a repeat bet on the same outcome merges into a top-up while a different outcome opens a hedge. It was `(game_id, gamer_id)` until migration 0010; anything keying settlement by gamer rather than by row depends on the *old* shape and is now wrong.
@@ -1246,6 +1420,10 @@ not a set of scroll anchors. Everything below lives under `apps/web/src/`.
 Before a room is joined, `App` renders `features/landing/LandingScreen`
 (`CreateRoomPanel` + `JoinRoomPanel`) instead.
 
+`#/join?room=…&pin=…` is not a page. It is a room invite link, which `App`
+reads once at boot: it replaces the hash with `#/game` and joins the room.
+See Recent Changes (2026-11-27): share links (#56).
+
 ### Feature modules
 
 | Module | Components |
@@ -1257,6 +1435,7 @@ Before a room is joined, `App` renders `features/landing/LandingScreen`
 | `features/scoreboard/` | `ScoreboardPanel`, `MatchHistoryList` |
 | `features/squads/` | `TeamsPanel`, `ChangesPanel` (version diff, rendered as a tab inside Teams), `HistoricalRatingsChart`, `useSquadBrowser` |
 | `features/landing/` | `LandingScreen`, `CreateRoomPanel`, `JoinRoomPanel` |
+| `features/share/` | `ShareSheet` (the `RoomBar` share button: invite to this room, or share the app; asks once for a PIN this device does not know), `ShareIcon` |
 | `debug/` | `DebugConsole` (triple-tap target), `console-store` |
 
 ### Shared components
@@ -1276,7 +1455,7 @@ Before a room is joined, `App` renders `features/landing/LandingScreen`
 | Path | Contents |
 |---|---|
 | `hooks/` | `useHashRoute`, `useInstallPrompt`, `useOnlineStatus`, `useSwUpdate`, `useLinkedPair` |
-| `lib/` | `api` (fetch + correlation-ID middleware), `logger`, `version`, `swUpdate` + `swCacheRules` (see [§28](#28-offline--the-service-worker)), `avatars`, `image`, `utils` (the shadcn `cn` helper) |
+| `lib/` | `api` (fetch + correlation-ID middleware), `logger`, `version`, `swUpdate` + `swCacheRules` (see [§28](#28-offline--the-service-worker)), `avatars`, `image`, `share` (invite and app links, the per-room PIN memory, native share → clipboard fallback), `utils` (the shadcn `cn` helper) |
 | `utils/` | `roster`, `scoreboard`, `squads` — pure derivations kept out of components |
 | `index.css` | Tailwind v4 entry plus the design tokens as CSS custom properties with an `@theme inline` mapping |
 
@@ -1729,8 +1908,8 @@ Worker validates with Zod. On parse failure, retry next model in the chain.
 
 - **Every `*_at` column stores `INTEGER NOT NULL` as UTC milliseconds since epoch.** No TEXT ISO strings.
 - **Every mutable entity has `created_at` and `updated_at`.** Immutable events have `occurred_at` + `recorded_at`.
-- **Drizzle `timestamps()` helper** returns a reusable column spec.
-- **Update triggers** auto-bump `updated_at` on every row update:
+- **Repositories write `updated_at` themselves** on every update; there is no ORM helper.
+- **Update triggers** were planned to auto-bump `updated_at` on every row update. *(None exist in the migrations; repositories set `updated_at` themselves, per the bullet above.)* The planned shape:
   ```sql
   CREATE TRIGGER gamers_updated_at AFTER UPDATE ON gamers
   BEGIN
@@ -1775,16 +1954,14 @@ Three independent version axes, all visible in the Console System tab.
 
 ### Schema version
 
-- Drizzle migrations numbered `NNNN_description.sql` + optional `NNNN_description.ts` for data transforms.
-- The TS file exports `async function up(db: D1Database)` — runs after the SQL file.
-- `schema_migrations` table tracks applied migrations.
-- **Manual application only:** `pnpm wrangler d1 migrations apply`. Never auto-run on request.
-- CI pipeline applies migrations **before** the new Worker goes live.
+- Hand-written migrations `worker/src/db/migrations/NNNN_description.sql`, applied by `wrangler d1 migrations apply`. Data moves are SQL in the same file (e.g. `0008_chip_purchases_backfill.sql`); no `.ts` migration runner exists.
+- Each file ends by inserting its row into `schema_migrations`; `SCHEMA_VERSION` in `wrangler.toml` must equal the highest number (the version gate checks).
+- **Never auto-run on request.** The `deploy-worker` CI job applies pending migrations with `--remote` **before** the new Worker goes live, on every deploy from `main`. So migrations must be additive: the old Worker briefly runs against the new schema.
 
 ### Compatibility enforcement
 
 - **Client on startup** calls `GET /api/version`. If `clientVersion < minClientVersion`, show a full-screen "Please refresh — a new version is available" banner. **Don't auto-reload** — the user might be mid-game.
-- **Worker on boot** checks `schemaVersion === expectedSchemaVersion`. Refuses requests (HTTP 503 with a clear message) if mismatched. Prevents the classic "worker deployed, migrations not applied" footgun.
+- **Worker on boot** checks `schemaVersion === expectedSchemaVersion`. Refuses requests (HTTP 503 with a clear message) if mismatched. Prevents the classic "worker deployed, migrations not applied" footgun. *(Not implemented: `SCHEMA_VERSION` is only reported by `/api/version`. CI applying migrations before every deploy is what currently prevents the footgun.)*
 
 ### Event schema versioning
 
@@ -1793,6 +1970,8 @@ Three independent version axes, all visible in the Console System tab.
 - Because the log is append-only, no retroactive rewrites are needed — that's the point of event sourcing.
 
 ### Upgrade script template
+
+*Not wired up — nothing runs `.ts` migrations, so write data moves in SQL. Kept as the shape to use if a runner is ever added.*
 
 ```ts
 // worker/src/db/migrations/0005_add_team_name.ts
@@ -1867,8 +2046,8 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 |---|---|---|
 | Framework | Vanilla React + Vite (no Next.js) | No SSR needed; Pages handles static hosting |
 | State | Zustand | Minimal, slice-based, no Provider boilerplate |
-| Router | TanStack Router | Type-safe route params feed API calls |
-| Worker ORM | Drizzle + D1 | Schema = TypeScript types; migrations generated |
+| Router | Hash routes (`useHashRoute`) | A few screens; TanStack Router was planned and not adopted |
+| Worker data access | Hand-written SQL in D1 repositories | Drizzle was planned and not adopted; migrations are hand-written |
 | Worker framework | Hono | Lightest JS router with full TS support on Workers |
 | Relational DB | D1 (SQLite) | Queries, aggregations, transactions; R2 cannot do this |
 | Blob storage | R2 | Squad JSON (versioned, sharded) and logo images; never queried |
@@ -1882,10 +2061,11 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 | **Logging** | Client ring buffer + Worker logs piped via `x-fc26-logs` response header, overflow via `GET /api/logs?correlationId=...` | User requirement; simple, no SSE |
 | **Console UI** | Triple-tap on logo (in bottom nav for thumb reach) → slide-up panel, unadvertised in the UI | User requirement; an admin secret is to follow |
 | **Time storage** | UTC millis as `INTEGER` in D1, Worker never formats, client renders with `Intl.DateTimeFormat` | No locale leakage, cache-friendly |
-| **Versioning** | Three axes (client, worker, schema), compatibility check on boot + startup, manual migrations | Prevents deploy/migrate race footguns |
+| **Versioning** | Three axes (client, worker, schema), client update banner, migrations applied by CI before each Worker deploy | Prevents deploy/migrate race footguns |
 | Squad source | xAranaktu tool → GitHub Release → daily Cron → R2 (versioned, 12 retained) | Official EA data, automated, supports Update Changes mode |
 | Squad access | R2 shards (`clubs.json` + `players/{clubId}.json`) | Avoids 5–8 MB cold load on phones |
 | Auth | Room ID + optional PIN/password (PBKDF2 + throttle + signed cookie) | Zero-friction for a friend group, still protected |
+| Room invites | `#/join?room=<id>&pin=<pin>`, PIN in the hash, no expiry; the PIN is remembered on the device that typed it | The recipient types nothing, and the PIN never reaches a server. Signed expiring invites were tried and dropped as too much for a four-digit soft lock |
 | Result entry | 3 giant buttons + optional OCR pre-fill | Sub-3-tap primary path |
 | OCR | Gemini 2.5 flash-lite → flash → pro, behind `IScoreExtractor` | Cheap-first fallback; provider-swappable |
 | PWA only | No Capacitor for v1 | Install-to-home-screen covers 95% of the need |
@@ -1925,6 +2105,11 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
     purpose: `deploy-pages` reads what `upload-pages-artifact` wrote, and the
     last time the artifact API changed generation it was the mismatched pair
     that broke. `deploy.yml` now has no stale action pins.
+    *(Superseded 2026-11-27: every action in every workflow is now pinned by
+    commit SHA — see Recent Changes. Nothing floats any more, so nothing goes
+    stale silently either; it goes stale **visibly**, and bumping a pin is a
+    deliberate change that must re-resolve the SHA from the release tag,
+    dereferencing annotated tags, and re-read the release notes.)*
 
 ### Open as of 2026-08-20
 
@@ -1960,6 +2145,25 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
     destructive controls. The owner's plan is an admin secret in front of it.
     Until then, treat "hidden" as tidiness rather than as a permission boundary.
 
+### Open as of 2026-11-27
+
+17. **`pnpm/action-setup` points at a successor.** Its README now directs
+    users to `pnpm/setup`. v6.1.1 works and is pinned, so nothing is broken;
+    moving is a separate change, and should be checked against the
+    `packageManager` field and the `version` input the workflows pass.
+18. **A room invite link cannot be taken back.** The link carries the PIN
+    and does not expire, so anyone it is forwarded to can join for as long
+    as the PIN stays the same. Nothing can change a room's PIN: there is no
+    screen for it, and `PATCH /rooms/:roomId/settings` only takes
+    `squadPlatform`. So a link that reaches the wrong person can't be
+    revoked short of making a new room. Changing a room's PIN would fix
+    it, and would also be when devices need to forget a stale
+    remembered PIN.
+19. **A failed link join leaves the form out of sight.** On the landing
+    screen the error shows above *Create room*, and the join form with the
+    room ID filled in is further down. Scrolling to (or focusing) the join
+    form's PIN field after a failed link join is a small, unmade tweak.
+
 ---
 
 ## 26. Appendix: External Dependencies
@@ -1967,17 +2171,11 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 | Package | Used In |
 |---|---|
 | `hono` | worker — HTTP routing |
-| `drizzle-orm` | worker — type-safe D1 queries |
 | `zod` | both — boundary validation |
 | `nanoid` | both — short unique IDs for rooms/games/events/logs |
 | `zustand` | web — game session state |
-| `@tanstack/react-router` | web — file-based typed routing |
-| `recharts` | web — stats dashboard charts and player attribute radars |
 | `tailwindcss` (v4) | web — utility CSS via Vite plugin |
 | `vitest` | both — unit tests |
-| `jose` | worker — JWT signing for session cookies |
-| `@google/genai` | worker — Gemini OCR (optional, Phase 10) |
-| `@anthropic-ai/sdk` | worker — Claude OCR fallback (optional, Phase 10) |
 | `motion` (v13) | web — the small amount of animation that earns its place |
 | `@radix-ui/*` | web — unstyled primitives under the vendored shadcn components |
 | `class-variance-authority`, `clsx`, `tailwind-merge` | web — shadcn's variant and class plumbing |
@@ -1985,6 +2183,11 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
 | `vite-plugin-pwa` | web — precache manifest and service worker generation |
 | `workbox-window` | web — the client half of the update handshake |
 | `@playwright/test` | root — browser tests against the real stack (see [§29](#29-end-to-end-tests)) |
+
+Planned in §6 and never installed: `drizzle-orm`, `@tanstack/react-router`,
+`recharts`, `jose` (sessions are HMAC-signed with Web Crypto), `@google/genai`
+(Gemini is called over `fetch`) and `@anthropic-ai/sdk`. They are left out of
+the table above so it lists only what is actually in a `package.json`.
 
 shadcn/ui is **not** in this table on purpose: it is not a dependency. Its
 components are vendored as source under `apps/web/src/components/ui/` and are
@@ -2355,6 +2558,18 @@ what these cover.
 that gates both deploys. `e2e/**` and `playwright.config.ts` are in the
 workflow's path filters — without them a PR touching only the suite skipped the
 job it was editing, which it did once.
+
+### The runner can move under the suite
+
+The job runs on `ubuntu-latest`, which GitHub re-points to new Ubuntu releases,
+and **each Playwright release only ships browsers for the OS versions it
+knows**. In November 2026 the label moved to 26.04 and 1.56.1 had no Chromium
+for it, so the job failed in *Install browser* on every PR with no change in
+the repo. When that happens, upgrade `@playwright/test` (root `package.json`)
+to a release that lists the new OS before reaching for a pinned image, and
+reproduce it first in a container of that release — e.g.
+`public.ecr.aws/docker/library/ubuntu:26.04` — rather than on a developer
+machine, whose OS says nothing about the runner's.
 
 ### What is covered
 
