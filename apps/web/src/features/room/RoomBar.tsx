@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import type { BusyState } from '../../types/busyState.js'
 import type { WorkerVersionInfo } from '../../lib/version.js'
 import { RoomDetailSheet } from './RoomDetailSheet.jsx'
+import { ShareSheet } from '../share/ShareSheet.jsx'
 
 /**
  * The whole persistent header, in 56px.
@@ -68,6 +69,7 @@ export function RoomBar({
           onRefresh={onRefresh}
         />
       </h1>
+      <ShareSheet room={bootstrap.room} />
       <Badge variant={live ? 'default' : 'outline'} className="shrink-0">
         {status}
       </Badge>

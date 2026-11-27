@@ -2333,3 +2333,117 @@ describe('App shell', () => {
     expect((filter as HTMLSelectElement).value).toBe('')
   })
 })
+
+/**
+ * A shared room link (`#/join?room=…&pin=…`) is handled by `App` at boot,
+ * before any page renders, so these drive the whole shell rather than
+ * `lib/share` on its own.
+ */
+describe('room join links', () => {
+  const lockedRoom = {
+    id: 'room-7',
+    name: 'Locked Lounge',
+    avatarUrl: null,
+    hasPin: true,
+    defaultSelectionStrategy: 'uniform-random',
+    createdAt: 1000,
+    updatedAt: 1000,
+  }
+
+  function joinedResponse(): Response {
+    return new Response(
+      JSON.stringify({
+        room: lockedRoom,
+        gamers: [],
+        activeGameNight: null,
+        activeGameNightGamers: [],
+        currentGame: null,
+        session: { roomId: lockedRoom.id, expiresAt: 2000 },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
+  }
+
+  /** Stubs fetch; `join` answers the session POST and records its body. */
+  function stubJoin(join: () => Response): { bodies: unknown[] } {
+    const bodies: unknown[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input, init) => {
+      const url = String(input)
+      const scoreboardRoomId = roomIdFromScoreboardUrl(url)
+      if (scoreboardRoomId) return emptyScoreboardResponse(scoreboardRoomId)
+      if (url.endsWith('/api/version')) return versionResponse()
+      if (url.endsWith(`/api/rooms/${lockedRoom.id}/sessions`) && init?.method === 'POST') {
+        bodies.push(JSON.parse(String(init.body)))
+        return join()
+      }
+      if (url.endsWith(`/api/rooms/${lockedRoom.id}`)) return joinedResponse()
+      throw new Error(`unexpected fetch ${url}`)
+    }))
+    return { bodies }
+  }
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    localStorage.clear()
+    window.location.hash = ''
+  })
+
+  afterEach(() => {
+    cleanup()
+    window.location.hash = ''
+  })
+
+  it('joins with the PIN from the link, drops it from the address bar and remembers it', async () => {
+    window.location.hash = `#/join?room=${lockedRoom.id}&pin=4321`
+    const { bodies } = stubJoin(joinedResponse)
+
+    render(<App />)
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Locked Lounge/i })).toBeInTheDocument(),
+    )
+    expect(bodies).toEqual([{ identifier: lockedRoom.id, pin: '4321' }])
+    // The PIN must not survive in the URL, where a reload or the history
+    // would carry it.
+    expect(window.location.hash).toBe('#/game')
+    // Kept so this device can put the PIN in its own invite links.
+    expect(localStorage.getItem(`fc26:room-pin:${lockedRoom.id}`)).toBe('4321')
+  })
+
+  it('leaves the room ID in the join form when the link carries a wrong PIN', async () => {
+    window.location.hash = `#/join?room=${lockedRoom.id}&pin=0000`
+    stubJoin(
+      () =>
+        new Response(JSON.stringify({ error: 'invalid_pin' }), {
+          status: 401,
+          headers: { 'content-type': 'application/json' },
+        }),
+    )
+
+    render(<App />)
+
+    expect(await screen.findByText(/The PIN in this link is wrong/i)).toBeInTheDocument()
+    expect(screen.getByDisplayValue(lockedRoom.id)).toBeInTheDocument()
+    expect(window.location.hash).toBe('#/game')
+    expect(localStorage.getItem(`fc26:room-pin:${lockedRoom.id}`)).toBeNull()
+  })
+
+  it('forgets the remembered PIN when the room is left', async () => {
+    window.location.hash = `#/join?room=${lockedRoom.id}&pin=4321`
+    stubJoin(joinedResponse)
+
+    render(<App />)
+    // Wait for the room bar, not for the stored PIN: the PIN is written
+    // before the room renders, so waiting on it raced the click below.
+    const roomButton = await screen.findByRole('button', { name: /Locked Lounge/i })
+    expect(localStorage.getItem(`fc26:room-pin:${lockedRoom.id}`)).toBe('4321')
+
+    fireEvent.click(roomButton)
+    fireEvent.click(await screen.findByRole('button', { name: /Leave room/i }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Join room/i })).toBeInTheDocument(),
+    )
+    expect(localStorage.getItem(`fc26:room-pin:${lockedRoom.id}`)).toBeNull()
+  })
+})
