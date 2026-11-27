@@ -25,6 +25,10 @@ test('logs a finished match from a fresh room and remembers both sides', async (
   const history = await (await page.request.get('/api/rooms/' + room.id + '/match-history?scope=all')).json()
   expect(history.matches).toHaveLength(1)
   expect(history.matches[0]).toMatchObject({ result: 'home', home: { score: 3, gamerIds: [home] }, away: { score: 2, gamerIds: [away] } })
+  // Game creation starts from the same sides the quick result remembers.
+  const sideOf = (id: string) => page.locator('.pro-player[data-side]').filter({ has: page.locator('[data-availability="' + id + '"]') })
+  await expect(sideOf(home)).toHaveAttribute('data-side', 'home')
+  await expect(sideOf(away)).toHaveAttribute('data-side', 'away')
   await page.getByRole('button', { name: 'Log result' }).click()
   await expect(dialog.getByLabel('Home player 1')).toHaveValue(home)
   await expect(dialog.getByLabel('Away player 1')).toHaveValue(away)

@@ -6,6 +6,7 @@ import type {
   AnalysePhotoResponse, CurrentGame, CurrentGameResponse, GameNightResponse, MatchHistoryResponse, RoomBootstrapResponse,
 } from '@fc26/shared'
 import { apiJson } from '../lib/api'
+import { lastGameSides } from '../utils/roster.js'
 
 type Sides = [string[], string[]]
 type LiveGame = { nightId: string; game: CurrentGame }
@@ -45,9 +46,9 @@ export function QuickResult({ roomId, reload }: { roomId: string; reload: () => 
         if (cancelled) return
         const last = history.matches[0]
         const pool = current.gamers.filter(gamer => gamer.active && (!current.activeGameNight || current.activeGameNightGamers.some(entry => entry.gamerId === gamer.id)))
-        const previous = last && [...last.home.gamerIds, ...last.away.gamerIds].every(id => pool.some(gamer => gamer.id === id))
+        const previous = lastGameSides(last, new Set(pool.map(gamer => gamer.id)))
         setSides(current.currentGame ? [[...current.currentGame.homeGamerIds], [...current.currentGame.awayGamerIds]] :
-          last && previous ? [[...last.home.gamerIds], [...last.away.gamerIds]] : [[pool[0]?.id ?? ''], [pool[1]?.id ?? '']])
+          previous ? [previous.home, previous.away] : [[pool[0]?.id ?? ''], [pool[1]?.id ?? '']])
         if (current.activeGameNight && current.currentGame) setLive({ nightId: current.activeGameNight.id, game: current.currentGame })
         setRoom(current)
       }).catch(() => { if (!cancelled) setError('Could not load the room. Close and reopen to retry.') })

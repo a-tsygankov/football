@@ -27,7 +27,11 @@ import {
 } from '../../styles/controls.js'
 import type { BusyState } from '../../types/busyState.js'
 import type { SquadBrowserState } from '../squads/useSquadBrowser.js'
-import { buildManualAssignments } from '../../utils/roster.js'
+import {
+  assignmentsFromSides,
+  buildManualAssignments,
+  lastGameSides,
+} from '../../utils/roster.js'
 import { CurrentGameCard } from './CurrentGameCard.jsx'
 import { InlineTeamPicker } from './InlineTeamPicker.jsx'
 import { Field } from '../../components/Field.jsx'
@@ -200,6 +204,35 @@ export function GameCreationPanel({
   useEffect(() => {
     setManualAssignments(buildManualAssignments(bootstrap.currentGame))
   }, [bootstrap.activeGameNight?.id, bootstrap.currentGame])
+
+  // Between games, start from the last game's sides — the same default the
+  // quick result uses. Runs after the reset above, and never over a choice
+  // somebody has already made.
+  const loadHistory = proRoster?.history
+  const availableKey = [...activeGameNightGamerIds].sort().join(',')
+  useEffect(() => {
+    if (!loadHistory || bootstrap.currentGame) return
+    let current = true
+    loadHistory({ type: 'all' })
+      .then(({ matches }) => {
+        const sides = lastGameSides(matches[0], activeGameNightGamerIds)
+        if (!current || !sides) return
+        setManualAssignments((chosen) =>
+          Object.values(chosen).some((side) => side !== 'bench')
+            ? chosen
+            : assignmentsFromSides(sides),
+        )
+      })
+      .catch(() => {
+        // The history is a convenience here; without it the sides start blank.
+      })
+    return () => {
+      current = false
+    }
+    // activeGameNightGamerIds is a fresh Set on every bootstrap; its contents
+    // are what matter, and availableKey carries them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadHistory, bootstrap.activeGameNight?.id, bootstrap.currentGame, availableKey])
 
   const availableRandomFormats = Object.values(GAME_FORMATS).filter(
     (format) => format.size <= activeGameNightGamers.length,

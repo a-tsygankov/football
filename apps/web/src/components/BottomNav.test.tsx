@@ -7,14 +7,25 @@ describe('BottomNav', () => {
     document.body.innerHTML = ''
   })
 
-  it('shows the four tabs, with Wager in place of Teams', () => {
+  it('shows the three tabs, with Wager in place of Teams', () => {
     render(<BottomNav route="game" onNavigate={vi.fn()} />)
 
-    for (const label of ['Game', 'Scoreboard', 'Wager', 'Roster']) {
+    for (const label of ['Game', 'Scoreboard', 'Wager']) {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
     }
     // Teams kept its route but gave up the nav slot.
     expect(screen.queryByRole('button', { name: 'Teams' })).toBeNull()
+  })
+
+  it('keeps Roster off the bar while its page stays reachable', () => {
+    // The tab is switched off in BottomNav, not deleted: #/roster still routes
+    // to the page, so opening it must not light up some other tab.
+    render(<BottomNav route="roster" onNavigate={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: 'Roster' })).toBeNull()
+    for (const label of ['Game', 'Scoreboard', 'Wager']) {
+      expect(screen.getByRole('button', { name: label })).not.toHaveAttribute('aria-current')
+    }
   })
 
   it('navigates to the tapped route', () => {
@@ -24,8 +35,8 @@ describe('BottomNav', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Wager' }))
     expect(onNavigate).toHaveBeenCalledWith('wager')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Roster' }))
-    expect(onNavigate).toHaveBeenCalledWith('roster')
+    fireEvent.click(screen.getByRole('button', { name: 'Scoreboard' }))
+    expect(onNavigate).toHaveBeenCalledWith('scoreboard')
   })
 
   it('marks the current route as the active tab', () => {
@@ -45,7 +56,7 @@ describe('BottomNav', () => {
     // #/teams and #/settings are reachable but have no bar entry.
     render(<BottomNav route="teams" onNavigate={vi.fn()} />)
 
-    for (const label of ['Game', 'Scoreboard', 'Wager', 'Roster']) {
+    for (const label of ['Game', 'Scoreboard', 'Wager']) {
       expect(screen.getByRole('button', { name: label })).not.toHaveAttribute('aria-current')
     }
   })

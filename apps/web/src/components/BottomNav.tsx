@@ -16,6 +16,18 @@ const MODES: ReadonlyArray<{ id: Route; label: string }> = [
 ]
 
 /**
+ * Roster is off the bar, not gone: the page, its route (#/roster) and its
+ * styles are untouched, and the Game page's Players panel covers adding and
+ * editing gamers meanwhile. Set this to true to bring the tab straight back.
+ */
+const SHOW_ROSTER_TAB: boolean = false
+
+const TABS = MODES.filter((mode) => SHOW_ROSTER_TAB || mode.id !== 'roster')
+// The logo sits in the middle of an even number of tabs, and at the end of an
+// odd number, where a middle would leave the bar lopsided.
+const LOGO_INDEX = TABS.length % 2 === 0 ? TABS.length / 2 : TABS.length
+
+/**
  * Bottom navigation.
  *
  * Previously these were scroll anchors into one long page, and the active tab
@@ -37,6 +49,12 @@ export function BottomNav({
     toggleConsole()
   })
 
+  const tabs = TABS.map((mode) => (
+    <ModeButton key={mode.id} mode={mode} active={route === mode.id} onSelect={onNavigate} />
+  ))
+  const columns = TABS.map(() => '1fr')
+  columns.splice(LOGO_INDEX, 0, 'auto')
+
   return (
     <nav
       aria-label="Main navigation"
@@ -46,7 +64,7 @@ export function BottomNav({
         right: 0,
         bottom: 0,
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr auto 1fr 1fr',
+        gridTemplateColumns: columns.join(' '),
         alignItems: 'center',
         height: 64,
         paddingBottom: 'env(safe-area-inset-bottom)',
@@ -56,8 +74,7 @@ export function BottomNav({
         zIndex: 10,
       }}
     >
-      <ModeButton mode={MODES[0]!} active={route === MODES[0]!.id} onSelect={onNavigate} />
-      <ModeButton mode={MODES[1]!} active={route === MODES[1]!.id} onSelect={onNavigate} />
+      {tabs.slice(0, LOGO_INDEX)}
       <button
         type="button"
         aria-label="FC26 Team Picker"
@@ -72,12 +89,12 @@ export function BottomNav({
           fontWeight: 700,
           fontSize: 13,
           cursor: 'pointer',
+          marginInline: 8,
         }}
       >
         FC26
       </button>
-      <ModeButton mode={MODES[2]!} active={route === MODES[2]!.id} onSelect={onNavigate} />
-      <ModeButton mode={MODES[3]!} active={route === MODES[3]!.id} onSelect={onNavigate} />
+      {tabs.slice(LOGO_INDEX)}
     </nav>
   )
 }
