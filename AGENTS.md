@@ -16,10 +16,9 @@ file in the same PR.
 | `docs/handoffs/` | Per-feature hand-off notes. |
 | `.github/workflows/deploy.yml` | What CI actually runs and how deploys happen. |
 
-Some older prose in `DEVELOPMENT.md` predates later changes (it still talks
-about Phase 0, `VITE_API_BASE`, and applying migrations by hand). Where it
-conflicts with the handoff or the workflows, trust those, and correct the
-stale text if you are working in that area.
+Documents drift. When prose disagrees with the code, the workflows or
+`wrangler.toml`, the code is what runs: trust it, and correct the document in
+the same PR rather than working around it.
 
 ## Repository map
 
@@ -75,8 +74,11 @@ Use `pnpm` only (never npm/yarn) and `--filter @fc26/<pkg>` for one package.
 
 ## Database migrations
 
-- New file `worker/src/db/migrations/NNNN_description.sql` (next number), with
-  an optional `NNNN_description.ts` exporting `up(db)` for data moves.
+- New file `worker/src/db/migrations/NNNN_description.sql` (next number),
+  applied by `wrangler d1 migrations apply`. Data moves are written in SQL in
+  the same file (see `0008_chip_purchases_backfill.sql`); nothing runs a `.ts`
+  migration, whatever older docs say. End it with the `INSERT INTO
+  schema_migrations` row the other migrations carry.
 - **Additive only.** CI applies migrations to production *before* the Worker
   deploy, so new code must work against the new schema and old code must
   survive it.
@@ -101,9 +103,10 @@ touches a tier must bump it:
 
 - **Unit tests (Vitest) live next to the source:** `foo.ts` + `foo.test.ts`.
   Every new module ships with tests in the same PR — never "tests later".
-- **Coverage targets:** `worker/src/services/` 80%, `apps/web/src/game/` 80%,
-  `packages/shared/src/selection/` **100%**. Presentational components are
-  not tracked.
+- **Coverage targets** (handoff §22): 80% for worker services and client game
+  logic, **100%** for `packages/shared/src/selection/`. Presentational
+  components are not tracked. No coverage provider is installed, so measuring
+  needs `@vitest/coverage-v8` added first.
 - **Selection strategies** must pass the parameterised contract tests and add
   their own behaviour tests.
 - **End-to-end (Playwright, `e2e/`)** is the slow, thin tier for wiring the

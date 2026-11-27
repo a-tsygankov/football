@@ -2,7 +2,55 @@
 
 **Stack:** TypeScript · Vite · React · Cloudflare Workers · D1 · R2
 **Target devices:** Android and iPhone phones (mobile-first PWA)
-**Document version:** 7 (2026-08-21) — supersedes the original `.docx` handoff
+**Document version:** 8 (2026-11-27) — supersedes the original `.docx` handoff
+
+---
+
+## Recent Changes (2026-11-27)
+
+Shipped as PR #57. CI and docs only — nothing about the app, the API or the
+data changed, so every version stands: `@fc26/web` `0.1.32`, `@fc26/worker`
+`0.1.19`, `@fc26/shared` `0.1.17`, `WORKER_VERSION` `0.1.19`, `SCHEMA_VERSION`
+`14`, `EVENT_SCHEMA_VERSION` `1`.
+
+### The end-to-end job broke without anything in the repo changing
+
+GitHub moved `ubuntu-latest` to Ubuntu 26.04, and `@playwright/test` 1.56.1
+has no Chromium build for it. Every PR from #55 on failed in *Install browser*
+with `Playwright does not support chromium on ubuntu26.04-x64`, before a single
+spec ran — the last green run was on `main` in August, on the older image.
+
+The fix is **Playwright 1.65.1**, which ships `ubuntu26.04-x64` builds (support
+first appears in 1.62). Pinning the job back to `ubuntu-24.04` would also have
+worked and was the fallback; upgrading was preferred because a pinned image
+only postpones the same break. Both halves were reproduced in an Ubuntu 26.04
+container before pushing — 1.56.1 fails with the CI error, 1.65.1 installs the
+browser and passes all seven specs — and then on the real runner. See
+[§29 The runner can move under the suite](#the-runner-can-move-under-the-suite).
+
+### Every action is pinned by commit SHA
+
+All seven actions are on their latest release and pinned by full 40-character
+commit SHA with the version as a trailing comment, in all three workflows. A
+moved or re-pointed tag can no longer change what CI runs; the price is that
+updates are now deliberate (open item 10). Only `upload-artifact` crossed a
+major — v4 → v7.0.2, which runs on Node 24 and clears the Node 20 deprecation
+warning; the inputs `deploy.yml` passes it mean the same in both. The other six
+were already on their latest major, so for them this is pin-only.
+
+### Rules for agents
+
+`AGENTS.md` gathers the project's conventions — from this document,
+`DEVELOPMENT.md` §14, the version scripts and the commit history — and points
+back at each source, which stays authoritative. `CLAUDE.md` imports it so
+Claude Code loads it automatically. Among the new rules: pull container images
+from the AWS ECR Public Gallery (`public.ecr.aws`) wherever they exist, since
+Docker Hub's anonymous rate limit blocked the reproduction above.
+
+### Tests
+
+581 unit (261 shared, 174 worker, 146 web) plus 7 end-to-end, unchanged; the
+point of this batch was getting the seven to run again.
 
 ---
 
@@ -1925,6 +1973,11 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
     purpose: `deploy-pages` reads what `upload-pages-artifact` wrote, and the
     last time the artifact API changed generation it was the mismatched pair
     that broke. `deploy.yml` now has no stale action pins.
+    *(Superseded 2026-11-27: every action in every workflow is now pinned by
+    commit SHA — see Recent Changes. Nothing floats any more, so nothing goes
+    stale silently either; it goes stale **visibly**, and bumping a pin is a
+    deliberate change that must re-resolve the SHA from the release tag,
+    dereferencing annotated tags, and re-read the release notes.)*
 
 ### Open as of 2026-08-20
 
@@ -1959,6 +2012,13 @@ Phase 1 is intentionally extended from the original handoff: versioned R2 layout
     the gesture, and the Console also unlocks the Settings panel with its
     destructive controls. The owner's plan is an admin secret in front of it.
     Until then, treat "hidden" as tidiness rather than as a permission boundary.
+
+### Open as of 2026-11-27
+
+17. **`pnpm/action-setup` points at a successor.** Its README now directs
+    users to `pnpm/setup`. v6.1.1 works and is pinned, so nothing is broken;
+    moving is a separate change, and should be checked against the
+    `packageManager` field and the `version` input the workflows pass.
 
 ---
 
@@ -2355,6 +2415,18 @@ what these cover.
 that gates both deploys. `e2e/**` and `playwright.config.ts` are in the
 workflow's path filters — without them a PR touching only the suite skipped the
 job it was editing, which it did once.
+
+### The runner can move under the suite
+
+The job runs on `ubuntu-latest`, which GitHub re-points to new Ubuntu releases,
+and **each Playwright release only ships browsers for the OS versions it
+knows**. In November 2026 the label moved to 26.04 and 1.56.1 had no Chromium
+for it, so the job failed in *Install browser* on every PR with no change in
+the repo. When that happens, upgrade `@playwright/test` (root `package.json`)
+to a release that lists the new OS before reaching for a pinned image, and
+reproduce it first in a container of that release — e.g.
+`public.ecr.aws/docker/library/ubuntu:26.04` — rather than on a developer
+machine, whose OS says nothing about the runner's.
 
 ### What is covered
 
