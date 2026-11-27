@@ -1,9 +1,10 @@
 {
   "name": "@fc26/web",
-  "version": "0.1.32",
+  "version": "0.1.33",
   "private": true,
   "type": "module",
   "scripts": {
+    "build:clubhouse": "tsc -p tsconfig.json --noEmit && vite build --config vite.clubhouse.ts",
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
@@ -12,7 +13,12 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@base-ui/react": "^1.9.0",
     "@fc26/shared": "workspace:*",
+    "@fontsource-variable/dm-sans": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@mantine/core": "^8.3.18",
+    "@mantine/hooks": "^8.3.18",
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-slot": "^1.3.3",
     "@radix-ui/react-tabs": "^1.1.21",

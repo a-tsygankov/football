@@ -1,6 +1,21 @@
 # Clubhouse preview playground
 
-Approved direction: three switchable designs (Clubhouse Pro: existing shadcn/Radix/Tailwind; Social Club: Mantine 8; Matchday: Base UI/Tailwind). React 18 compatible. Separate preview hostname, API Worker and D1 database. This document is a plan, not a deployed environment.
+The [live playground](https://football-preview.atsyg-feedme.workers.dev/) hosts three switchable designs. Use the room name and fresh PIN supplied privately. Clubhouse Pro shows the standings leader, Social Club opens on the roster, and Matchday links directly to match controls. The game, roster, scoreboard and Wager pages share the existing app controller. The selector preserves the current route and form state and updates the shareable URL.
+
+## Preview operation
+
+- Run `pnpm --filter @fc26/web build:clubhouse`. The output has its own entry point and does not register a service worker.
+- Deploy the API from `worker` with `pnpm exec wrangler deploy --config wrangler.clubhouse.toml`. Apply migrations with `pnpm exec wrangler d1 migrations apply fc26-preview --remote --config wrangler.clubhouse.toml`. Provision the preview-only `SESSION_SECRET` as a Worker secret.
+- From the same directory deploy the front door with `pnpm exec wrangler deploy --config ../workers/football-app/wrangler.clubhouse.toml`. The internal API uses the dedicated D1 and R2 resources. Squad administration is disabled. Score entry is manual when OCR credentials are absent.
+- Run `pnpm exec playwright test --config playwright.clubhouse.ts` against the live preview. The tests create independent PIN-protected QA rooms. Use `CLUBHOUSE_BROWSER_CHANNEL=chrome` to use installed Chrome. Screenshots in `docs/clubhouse-images` contain synthetic test data.
+
+## Room snapshot
+
+The normal room API exposes a bounded match history. The snapshot takes its latest 20 completed results, roster ratings and the settled positions for those matches. Live games, unrelated books, older history and money transfers are excluded. The restore assigns player aliases and fresh IDs, replays the results chronologically in a new preview night and checks match count and per-player net chips. Times show the replay session. The totals describe this sample.
+
+To refresh, run `python scripts/clubhouse_snapshot.py capture "<authorized room>" <private-new-baseline-file>` outside a shared terminal recording. Enter the source PIN at the prompt. To reset into a fresh preview room, run `python scripts/clubhouse_snapshot.py restore <baseline> "<unused preview room name>" <private-new-access-file>`. Keep both files outside the repository. Share the new access file privately after verification. A restore creates a separate room, preserving sessions in earlier rooms.
+
+## Original design brief
 
 ## Isolation
 - Create separate football-preview frontend and fc26-preview-worker API, binding only fc26-preview D1. Never configure production DB ID as fallback. Separate signing secret, room PINs, R2 write bucket, cookie origin and PWA scope. No production deployment workflow changes.

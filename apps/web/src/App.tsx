@@ -59,7 +59,10 @@ import { useHashRoute } from './hooks/useHashRoute.js'
 
 const LAST_ROOM_ID_KEY = 'fc26:last-room-id'
 
-export function App() {
+export function App({ clubhouse = false, roomOverview }: {
+  clubhouse?: boolean
+  roomOverview?: (room: RoomBootstrapResponse, board: RoomScoreboardResponse | null) => React.ReactNode
+} = {}) {
   const [worker, setWorker] = useState<WorkerVersionInfo | null>(null)
   const [workerError, setWorkerError] = useState<string | null>(null)
   const [bootstrap, setBootstrap] = useState<RoomBootstrapResponse | null>(null)
@@ -1027,7 +1030,7 @@ export function App() {
         />
       ) : null}
       <main style={{ padding: 20, maxWidth: 560, margin: '0 auto' }}>
-        {bootstrap ? null : (
+        {bootstrap || clubhouse ? null : (
           <>
         <section
           style={{
@@ -1162,6 +1165,7 @@ export function App() {
           </div>
         ) : null}
 
+        {bootstrap && roomOverview && route === 'game' && roomOverview(bootstrap, scoreboard)}
         {bootstrap ? (
           <RoomScreen
             route={route}
@@ -1216,6 +1220,7 @@ export function App() {
           />
         ) : (
           <LandingScreen
+            clubhouse={clubhouse}
             busy={busy}
             createName={createName}
             createPin={createPin}
@@ -1232,7 +1237,7 @@ export function App() {
 
       </main>
 
-      <BottomNav route={route} onNavigate={navigate} />
+      {(!clubhouse || bootstrap) && <BottomNav route={route} onNavigate={navigate} />}
       <DebugConsole />
     </div>
   )

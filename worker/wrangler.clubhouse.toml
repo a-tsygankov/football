@@ -1,0 +1,21 @@
+name = "fc26-preview-worker"
+main = "src/clubhouse.ts"
+compatibility_date = "2024-11-12"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+preview_urls = false
+
+[vars]
+WORKER_VERSION = "0.1.20"
+SCHEMA_VERSION = "14"
+MIN_CLIENT_VERSION = "0.1.0"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fc26-preview"
+database_id = "8fadc5f9-e608-4e0f-aadf-b7587b41dc60"
+migrations_dir = "src/db/migrations"
+
+[[r2_buckets]]
+binding = "SQUADS"
+bucket_name = "fc26-preview"

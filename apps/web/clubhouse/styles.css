@@ -1,0 +1,59 @@
+.club { --field:#111e1b; --line:#53735f; --highlight:#d8fa82; --ground:#172521; --panel:#f5f9f2; --round:14px; min-height:100dvh; font:16px/1.45 Inter,Arial,sans-serif; background:var(--ground) }
+.mast { color:var(--highlight); background:var(--field); border-bottom:1px solid var(--line) }
+.mast-inner { max-width:1040px; margin:auto; padding:24px clamp(18px,5vw,64px) 20px }
+.edition,.identity p { font:700 .68rem/1.4 ui-monospace,monospace; text-transform:uppercase; letter-spacing:.14em }
+.edition { display:flex; align-items:center; gap:9px; padding-bottom:13px; border-bottom:1px solid var(--line) }
+.live-dot { width:8px; height:8px; border-radius:100%; background:currentColor }
+.identity { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:20px 0 }
+.identity p { margin:0 0 6px }
+.identity h1 { margin:0; font-size:clamp(2.25rem,7vw,5rem); line-height:.98; font-weight:850; letter-spacing:-.068em }
+.pitch { width:clamp(82px,20vw,190px); aspect-ratio:1.8; border:2px solid currentColor; position:relative; opacity:.8; background:repeating-linear-gradient(90deg,transparent 0 12.5%,#ffffff0c 12.5% 25%) }
+.pitch::before,.pitch::after { content:""; position:absolute; top:23%; height:54%; width:16%; border:1px solid currentColor }
+.pitch::before {left:-1px}.pitch::after {right:-1px}
+.pitch i { position:absolute; left:50%; top:0; height:100%; border-left:1px solid currentColor }
+.pitch b { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); height:42%; aspect-ratio:1; border:1px solid; border-radius:50% }
+.picker { max-width:480px; color:#182b21 }
+.picker [role=tablist],.picker [role=group] { display:flex; background:var(--panel); border-radius:var(--round); padding:4px; gap:4px }
+.picker button { flex:1; min-height:44px; color:inherit; font-family:inherit; font-size:.84rem; font-weight:700; cursor:pointer }
+.picker button[aria-selected=true],.picker button[aria-pressed=true] { background:var(--highlight); color:var(--field) }
+.playing>div { font-family:inherit!important; background:transparent!important; min-height:0!important }
+.playing main { max-width:960px!important; color:#152b24 }
+.playing main section[style*="box-shadow"],.playing main section[style*="backdrop-filter"] { background:var(--panel)!important; border-radius:var(--round)!important }
+.playing nav { background:var(--field)!important; color:var(--highlight)!important }
+.playing main:has(#fc26-game-section) { background:var(--panel); border-radius:var(--round); margin-top:16px!important }
+.playing main { background:var(--panel); border-radius:var(--round); margin-block:16px!important }
+.playing main>section:first-child { margin-top:0!important }
+.playing main section:has(>section>h3) > section:has(input[placeholder="Paste room id or type room name"]) { order:-1 }
+.playing input:focus-visible,.playing button:focus-visible,.picker :focus-visible { outline:3px solid #3488cb; outline-offset:2px }
+.playing nav button[aria-label="FC26 Team Picker"] { color:white!important }
+.room-overview { display:flex; align-items:center; gap:clamp(12px,3.5vw,32px); margin-bottom:18px; padding:18px; text-decoration:none; color:inherit }
+.room-overview strong,.room-overview small { display:block }
+.room-overview small { font-size:.75rem; opacity:.84 }
+.room-overview strong { font-size:1.35rem; font-weight:750 }
+.room-overview b { margin-left:auto }
+.leaderboard { background:#243c30; color:#dcf69f; border-radius:12px }
+.leaderboard span:first-child { flex:1 }
+.members { background:#f1eaf9; color:#472573; border-radius:20px; flex-wrap:wrap }
+.match-strip { border-block:2px solid #17244b; justify-content:space-between; padding:8px 0 }
+.match-strip a { padding:8px; font-weight:700; background:#ffe258 }
+#fc26-game-section { scroll-margin-top:64px }
+.club[data-design=social] { --field:#efe9fb; --highlight:#45237b; --ground:#faf5ef; --panel:#fffdfa; --line:#cfc0df; --round:24px }
+[data-design=social] .identity h1 { font:italic 600 clamp(3rem,7vw,5.8rem)/1 Georgia,serif; letter-spacing:-.07em }
+[data-design=social] .pitch { transform:rotate(-5deg); border-radius:12px }
+.club[data-design=matchday] { --field:#17244b; --highlight:#ffe258; --ground:#e3e4df; --panel:#fffef6; --line:#606b86; --round:2px }
+[data-design=matchday] .mast-inner { padding-block:12px }
+[data-design=matchday] .identity { padding-block:9px }
+[data-design=matchday] .identity h1 { text-transform:uppercase; font-stretch:condensed; font-style:italic }
+[data-design=matchday] .playing main { max-width:760px!important }
+[data-design=matchday] .playing main section { border-radius:2px!important }
+[data-design=matchday] .playing button { border-radius:3px!important }
+@media(min-width:900px) {
+  .club[data-design=pro] { display:grid; grid-template-columns:minmax(230px,26vw) minmax(0,1fr); align-items:start }
+  [data-design=pro] .mast { position:sticky; top:0; height:100dvh; border-right:1px solid var(--line) }
+  [data-design=pro] .mast-inner { padding:32px 24px }
+  [data-design=pro] .identity { align-items:start; flex-direction:column-reverse; gap:32px; padding-block:32px }
+  [data-design=pro] .identity h1 { font-size:3.8rem }
+  [data-design=pro] .picker [role=tablist] { flex-direction:column; align-items:stretch }
+  [data-design=pro] .playing { padding-inline:20px }
+}
+@media(max-width:540px) { .playing main { margin-block:0!important; border-radius:0 } }

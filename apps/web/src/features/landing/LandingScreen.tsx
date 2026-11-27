@@ -3,6 +3,7 @@ import { CreateRoomPanel } from './CreateRoomPanel.jsx'
 import { JoinRoomPanel } from './JoinRoomPanel.jsx'
 
 export function LandingScreen({
+  clubhouse = false,
   busy,
   createName,
   createPin,
@@ -15,6 +16,7 @@ export function LandingScreen({
   onCreateRoom,
   onJoinRoom,
 }: {
+  clubhouse?: boolean
   busy: BusyState
   createName: string
   createPin: string
@@ -37,6 +39,7 @@ export function LandingScreen({
       }}
     >
       <CreateRoomPanel
+        requirePin={clubhouse}
         busy={busy}
         createName={createName}
         createPin={createPin}

@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { randomInt } from 'node:crypto'
 
 /**
  * The wager journey, end to end: buy chips, back opposite sides, record the
@@ -43,7 +44,7 @@ async function post(api: APIRequestContext, url: string, body?: unknown): Promis
  * 409, and a shared name means the second test never gets off the ground.
  */
 async function seedRoom(api: APIRequestContext, name: string): Promise<Seed> {
-  const room = (await post(api, '/api/rooms', { name })) as {
+  const room = (await post(api, '/api/rooms', { name: name + Date.now().toString(36), pin: String(randomInt(10000)).padStart(4, '0') })) as {
     room: { id: string }
   }
   const roomId = room.room.id

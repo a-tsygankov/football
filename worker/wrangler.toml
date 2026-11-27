@@ -15,13 +15,13 @@ port = 8787
 # - MIN_CLIENT_VERSION (semver string)
 # - GIT_SHA (build metadata)
 [vars]
-WORKER_VERSION = "0.1.19"
+WORKER_VERSION = "0.1.20"
 SCHEMA_VERSION = "14"
 MIN_CLIENT_VERSION = "0.1.0"
 
 # SESSION_SECRET is deliberately NOT here. It used to sit in [vars] as
-# "fc26-local-dev-session-secret", and [vars] deploy as plaintext — from a
-# public repo — so production was signing room session cookies with a value
+# "fc26-local-dev-session-secret", and [vars] deploy as plaintext â€” from a
+# public repo â€” so production was signing room session cookies with a value
 # anyone could read, i.e. forgeable sessions.
 #
 # It cannot simply be shadowed by a Worker secret either: Cloudflare rejects a
@@ -30,7 +30,7 @@ MIN_CLIENT_VERSION = "0.1.0"
 # to be gone from the deployed Worker first.
 #
 #   production:  npx wrangler secret put SESSION_SECRET
-#   local dev:   worker/.dev.vars (gitignored) — see .dev.vars.example
+#   local dev:   worker/.dev.vars (gitignored) â€” see .dev.vars.example
 
 # Phase 1 bindings. The Worker boots without these (falls back to in-memory
 # stores in src/dependencies.ts so the scaffold stays runnable), but the
@@ -44,7 +44,7 @@ MIN_CLIENT_VERSION = "0.1.0"
 [[d1_databases]]
 binding = "DB"
 database_name = "fc26"
-# The real provisioned Cloudflare D1 UUID (not a placeholder — the stale
+# The real provisioned Cloudflare D1 UUID (not a placeholder â€” the stale
 # "replace me" note that used to sit here is what justified gating the
 # migration step in CI, long after the binding was live).
 database_id = "b0e1922f-6b23-4a37-b125-a71aee4ee8b2"
