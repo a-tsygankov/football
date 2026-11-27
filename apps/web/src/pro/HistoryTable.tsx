@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react'
 import type { BetHistoryResponse, MatchHistoryResponse, RoomBootstrapResponse } from '@fc26/shared'
-import { apiJson } from '../src/lib/api'
+import { apiJson } from '../lib/api'
 
 interface Row {
   id: string

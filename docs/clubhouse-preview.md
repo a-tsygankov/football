@@ -2,6 +2,10 @@
 
 The [live playground](https://football-preview.atsyg-feedme.workers.dev/) uses Clubhouse Pro. Use the room name and fresh PIN supplied privately. Previously shared design links open Pro. The [player tile comparison](https://football-preview.atsyg-feedme.workers.dev/player-tiles) uses fictional local data to explore three roster patterns.
 
+## Shared with the real app
+
+The Pro look lives in `apps/web/src/pro` (`ProShell`, `QuickResult`, `HistoryTable`, `Segmented`, `pro.css`) and both entry points render it: `src/main.tsx` for the real app and `clubhouse/main.tsx` for this preview. The preview differs only in its masthead words, the compulsory room PIN, hidden navigation outside a room, and sample photos for gamers without one. Either/or switches use `Segmented` (Radix ToggleGroup), availability uses Radix Switch, the quick result is a vaul drawer that can read the score from a new or existing picture, and confirmations are sonner toasts.
+
 ## Preview operation
 
 Game creation uses side stripes (green Home, blue Away, neutral Reserve), a labeled mini availability toggle and a sliding three-segment side selector. Availability changes are staged for two seconds. A second tap cancels the pending change before it reaches the room API. The Roster view uses the same availability control. Keep the Outline and Shadow alternatives in the player card studio for future panel-wide styling decisions.

@@ -393,7 +393,7 @@ describe('App shell', () => {
       expect(screen.getByRole('heading', { name: /Game creation/i })).toBeInTheDocument(),
     )
     expect(screen.queryByLabelText(/Format/i)).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /Random/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /Random/i }))
     await waitFor(() => expect(screen.getByRole('option', { name: '1 vs 1' })).toBeInTheDocument())
     expect(screen.queryByRole('option', { name: '1 vs 2' })).not.toBeInTheDocument()
     expect(screen.queryByRole('option', { name: '2 vs 1' })).not.toBeInTheDocument()
@@ -516,7 +516,7 @@ describe('App shell', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: /Game creation/i })).toBeInTheDocument(),
     )
-    fireEvent.click(screen.getByRole('button', { name: /Random/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /Random/i }))
     await waitFor(() => expect(screen.getByRole('option', { name: '1 vs 1' })).toBeInTheDocument())
     expect(screen.getByRole('option', { name: '1 vs 2' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '2 vs 1' })).toBeInTheDocument()

@@ -59,8 +59,10 @@ import { useHashRoute, type Route } from './hooks/useHashRoute.js'
 
 const LAST_ROOM_ID_KEY = 'fc26:last-room-id'
 
-export function App({ clubhouse = false, roomOverview }: {
+export function App({ clubhouse = false, preview = false, roomOverview }: {
   clubhouse?: boolean
+  /** The public preview: a room PIN is compulsory and there is no navigation outside a room. */
+  preview?: boolean
   roomOverview?: (room: RoomBootstrapResponse, board: RoomScoreboardResponse | null, reload: () => Promise<void>, route: Route, revision: number) => React.ReactNode
 } = {}) {
   const [worker, setWorker] = useState<WorkerVersionInfo | null>(null)
@@ -1225,7 +1227,7 @@ export function App({ clubhouse = false, roomOverview }: {
           />
         ) : (
           <LandingScreen
-            clubhouse={clubhouse}
+            requirePin={preview}
             busy={busy}
             createName={createName}
             createPin={createPin}
@@ -1242,7 +1244,7 @@ export function App({ clubhouse = false, roomOverview }: {
 
       </main>
 
-      {(!clubhouse || bootstrap) && <BottomNav route={route} onNavigate={navigate} />}
+      {(!preview || bootstrap) && <BottomNav route={route} onNavigate={navigate} />}
       <DebugConsole />
     </div>
   )

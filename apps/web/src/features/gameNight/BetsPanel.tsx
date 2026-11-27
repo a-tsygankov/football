@@ -14,6 +14,7 @@ import {
 } from '@fc26/shared'
 import { Field } from '../../components/Field.jsx'
 import { InlineNotice } from '../../components/InlineNotice.jsx'
+import { Segmented } from '../../pro/Segmented.jsx'
 import { inputStyle, primaryButtonStyle, secondaryButtonStyle } from '../../styles/controls.js'
 import type { BusyState } from '../../types/busyState.js'
 
@@ -236,29 +237,16 @@ export function BetsPanel({
           {/* Labelled because "Draw" also names a result button further down
               the page, and three unlabelled buttons in a row are not obviously
               a choice to a screen reader either. */}
-          <div
-            role="group"
-            aria-label="Outcome to back"
-            className="seg"
-            style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}
-          >
-            {OUTCOMES.map((item) => {
-              const allowed = bettorId === '' || canBack(bettorId, currentGame, item.id)
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  disabled={!allowed || busy !== null}
-                  aria-pressed={outcome === item.id}
-                  data-side={item.id}
-                  onClick={() => setOutcome(item.id)}
-                  style={outcome === item.id ? primaryButtonStyle : secondaryButtonStyle}
-                >
-                  {item.label}
-                </button>
-              )
-            })}
-          </div>
+          <Segmented
+            label="Outcome to back"
+            value={outcome}
+            onChange={setOutcome}
+            options={OUTCOMES.map((item) => ({
+              value: item.id,
+              label: item.label,
+              disabled: busy !== null || !(bettorId === '' || canBack(bettorId, currentGame, item.id)),
+            }))}
+          />
 
           {ineligibility ? <InlineNotice tone="warn" message={ineligibility} /> : null}
 

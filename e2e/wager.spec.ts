@@ -155,7 +155,7 @@ async function selectBettor(page: Page, gamerName: string): Promise<void> {
 
 async function placeBet(page: Page, gamerName: string, outcome: string, stake: number): Promise<void> {
   await page.getByLabel(/who's betting/i).selectOption({ label: gamerName })
-  await page.getByRole('button', { name: new RegExp(`^${outcome}$`, 'i') }).click()
+  await page.getByRole("radiogroup", { name: "Outcome to back" }).getByRole("radio", { name: new RegExp(`^${outcome}$`, "i") }).click()
   await page.getByLabel(/^stake$/i).fill(String(stake))
   await page.getByRole('button', { name: /^place bet$/i }).click()
 }
@@ -310,19 +310,19 @@ test.describe('wagering', () => {
     await selectBettor(page, seed.annName)
 
     // Scoped to the bet controls: "Draw" also names a result button below.
-    const outcomes = page.getByRole('group', { name: /outcome to back/i })
+    const outcomes = page.getByRole('radiogroup', { name: /outcome to back/i })
 
     // ann is the home side. She may back herself and nothing else — a player
     // taking money against their own result is the one thing the pool cannot
     // allow, since they decide it.
-    await expect(outcomes.getByRole('button', { name: /^home$/i })).toBeEnabled()
-    await expect(outcomes.getByRole('button', { name: /^away$/i })).toBeDisabled()
-    await expect(outcomes.getByRole('button', { name: /^draw$/i })).toBeDisabled()
+    await expect(outcomes.getByRole('radio', { name: /^home$/i })).toBeEnabled()
+    await expect(outcomes.getByRole('radio', { name: /^away$/i })).toBeDisabled()
+    await expect(outcomes.getByRole('radio', { name: /^draw$/i })).toBeDisabled()
 
     // cy sits out, so every outcome is open to them.
     await selectBettor(page, seed.cyName)
-    await expect(outcomes.getByRole('button', { name: /^away$/i })).toBeEnabled()
-    await expect(outcomes.getByRole('button', { name: /^draw$/i })).toBeEnabled()
+    await expect(outcomes.getByRole('radio', { name: /^away$/i })).toBeEnabled()
+    await expect(outcomes.getByRole('radio', { name: /^draw$/i })).toBeEnabled()
   })
 
   test('one button clears every debt at once, and the history says it was a round', async ({

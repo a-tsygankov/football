@@ -147,9 +147,9 @@ describe('BetsPanel', () => {
     renderPanel()
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: ann } })
 
-    expect(screen.getByRole('button', { name: /^draw$/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /^away$/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /^home$/i })).toBeEnabled()
+    expect(screen.getByRole('radio', { name: /^draw$/i })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /^away$/i })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: /^home$/i })).toBeEnabled()
     expect(screen.getByText(/you're playing home/i)).toBeInTheDocument()
   })
 
@@ -157,14 +157,14 @@ describe('BetsPanel', () => {
     renderPanel()
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
 
-    expect(screen.getByRole('button', { name: /^draw$/i })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /^away$/i })).toBeEnabled()
+    expect(screen.getByRole('radio', { name: /^draw$/i })).toBeEnabled()
+    expect(screen.getByRole('radio', { name: /^away$/i })).toBeEnabled()
   })
 
   it('places a bet', () => {
     const props = renderPanel()
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
-    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /^draw$/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '25' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
 
@@ -174,7 +174,7 @@ describe('BetsPanel', () => {
   it('rejects a non-positive stake without calling the handler', () => {
     const props = renderPanel()
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
-    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /^draw$/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '0' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
 
@@ -202,7 +202,7 @@ describe('BetsPanel', () => {
   it('places a stake bigger than the stack', () => {
     const props = renderPanel({ ledger: [entry(cy, 100, -30)] })
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
-    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /^draw$/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '500' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
 
@@ -214,7 +214,7 @@ describe('BetsPanel', () => {
   it('places an ordinary stake on the first click', () => {
     const props = renderPanel()
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
-    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /^draw$/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '900' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
 
@@ -226,7 +226,7 @@ describe('BetsPanel', () => {
   it('asks before placing a stake far larger than the game has seen', () => {
     const props = renderPanel()
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
-    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /^draw$/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '5000' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
 
@@ -240,7 +240,7 @@ describe('BetsPanel', () => {
   it('places it on the second click', () => {
     const props = renderPanel()
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
-    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /^draw$/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '5000' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
     fireEvent.click(screen.getByRole('button', { name: /place 5000 chips anyway/i }))
@@ -251,7 +251,7 @@ describe('BetsPanel', () => {
   it('asks again when the stake is corrected to another large one', () => {
     const props = renderPanel()
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
-    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /^draw$/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '5000' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '50000' } })
@@ -265,10 +265,10 @@ describe('BetsPanel', () => {
   it('asks again when the same number is aimed at another outcome', () => {
     const props = renderPanel()
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
-    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /^draw$/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '5000' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
-    fireEvent.click(screen.getByRole('button', { name: /^home$/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /^home$/i }))
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
 
     expect(props.onPlaceBet).not.toHaveBeenCalled()
@@ -277,7 +277,7 @@ describe('BetsPanel', () => {
   it('does not ask in a room that plays for that much already', () => {
     const props = renderPanel({ bets: [bet('b1', ann, 'home', 900)] })
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
-    fireEvent.click(screen.getByRole('button', { name: /^draw$/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /^draw$/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '5000' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
 
@@ -292,7 +292,7 @@ describe('BetsPanel', () => {
       ledger: [entry(cy, 100, 0, 100)],
     })
     fireEvent.change(screen.getByLabelText(/who's betting/i), { target: { value: cy } })
-    fireEvent.click(screen.getByRole('button', { name: /^home$/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /^home$/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '40' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
 
@@ -311,7 +311,7 @@ describe('BetsPanel', () => {
     // "-20 chips" is true and reads like a fault; what it means is a debt.
     expect(screen.getByText(/owes 20 chips/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /^home$/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /^home$/i }))
     fireEvent.change(screen.getByLabelText(/stake/i), { target: { value: '5' } })
     fireEvent.click(screen.getByRole('button', { name: /place bet/i }))
 

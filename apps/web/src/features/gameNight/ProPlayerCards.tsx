@@ -1,6 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Gamer, MatchHistoryResponse, RoomBootstrapResponse } from '@fc26/shared'
+import * as Switch from '@radix-ui/react-switch'
+import { MoreHorizontal } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { gamerFallbackAvatar } from '../../lib/avatars.js'
+import { Segmented } from '../../pro/Segmented.jsx'
 
 const sides = ['home', 'bench', 'away'] as const
 type Side = typeof sides[number]
@@ -83,29 +87,31 @@ export function ProPlayerCards({ room, eligible, assignments, assign, edit, togg
     const side = assignments[gamer.id] ?? 'bench'
     const selectable = gamer.active && eligible.has(gamer.id) && !change && !busy
     const blocked = (next: Side) => !selectable || (next !== 'bench' && side !== next && room.gamers.filter(item => eligible.has(item.id) && assignments[item.id] === next).length >= 2)
-    return <article className="pro-player" key={gamer.id} data-side={side} data-active={active} aria-label={gamer.name}>
+    return <motion.article layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97 }}
+      transition={{ duration: 0.22 }} className="pro-player" key={gamer.id} data-side={side} data-active={active} aria-label={gamer.name}>
       <img alt="" src={gamer.avatarUrl || gamerFallbackAvatar(gamer.name)} />
-      <div className="pro-name"><strong>{gamer.name}</strong>{last[gamer.id] && <small>Last game · {last[gamer.id]}</small>}</div>
-      <button type="button" className="pro-toggle" role="switch" aria-checked={active} aria-label={gamer.name + ' availability'} data-availability={gamer.id}
-        onFocus={() => { focused.current = gamer.id }} disabled={change?.saving || (busy && !change)} onClick={() => schedule(gamer)}>
-        <i aria-hidden="true" />{active ? 'Active' : 'Inactive'}
-      </button>
-      <button className="pro-more" aria-label={'Edit ' + gamer.name} onClick={() => edit(gamer)}>⋯</button>
+      <div className="pro-name"><strong>{gamer.name}</strong>{last[gamer.id] && <small>Last: {last[gamer.id]}</small>}</div>
+      <Switch.Root className="pro-toggle" checked={active} aria-label={gamer.name + ' availability'} data-availability={gamer.id}
+        onFocus={() => { focused.current = gamer.id }} disabled={change?.saving || (busy && !change)} onCheckedChange={() => schedule(gamer)}>
+        <span className="pro-track" aria-hidden="true"><Switch.Thumb className="pro-thumb" /></span>{active ? 'Active' : 'Inactive'}
+      </Switch.Root>
+      <button type="button" className="pro-more" aria-label={'Edit ' + gamer.name} onClick={() => edit(gamer)}><MoreHorizontal aria-hidden="true" size={18} /></button>
       {change && <small className="pro-pending">{change.saving ? 'Saving…' : 'Moving to ' + (active ? 'active' : 'inactive') + ' · Tap again to cancel'}</small>}
       {!rosterOnly && gamer.active && <SideSegments side={side} blocked={blocked} choose={next => assign(gamer.id, next)} name={gamer.name} />}
-    </article>
+    </motion.article>
   }
   const inactive = room.gamers.filter(gamer => !gamer.active)
-  return <div ref={section} className="pro-players">{room.gamers.filter(gamer => gamer.active).map(card)}
+  return <div ref={section} className="pro-players"><AnimatePresence initial={false}>{room.gamers.filter(gamer => gamer.active).map(card)}</AnimatePresence>
     <button type="button" aria-expanded={open} aria-controls="pro-inactive" onClick={() => setOpen(!open)}>{open ? '▾' : '▸'} Inactive ({inactive.length})</button>
-    <div id="pro-inactive" hidden={!open}>{open && inactive.map(card)}</div><span className="sr-only" role="status">{announcement}</span>
+    <div id="pro-inactive" hidden={!open}><AnimatePresence initial={false}>{open && inactive.map(card)}</AnimatePresence></div><span className="sr-only" role="status">{announcement}</span>
   </div>
 }
 
 function SideSegments({ side, name, blocked, choose }: { side: Side; name: string; blocked: (next: Side) => boolean; choose: (next: Side) => void }) {
   const start = useRef<{ x: number; y: number } | null>(null)
   const suppressClick = useRef(false)
-  return <div className="pro-segments" role="group" aria-label={'Side for ' + name}
+  const options = sides.map(option => ({ value: option, label: labels[option], disabled: blocked(option) }))
+  return <div className="pro-segments"
     onPointerDown={event => { suppressClick.current = false; start.current = { x: event.clientX, y: event.clientY } }}
     onPointerCancel={() => { start.current = null }}
     onPointerUp={event => {
@@ -117,7 +123,6 @@ function SideSegments({ side, name, blocked, choose }: { side: Side; name: strin
       const next = sides[Math.max(0, Math.min(2, sides.indexOf(side) + Math.sign(dx)))]!
       if (!blocked(next)) choose(next)
     }} onClickCapture={event => { if (suppressClick.current && event.detail !== 0) { event.stopPropagation(); suppressClick.current = false } }}>
-    <i aria-hidden="true" style={{ transform: 'translateX(' + sides.indexOf(side) * 100 + '%)' }} />
-    {sides.map(option => <button type="button" key={option} aria-pressed={side === option} disabled={blocked(option)} onClick={() => choose(option)}>{labels[option]}</button>)}
+    <Segmented label={'Side for ' + name} value={side} options={options} onChange={choose} />
   </div>
 }
