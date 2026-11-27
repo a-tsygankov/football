@@ -25,7 +25,7 @@
   },
   "devDependencies": {
     "@fc26/shared": "workspace:^",
-    "@playwright/test": "1.56.1",
+    "@playwright/test": "1.65.1",
     "@types/node": "^22.9.0",
     "tsx": "^4.20.6",
     "typescript": "^5.6.3",
