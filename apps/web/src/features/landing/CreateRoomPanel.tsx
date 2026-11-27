@@ -6,6 +6,7 @@ import { inputStyle, primaryButtonStyle } from '../../styles/controls.js'
 import type { BusyState } from '../../types/busyState.js'
 
 export function CreateRoomPanel({
+  requirePin = false,
   busy,
   createName,
   createPin,
@@ -13,6 +14,7 @@ export function CreateRoomPanel({
   onCreatePin,
   onCreateRoom,
 }: {
+  requirePin?: boolean
   busy: BusyState
   createName: string
   createPin: string
@@ -21,7 +23,7 @@ export function CreateRoomPanel({
   onCreateRoom: () => Promise<void>
 }) {
   const createRoomNameValid = isValidNameStem(createName)
-  const createRoomPinValid = createPin.trim().length === 0 || /^\d{4}$/.test(createPin.trim())
+  const createRoomPinValid = (!requirePin && createPin.trim().length === 0) || /^\d{4}$/.test(createPin.trim())
 
   return (
     <Panel title="Create room" subtitle="Spin up a fresh room and land inside it immediately.">
@@ -33,9 +35,10 @@ export function CreateRoomPanel({
           style={inputStyle}
         />
       </Field>
-      <Field label="Optional PIN">
+      <Field label={requirePin ? 'Room PIN' : 'Optional PIN'}>
         <input
           value={createPin}
+          type="password"
           onChange={(event) => onCreatePin(event.target.value)}
           placeholder="4 digits"
           inputMode="numeric"
@@ -52,7 +55,7 @@ export function CreateRoomPanel({
           message={`Room name must contain at least ${NAME_STEM_MIN_LENGTH} letters or digits.`}
         />
       ) : null}
-      {!createRoomPinValid ? (
+      {!createRoomPinValid && createPin.length > 0 ? (
         <InlineNotice tone="warn" message="Room PIN must be exactly 4 digits." />
       ) : null}
       <button

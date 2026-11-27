@@ -11,6 +11,6 @@
     "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src/**/*", "vite.config.ts", "vitest.config.ts"],
+  "include": ["src/**/*", "clubhouse/**/*", "vite.clubhouse.ts", "vite.config.ts", "vitest.config.ts"],
   "exclude": ["**/*.test.ts", "**/*.test.tsx", "dist", "node_modules"]
 }

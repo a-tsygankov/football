@@ -1,9 +1,10 @@
 {
   "name": "@fc26/web",
-  "version": "0.1.33",
+  "version": "0.1.42",
   "private": true,
   "type": "module",
   "scripts": {
+    "build:clubhouse": "tsc -p tsconfig.json --noEmit && vite build --config vite.clubhouse.ts",
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
@@ -13,9 +14,13 @@
   },
   "dependencies": {
     "@fc26/shared": "workspace:*",
+    "@fontsource-variable/dm-sans": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-slot": "^1.3.3",
+    "@radix-ui/react-switch": "^1.4.1",
     "@radix-ui/react-tabs": "^1.1.21",
+    "@radix-ui/react-toggle-group": "^1.2.1",
     "@tailwindcss/vite": "^4.3.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -24,6 +29,7 @@
     "nanoid": "^5.0.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.3",
     "tw-animate-css": "^1.4.0",

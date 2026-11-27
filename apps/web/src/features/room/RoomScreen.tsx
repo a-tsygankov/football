@@ -26,6 +26,7 @@ import { ScoreboardPanel } from '../scoreboard/ScoreboardPanel.jsx'
 import { TeamsPanel } from '../squads/TeamsPanel.jsx'
 import { useSquadBrowser } from '../squads/useSquadBrowser.js'
 import { RoomBar } from './RoomBar.jsx'
+import { ProPlayerCards } from '../gameNight/ProPlayerCards'
 import { SettingsPanel } from './SettingsPanel.jsx'
 import { ChipStandingsPanel } from '../gameNight/ChipStandingsPanel.jsx'
 import { ChipLedgerPanel } from '../wager/ChipLedgerPanel.jsx'
@@ -34,7 +35,11 @@ import type { Route } from '../../hooks/useHashRoute.js'
 import type { BusyState } from '../../types/busyState.js'
 import type { WorkerVersionInfo } from '../../lib/version.js'
 
+const ignoreCardChange = () => {}
+
 export function RoomScreen({
+  clubhouse = false,
+  overview,
   route,
   onNavigate,
   viewerId,
@@ -85,6 +90,8 @@ export function RoomScreen({
   onToggleGamer,
   onUpdateGamerDetails,
 }: {
+  clubhouse?: boolean
+  overview?: React.ReactNode
   route: Route
   onNavigate: (route: Route) => void
   /** Whose wagers the Wager page shows; null means everyone. */
@@ -201,6 +208,29 @@ export function RoomScreen({
     ackedSquadVersion !== null &&
     latestSquadVersion !== ackedSquadVersion
 
+  function roster(cards?: (edit: (gamer: Gamer) => void) => React.ReactNode) {
+    return (
+          <RosterPanel
+            {...(cards ? { playerCards: cards } : {})}
+            bootstrap={bootstrap}
+            busy={busy}
+            activeGameNightGamerIds={activeGameNightGamerIds}
+            currentGameGamerIds={currentGameGamerIds}
+            onToggleGamer={onToggleGamer}
+            onUpdateGamerDetails={onUpdateGamerDetails}
+            gamerName={gamerName}
+            gamerRating={gamerRating}
+            gamerPin={gamerPin}
+            gamerAvatarUrl={gamerAvatarUrl}
+            onChangeGamerName={onChangeGamerName}
+            onChangeGamerPin={onChangeGamerPin}
+            onChangeGamerRating={onChangeGamerRating}
+            onChangeGamerAvatar={onChangeGamerAvatar}
+            onCreateGamer={onCreateGamer}
+          />
+    )
+  }
+
   async function handleCreateGame(
     gameNightId: string,
     request: CreateCurrentGameRequest,
@@ -224,6 +254,7 @@ export function RoomScreen({
         onOpenSettings={settingsUnlocked ? () => onNavigate('settings') : undefined}
         onRefresh={onRefresh}
       />
+      {overview}
 
       {showSquadReminder ? (
         <div
@@ -270,6 +301,7 @@ export function RoomScreen({
           {bootstrap.activeGameNight ? (
             <div id="fc26-game-live-section">
               <GameCreationPanel
+                proRoster={clubhouse ? { wrap: roster, toggle: onToggleGamer, history: onLoadMatchHistory } : undefined}
                 bootstrap={bootstrap}
                 busy={busy}
                 ledger={ledger?.entries ?? []}
@@ -331,23 +363,9 @@ export function RoomScreen({
 
       {route === 'roster' ? (
         <section id="fc26-roster-section">
-          <RosterPanel
-            bootstrap={bootstrap}
-            busy={busy}
-            activeGameNightGamerIds={activeGameNightGamerIds}
-            currentGameGamerIds={currentGameGamerIds}
-            onToggleGamer={onToggleGamer}
-            onUpdateGamerDetails={onUpdateGamerDetails}
-            gamerName={gamerName}
-            gamerRating={gamerRating}
-            gamerPin={gamerPin}
-            gamerAvatarUrl={gamerAvatarUrl}
-            onChangeGamerName={onChangeGamerName}
-            onChangeGamerPin={onChangeGamerPin}
-            onChangeGamerRating={onChangeGamerRating}
-            onChangeGamerAvatar={onChangeGamerAvatar}
-            onCreateGamer={onCreateGamer}
-          />
+          {clubhouse ? roster(edit => <ProPlayerCards rosterOnly room={bootstrap} eligible={activeGameNightGamerIds}
+            assignments={{}} assign={ignoreCardChange} edit={edit} toggle={onToggleGamer} history={onLoadMatchHistory}
+            pendingChanged={ignoreCardChange} busy={busy !== null} />) : roster()}
         </section>
       ) : null}
 

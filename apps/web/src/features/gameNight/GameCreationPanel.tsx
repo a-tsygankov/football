@@ -31,6 +31,18 @@ import { buildManualAssignments } from '../../utils/roster.js'
 import { CurrentGameCard } from './CurrentGameCard.jsx'
 import { InlineTeamPicker } from './InlineTeamPicker.jsx'
 import { Field } from '../../components/Field.jsx'
+import { ProPlayerCards } from './ProPlayerCards'
+import { Segmented } from '../../pro/Segmented.jsx'
+
+const ALLOCATION_MODES = [
+  { value: 'manual', label: 'Manual' },
+  { value: 'random', label: 'Random' },
+] as const
+const TEAM_MODES = [
+  { value: 'none', label: 'No FC teams' },
+  { value: 'pick', label: 'Pick FC teams' },
+] as const
+import type { MatchHistoryResponse } from '@fc26/shared'
 
 // ---------------------------------------------------------------------------
 // localStorage helpers for last-used club persistence
@@ -92,6 +104,7 @@ function saveBrowserState(roomId: string, state: PersistedBrowserState): void {
 // ---------------------------------------------------------------------------
 
 export function GameCreationPanel({
+  proRoster,
   bootstrap,
   busy,
   ledger,
@@ -109,6 +122,11 @@ export function GameCreationPanel({
   onRemoveBet,
   onLockBets,
 }: {
+  proRoster?: {
+    wrap: (cards: (edit: (gamer: Gamer) => void) => React.ReactNode) => React.ReactNode
+    toggle: (gamer: Gamer) => Promise<void>
+    history: (scope: { type: 'all' }) => Promise<MatchHistoryResponse>
+  } | undefined
   bootstrap: RoomBootstrapResponse
   busy: BusyState
   /** Room chip ledger; empty until it loads. */
@@ -142,6 +160,7 @@ export function GameCreationPanel({
   onLockBets: () => void
 }) {
   const strategyOptions = useMemo(() => listStrategies(), [])
+  const [availabilityPending, setAvailabilityPending] = useState(false)
   const [allocationMode, setAllocationMode] = useState<'manual' | 'random'>('manual')
   const [randomFormat, setRandomFormat] = useState<keyof typeof GAME_FORMATS>('2v2')
   const [randomStrategyId, setRandomStrategyId] = useState(bootstrap.room.defaultSelectionStrategy)
@@ -200,6 +219,7 @@ export function GameCreationPanel({
   const manualFormat = inferGameFormat(manualHomeIds.length, manualAwayIds.length)
 
   const canCreateManualGame =
+    !availabilityPending &&
     !bootstrap.currentGame &&
     manualFormat !== null &&
     (teamAssignmentMode !== 'pick' || (manualHomeClubId !== null && manualAwayClubId !== null))
@@ -302,30 +322,14 @@ export function GameCreationPanel({
         />
       ) : (
         <>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 10,
-              marginBottom: 14,
-            }}
-          >
-            <button
-              type="button"
+          <div style={{ marginBottom: 14 }}>
+            <Segmented
+              label="Allocation mode"
+              value={allocationMode}
+              options={ALLOCATION_MODES}
+              onChange={setAllocationMode}
               disabled={busy !== null}
-              onClick={() => setAllocationMode('manual')}
-              style={allocationMode === 'manual' ? primaryButtonStyle : secondaryButtonStyle}
-            >
-              Manual
-            </button>
-            <button
-              type="button"
-              disabled={busy !== null}
-              onClick={() => setAllocationMode('random')}
-              style={allocationMode === 'random' ? primaryButtonStyle : secondaryButtonStyle}
-            >
-              Random
-            </button>
+            />
           </div>
 
           <TeamAssignmentSection
@@ -349,7 +353,9 @@ export function GameCreationPanel({
 
           {allocationMode === 'manual' ? (
             <>
-              <div style={{ display: 'grid', gap: 10 }}>
+              {proRoster ? proRoster.wrap(edit => <ProPlayerCards room={bootstrap} eligible={activeGameNightGamerIds}
+                assignments={manualAssignments} assign={setManualAssignment} edit={edit} toggle={proRoster.toggle}
+                history={proRoster.history} pendingChanged={setAvailabilityPending} busy={busy !== null} />) : <div style={{ display: 'grid', gap: 10 }}>
                 {activeGameNightGamers.map((gamer) => {
                   const assignment = manualAssignments[gamer.id] ?? 'bench'
                   const homeFull =
@@ -442,7 +448,7 @@ export function GameCreationPanel({
                     </article>
                   )
                 })}
-              </div>
+              </div>}
               <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
                 <div style={{ fontSize: 14, opacity: 0.76 }}>
                   {manualFormat
@@ -582,26 +588,16 @@ function TeamAssignmentSection({
     >
       <div style={{ display: 'grid', gap: 4 }}>
         <strong style={{ fontSize: 16 }}>Optional FC teams</strong>
-        <span style={{ fontSize: 13, opacity: 0.72 }}>
+        <span className="fc-teams-note" style={{ fontSize: 13, opacity: 0.72 }}>
           Assign club or international teams to the matchup. This uses the latest retrieved squad data.
         </span>
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          onClick={() => onChangeTeamAssignmentMode('none')}
-          style={teamAssignmentMode === 'none' ? primaryButtonStyle : compactButtonStyle}
-        >
-          No FC teams
-        </button>
-        <button
-          type="button"
-          onClick={() => onChangeTeamAssignmentMode('pick')}
-          style={teamAssignmentMode === 'pick' ? primaryButtonStyle : compactButtonStyle}
-        >
-          Pick FC teams
-        </button>
-      </div>
+      <Segmented
+        label="FC teams"
+        value={teamAssignmentMode}
+        options={TEAM_MODES}
+        onChange={onChangeTeamAssignmentMode}
+      />
 
       {!latestSquadVersion ? (
         <InlineNotice tone="warn" message="Retrieve squad data in Settings before assigning FC teams." />

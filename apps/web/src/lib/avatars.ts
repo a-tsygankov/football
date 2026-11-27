@@ -59,6 +59,18 @@ export function defaultAvatar(kind: AvatarKind): string {
   return DEFAULT_AVATARS[kind]
 }
 
+let gamerFallback: ((name: string) => string) | null = null
+
+/** Lets a host app (the Clubhouse preview) supply its own placeholder photos. */
+export function setGamerAvatarFallback(resolve: ((name: string) => string) | null): void {
+  gamerFallback = resolve
+}
+
+/** The avatar a gamer without an uploaded photo gets. */
+export function gamerFallbackAvatar(name: string): string {
+  return gamerFallback ? gamerFallback(name) : DEFAULT_AVATARS.gamer
+}
+
 /**
  * Reads a picked image file, square-crops it, downscales to AVATAR_MAX_DIMENSION,
  * and returns a `data:` URL. Throws on unreadable files so the caller can show

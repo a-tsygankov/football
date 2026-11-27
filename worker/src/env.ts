@@ -6,6 +6,7 @@
  * that serves /api/version and /api/health today.
  */
 export interface Env {
+  readonly CLUBHOUSE_TABLES?: string
   readonly WORKER_VERSION: string
   readonly SCHEMA_VERSION: string
   readonly MIN_CLIENT_VERSION: string

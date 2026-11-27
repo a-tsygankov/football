@@ -31,6 +31,7 @@ export function JoinRoomPanel({
       <Field label="PIN">
         <input
           value={joinPin}
+          type="password"
           onChange={(event) => onJoinPin(event.target.value)}
           placeholder="4 digits if needed"
           inputMode="numeric"

@@ -6,6 +6,67 @@
 
 ---
 
+## Recent Changes (2026-11-27): the Pro look (#55)
+
+Shipped as PR #55. `@fc26/web` `0.1.42`, `@fc26/worker` and `WORKER_VERSION`
+`0.1.21`; `@fc26/shared` `0.1.17`, `SCHEMA_VERSION` `14` and
+`EVENT_SCHEMA_VERSION` `1` are unchanged.
+
+### One shell, two entry points
+
+The look that was tried out in the Clubhouse preview is now the real app's.
+`apps/web/src/pro` holds it: `ProShell` (masthead, match desk, Club leaders),
+`QuickResult`, `HistoryTable`, `Segmented` and `pro.css`. `src/main.tsx`
+renders `ProShell` for the real app and `clubhouse/main.tsx` renders it for
+the preview with `preview` set, which makes a room PIN compulsory, hides the
+navigation outside a room and registers sample photos through
+`setGamerAvatarFallback`. The real app keeps the silhouette placeholder.
+
+`App` still renders without the shell, which is how the unit suites mount it.
+`pro.css` restyles the older inline-styled panels from outside, mostly with
+`!important`; that is deliberate debt, cheaper than rewriting every panel in
+one PR, and the reason a panel can look different in a test screenshot.
+
+### Controls
+
+- **`Segmented`** (Radix ToggleGroup) is the only either/or switch: side
+  (Home / Reserve / Away), Manual / Random, FC teams, bet outcome and
+  Points / Goals. It is a `radiogroup` of `radio` items, not a row of
+  buttons, so tests query those roles. Pressing the chosen option again does
+  not clear it.
+- **Availability** is a Radix Switch. A change is staged for two seconds and
+  a second tap cancels it; a gamer made inactive goes back to Reserve.
+- **"Not playing" is "Reserve"** in the interface. The assignment key in code
+  is still `bench`.
+- **Player cards** animate between the active and inactive lists with Motion;
+  `MotionConfig reducedMotion="user"` in `ProShell` honours the system setting.
+
+### Quick result and picture reading
+
+`QuickResult` is a bottom sheet (the shared Radix `Sheet`). It logs a finished match in one step by
+creating the night and game if needed and recording the result. It can also
+read the score from a picture, new (`capture="environment"`) or existing.
+The analyse-photo route only works against a live match, so the sheet starts
+one from the chosen sides first and fixes the sides from then on. A failed
+read therefore leaves a live match behind; the sheet says so. A score read
+from a picture is recorded with `entryMethod: 'ocr'` only if it is saved
+unchanged.
+
+### Known compromises
+
+- In the live game, Finish game is lifted above Bets with CSS `order`, so
+  keyboard and screen-reader order still reaches Bets first.
+- The preview Worker has no `GEMINI_API_KEY`, so picture reading was verified
+  there only as far as the server's `gemini_not_configured` reply.
+
+### Tests
+
+`Segmented.test.tsx` and `QuickResult.test.tsx` are new. Sabotaged and caught:
+removing the guard that keeps one option chosen, crediting a hand-corrected
+score to the picture, and dropping `capture` from the camera input.
+
+---
+
 ## Recent Changes (2026-11-27): share links (#56)
 
 Shipped as PR #56. Client only: `@fc26/web` `0.1.33`; `@fc26/worker`

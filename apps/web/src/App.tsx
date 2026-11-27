@@ -64,11 +64,16 @@ import type { BusyState } from './types/busyState.js'
 import { useInstallPrompt } from './hooks/useInstallPrompt.js'
 import { useOnlineStatus } from './hooks/useOnlineStatus.js'
 import { useSwUpdate } from './hooks/useSwUpdate.js'
-import { useHashRoute } from './hooks/useHashRoute.js'
+import { useHashRoute, type Route } from './hooks/useHashRoute.js'
 
 const LAST_ROOM_ID_KEY = 'fc26:last-room-id'
 
-export function App() {
+export function App({ clubhouse = false, preview = false, roomOverview }: {
+  clubhouse?: boolean
+  /** The public preview: a room PIN is compulsory and there is no navigation outside a room. */
+  preview?: boolean
+  roomOverview?: (room: RoomBootstrapResponse, board: RoomScoreboardResponse | null, reload: () => Promise<void>, route: Route, revision: number) => React.ReactNode
+} = {}) {
   const [worker, setWorker] = useState<WorkerVersionInfo | null>(null)
   const [workerError, setWorkerError] = useState<string | null>(null)
   const [bootstrap, setBootstrap] = useState<RoomBootstrapResponse | null>(null)
@@ -1088,7 +1093,7 @@ export function App() {
         />
       ) : null}
       <main style={{ padding: 20, maxWidth: 560, margin: '0 auto' }}>
-        {bootstrap ? null : (
+        {bootstrap || clubhouse ? null : (
           <>
         <section
           style={{
@@ -1256,6 +1261,12 @@ export function App() {
 
         {bootstrap ? (
           <RoomScreen
+            clubhouse={clubhouse}
+            overview={roomOverview?.(bootstrap, scoreboard, async () => {
+              await refreshRoom(bootstrap.room.id)
+              await loadLedger(bootstrap.room.id)
+              setHistoryToken(token => token + 1)
+            }, route, historyToken)}
             route={route}
             onNavigate={navigate}
             viewerId={viewerId}
@@ -1308,6 +1319,7 @@ export function App() {
           />
         ) : (
           <LandingScreen
+            requirePin={preview}
             busy={busy}
             createName={createName}
             createPin={createPin}
@@ -1324,7 +1336,7 @@ export function App() {
 
       </main>
 
-      <BottomNav route={route} onNavigate={navigate} />
+      {(!preview || bootstrap) && <BottomNav route={route} onNavigate={navigate} />}
       <DebugConsole />
     </div>
   )

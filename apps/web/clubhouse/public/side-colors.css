@@ -1,0 +1,18 @@
+:where(.pro-player, .card, .live-side) {
+  --side-stripe: #97a59b;
+  --side-edge: #e9edea;
+  --side-wash: #f7f9f7;
+  --side-outline: #c4d2c7;
+}
+:where(.pro-player, .card, .live-side)[data-side="home" i] {
+  --side-stripe: #287349;
+  --side-edge: #c0e3cc;
+  --side-wash: #eaf5ed;
+  --side-outline: #a0c6ac;
+}
+:where(.pro-player, .card, .live-side)[data-side="away" i] {
+  --side-stripe: #3869a8;
+  --side-edge: #c4daf3;
+  --side-wash: #ecf3fc;
+  --side-outline: #a7bedc;
+}

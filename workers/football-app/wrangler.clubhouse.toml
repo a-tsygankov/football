@@ -1,0 +1,13 @@
+name = "football-preview"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+workers_dev = true
+preview_urls = false
+
+[assets]
+directory = "../../apps/web/dist-preview"
+binding = "ASSETS"
+
+[[services]]
+binding = "API"
+service = "fc26-preview-worker"

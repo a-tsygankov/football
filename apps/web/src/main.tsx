@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
-import { App } from './App.jsx'
+import { ProShell } from './pro/ProShell.jsx'
 import { swUpdateStore } from './lib/swUpdate.js'
 import './index.css'
 
@@ -16,6 +16,6 @@ if (!root) throw new Error('Missing #root element')
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
-    <App />
+    <ProShell edition="FC 26 · Game night" tagline="Pick sides, play, settle up" title="Team Picker" />
   </React.StrictMode>,
 )
